@@ -352,6 +352,7 @@ function setStatus(data, what = null) {
     $('#dropdownPrintButton').prop('disabled', false);
 }
 
+var imageDropZone = null;
 let myDropzone = new Dropzone("#image-dropzone", {
     url: function () {
         if (dropZoneMode == 'preview') {
@@ -567,6 +568,22 @@ function saveAllSettingsToLocalStorage() {
     if (window.fontSettingsPerLine) {
         data['fontSettingsPerLine'] = JSON.stringify(window.fontSettingsPerLine);
     }
+    // Store image (base64, if available in Dropzone)
+    try {
+        if (imageDropZone && imageDropZone.files && imageDropZone.files.length > 0) {
+            const f = imageDropZone.files[0];
+            const dataUrl = imageDropZone.files[0].dataURL;
+            const comma = dataUrl.indexOf(',');
+            const header = dataUrl.substring(5, comma); // e.g. image/jpeg;base64
+            const mime = header.split(';')[0];
+            const b64 = dataUrl.substring(comma + 1);
+            data['image_data'] = b64;
+            data['image_mime'] = mime;
+            data['image_name'] = f.name || 'image';
+        }
+    } catch (e) {
+        console.debug('No image to save to localStorage', e);
+    }
     const this_settings = JSON.stringify(data);
     localStorage.setItem(LS_KEY, this_settings);
 
@@ -647,6 +664,29 @@ function restoreAllSettingsFromLocalStorage() {
             $('#lineSelect').val(0);
             preview();
         } catch { }
+    }
+
+    // If image data is available, populate Dropzone
+    try {
+        const img_b64 = data.image_data;
+        const img_mime = data.image_mime || 'image/png';
+        const img_name = data.image_name || 'image';
+        if (img_b64) {
+            const dataUrl = 'data:' + img_mime + ';base64,' + img_b64;
+            fetch(dataUrl)
+                .then(res => res.blob())
+                .then(blob => {
+                    const file = new File([blob], img_name, { type: img_mime });
+                    try { imageDropZone.removeAllFiles(true); } catch (e) { }
+                    // Use Dropzone's API to add the file so it is
+                    // processed identically to a user upload.
+                    try {
+                        imageDropZone.addFile(file);
+                    } catch (e) { }
+                });
+        }
+    } catch (e) {
+        console.debug('No image to restore from localStorage', e);
     }
     // Trigger preview after restore
     setTimeout(() => { preview(); current_restoring = false; }, 100);
