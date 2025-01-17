@@ -12,7 +12,59 @@ const DEFAULT_FONT = 'Droid Serif,Regular';
 
 // Returns an array of font settings for each line of label text.
 // Each new line inherits the font settings of the previous line.
-var fontSettingsPerLine = [];
+let fontSettingsPerLine = [];
+
+// Helper: parse a data:...;base64,<b64> data URL into mime and base64 parts
+function parseDataUrl(dataUrl) {
+    const comma = dataUrl.indexOf(',');
+    if (comma === -1) return { mime: null, b64: null };
+    const header = dataUrl.substring(5, comma); // skip leading 'data:'
+    const mime = header.split(';')[0];
+    const b64 = dataUrl.substring(comma + 1);
+    return { mime, b64 };
+}
+// IndexedDB helpers for storing image base64 data (so we avoid large localStorage entries)
+function _openImageDB() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('brother_ql_images', 1);
+        req.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains('images')) db.createObjectStore('images');
+        };
+        req.onsuccess = (e) => resolve(e.target.result);
+        req.onerror = (e) => reject(e.target.error);
+    });
+}
+
+function _saveImageToDB(id, mime, b64) {
+    return _openImageDB().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('images', 'readwrite');
+        const store = tx.objectStore('images');
+        const req = store.put({ mime, b64 }, id);
+        req.onsuccess = () => { db.close(); resolve(true); };
+        req.onerror = (e) => { db.close(); reject(e.target.error); };
+    }));
+}
+
+function _getImageFromDB(id) {
+    return _openImageDB().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('images', 'readonly');
+        const store = tx.objectStore('images');
+        const req = store.get(id);
+        req.onsuccess = (e) => { db.close(); resolve(e.target.result || null); };
+        req.onerror = (e) => { db.close(); reject(e.target.error); };
+    })).catch(() => null);
+}
+
+function _deleteImagesFromDB(id = null) {
+    return _openImageDB().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction('images', 'readwrite');
+        const store = tx.objectStore('images');
+        const req = id === null ? store.clear() : store.delete(id);
+        req.onsuccess = () => { db.close(); resolve(true); };
+        req.onerror = (e) => { db.close(); reject(e.target.error); };
+    })).catch(() => null);
+}
 function setFontSettingsPerLine() {
     var text = $('#label_text').val() || '';
     var lines = text.split(/\r?\n/);
@@ -352,8 +404,8 @@ function setStatus(data, what = null) {
     $('#dropdownPrintButton').prop('disabled', false);
 }
 
-var imageDropZone = null;
-let myDropzone = new Dropzone("#image-dropzone", {
+let imageDropZone = null;
+new Dropzone("#image-dropzone", {
     url: function () {
         if (dropZoneMode == 'preview') {
             return url_for_preview + "?return_format=base64";
@@ -465,7 +517,7 @@ function updatePrinterStatus() {
     const labelSizeX = document.getElementById('label-width');
     const labelSizeY = document.getElementById('label-height');
     if (labelSizeX && labelSizeY) {
-        labelSizeX.textContent = printer_status.media_width ?? "???" + " mm";
+        labelSizeX.textContent = (printer_status.media_width ?? "???") + " mm";
         if (printer_status.media_length > 0) {
             labelSizeY.textContent = printer_status.media_length + " mm";
         }
@@ -479,7 +531,9 @@ function updatePrinterStatus() {
 
     // Check for label size mismatch compared to data-x property of select
     const labelSizeSelect = document.getElementById('label_size');
-    if (labelSizeSelect) {
+    const labelMismatch = document.getElementById('labelMismatch');
+    const labelMismatchIcon = document.getElementById('labelMismatchIcon');
+    if (labelSizeSelect && labelMismatch && labelMismatchIcon) {
         const selectedOption = labelSizeSelect.options[labelSizeSelect.selectedIndex];
         const dataX = selectedOption.getAttribute('data-x');
         const dataY = selectedOption.getAttribute('data-y');
@@ -513,7 +567,7 @@ async function getPrinterStatus() {
             select.innerHTML = '';
             data.printers.forEach((p) => {
                 const opt = document.createElement('option');
-                opt.value = p.path || p.path;
+                opt.value = p.path || '';
                 const displayPath = p.path? p.path.replace(/file:\/\//g, '' ) : '';
                 opt.textContent = (p.model || 'Unknown') + ' @ ' + displayPath;
                 select.appendChild(opt);
@@ -568,18 +622,20 @@ function saveAllSettingsToLocalStorage() {
     if (window.fontSettingsPerLine) {
         data['fontSettingsPerLine'] = JSON.stringify(window.fontSettingsPerLine);
     }
-    // Store image (base64, if available in Dropzone)
+    // Store image metadata and persist base64 into IndexedDB (avoid large localStorage entries)
     try {
         if (imageDropZone && imageDropZone.files && imageDropZone.files.length > 0) {
             const f = imageDropZone.files[0];
             const dataUrl = imageDropZone.files[0].dataURL;
-            const comma = dataUrl.indexOf(',');
-            const header = dataUrl.substring(5, comma); // e.g. image/jpeg;base64
-            const mime = header.split(';')[0];
-            const b64 = dataUrl.substring(comma + 1);
-            data['image_data'] = b64;
-            data['image_mime'] = mime;
-            data['image_name'] = f.name || 'image';
+            const parsed = parseDataUrl(dataUrl);
+            if (parsed.b64) {
+                const imagHash = 'img_' + generateHash(parsed.b64);
+                // fire-and-forget save into IndexedDB
+                _saveImageToDB(imagHash, parsed.mime, parsed.b64).catch(e => console.debug('Failed saving image to IndexedDB', e));
+                data['image_ref'] = imagHash;
+                data['image_mime'] = parsed.mime;
+                data['image_name'] = f.name || 'image';
+            }
         }
     } catch (e) {
         console.debug('No image to save to localStorage', e);
@@ -666,27 +722,25 @@ function restoreAllSettingsFromLocalStorage() {
         } catch { }
     }
 
-    // If image data is available, populate Dropzone
+    // If image data is available (embedded) populate Dropzone, otherwise try IndexedDB by image_ref
     try {
-        const img_b64 = data.image_data;
-        const img_mime = data.image_mime || 'image/png';
-        const img_name = data.image_name || 'image';
-        if (img_b64) {
-            const dataUrl = 'data:' + img_mime + ';base64,' + img_b64;
-            fetch(dataUrl)
-                .then(res => res.blob())
-                .then(blob => {
-                    const file = new File([blob], img_name, { type: img_mime });
-                    try { imageDropZone.removeAllFiles(true); } catch (e) { }
-                    // Use Dropzone's API to add the file so it is
-                    // processed identically to a user upload.
-                    try {
-                        imageDropZone.addFile(file);
-                    } catch (e) { }
-                });
+        if (data.image_ref) {
+            // try to retrieve from IndexedDB
+            _getImageFromDB(data.image_ref).then(record => {
+                if (record && record.b64) {
+                    const dataUrl = 'data:' + (record.mime || 'image/png') + ';base64,' + record.b64;
+                    fetch(dataUrl)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], data.image_name || 'image', { type: record.mime || 'image/png' });
+                            try { imageDropZone.removeAllFiles(true); } catch (e) { }
+                            try { imageDropZone.addFile(file); } catch (e) { }
+                        }).catch(e => console.debug('Failed to fetch blob from IndexedDB dataUrl', e));
+                }
+            }).catch(e => console.debug('Failed to read image from IndexedDB', e));
         }
     } catch (e) {
-        console.debug('No image to restore from localStorage', e);
+        console.debug('No image to restore from storage', e);
     }
     // Trigger preview after restore
     setTimeout(() => { preview(); current_restoring = false; }, 100);
@@ -811,13 +865,12 @@ function repoSaveCurrent() {
             reader.onload = function (e) {
                 try {
                     const dataUrl = e.target.result;
-                    const comma = dataUrl.indexOf(',');
-                    const header = dataUrl.substring(5, comma); // e.g. image/jpeg;base64
-                    const mime = header.split(';')[0];
-                    const b64 = dataUrl.substring(comma + 1);
-                    payload['image_data'] = b64;
-                    payload['image_mime'] = mime;
-                    payload['image_name'] = f.name || 'image';
+                    const parsed = parseDataUrl(dataUrl);
+                    if (parsed.b64) {
+                        payload['image_data'] = parsed.b64;
+                        payload['image_mime'] = parsed.mime;
+                        payload['image_name'] = f.name || 'image';
+                    }
                 } catch (err) {
                     console.warn('Failed to extract base64 from FileReader result', err);
                 }
@@ -1030,4 +1083,13 @@ function init2() {
 
     // Trigger initial preview
     preview();
+};
+
+const generateHash = (string) => {
+    let hash = 0;
+    for (const char of string) {
+        hash = (hash << 5) - hash + char.charCodeAt(0);
+        hash |= 0; // Constrain to 32bit integer
+    }
+    return hash;
 };
