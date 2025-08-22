@@ -45,7 +45,9 @@ def index():
                            default_margin_top=current_app.config['LABEL_DEFAULT_MARGIN_TOP'],
                            default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
                            default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
-                           default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
+                           default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT'],
+                           printer_path=current_app.config['PRINTER_PRINTER'],
+                           printer_model=current_app.config['PRINTER_MODEL']
                            )
 
 
@@ -58,8 +60,15 @@ def get_font_styles():
 
 @bp.route('/api/preview', methods=['POST', 'GET'])
 def get_preview_from_image():
+    # Set log level if provided
+    log_level = request.values.get('log_level')
+    if log_level:
+        import logging
+        level = getattr(logging, log_level.upper(), None)
+        if isinstance(level, int):
+            current_app.logger.setLevel(level)
     label = create_label_from_request(request)
-    im = label.generate()
+    im = label.generate(rotate=True)
 
     return_format = request.values.get('return_format', 'png')
 
@@ -88,6 +97,13 @@ def print_text():
     return_dict = {'success': False}
 
     try:
+        # Set log level if provided
+        log_level = request.values.get('log_level')
+        if log_level:
+            import logging
+            level = getattr(logging, log_level.upper(), None)
+            if isinstance(level, int):
+                current_app.logger.setLevel(level)
         printer = create_printer_from_request(request)
         label = create_label_from_request(request)
         print_count = int(request.values.get('print_count', 1))

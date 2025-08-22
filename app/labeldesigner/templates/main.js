@@ -20,6 +20,7 @@ function formData(cut_once) {
         image_mode:         $('input[name=imageMode]:checked').val(),
         image_fit:          $('#imageFitCheckbox').is(':checked') ? 1 : 0,
         print_count:       $('#printCount').val(),
+        log_level:         $('#logLevel').val(),
         {% if red_support %}
         print_color:       $('input[name=printColor]:checked').val(),
         {% endif %}
