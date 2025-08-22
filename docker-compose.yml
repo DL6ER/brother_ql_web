@@ -6,8 +6,8 @@ services:
     restart: always
     ports:
       - "8013:8013"
-    devices:
-      - "/dev/usb/lp0:/dev/usb/lp0"
+#    devices:
+#      - "/dev/usb/lp0:/dev/usb/lp0"
     command: >
       --model QL-800
       --default-label-size 62

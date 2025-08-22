@@ -176,6 +176,12 @@ def create_label_from_request(request):
             if font_family_name is None or font_style_name is None:
                 font_family_name = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
                 font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+            if font_family_name not in FONTS.fonts:
+                raise LookupError("Unknown font family: %s" % font_family_name)
+            if font_style_name not in FONTS.fonts[font_family_name]:
+                font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+            if font_style_name not in FONTS.fonts[font_family_name]:
+                raise LookupError("Unknown font style: %s" % font_style_name)
             font_path = FONTS.fonts[font_family_name][font_style_name]
         except KeyError:
             raise LookupError("Couln't find the font & style")
