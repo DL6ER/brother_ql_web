@@ -203,5 +203,7 @@ Dropzone.options.myAwesomeDropzone = {
     }
 };
 
-updateStyles();
-preview();
+window.onload = function() {
+    updateStyles();
+    preview();
+};

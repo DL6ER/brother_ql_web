@@ -1,7 +1,9 @@
-from brother_ql.backends import backend_factory, guess_backend
+import logging
+from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from .label import LabelOrientation, LabelType, LabelContent
 
+logger = logging.getLogger(__name__)
 
 class PrinterQueue:
 
@@ -32,9 +34,6 @@ class PrinterQueue:
     @device_specifier.setter
     def device_specifier(self, value):
         self._device_specifier = value
-        selected_backend = guess_backend(self._device_specifier)
-        self._backend_class = backend_factory(
-            selected_backend)['backend_class']
 
     @property
     def label_size(self):
@@ -65,9 +64,9 @@ class PrinterQueue:
             else:
                 rotate = 'auto'
 
-            img = queue_entry['label'].generate()
+            img = queue_entry['label'].generate(rotate=False)
 
-            if queue_entry['label'].label_content == LabelContent.IMAGE_BW: 
+            if queue_entry['label'].label_content == LabelContent.IMAGE_BW:
                 dither = False
             else:
                 dither = True
@@ -81,9 +80,6 @@ class PrinterQueue:
                 cut=queue_entry['cut'],
                 rotate=rotate)
 
-        self._printQueue.clear()
-
-        be = self._backend_class(self._device_specifier)
-        be.write(qlr.data)
-        be.dispose()
-        del be
+        info = send(qlr.data, self._device_specifier)
+        logger.info('Sent %d bytes to printer %s', len(qlr.data), self._device_specifier)
+        logger.info('Printer response: %s', str(info))
