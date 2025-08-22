@@ -140,7 +140,7 @@ class SimpleLabel:
     def label_type(self, value):
         self._label_type = value
 
-    def generate(self):
+    def generate(self, rotate = False):
         if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE):
             img = self._generate_qr()
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
@@ -254,6 +254,15 @@ class SimpleLabel:
                 font=self._get_font(),
                 align=self._text_align,
                 spacing=int(self._font_size*((self._line_spacing - 100) / 100)))
+
+        # Check if the image needs rotation (only applied when generating
+        # preview images)
+        preview_needs_rotation = (
+            self._label_orientation == LabelOrientation.ROTATED and self._label_type not in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL) or \
+            self._label_orientation == LabelOrientation.STANDARD and self._label_type in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL)
+        )
+        if rotate and preview_needs_rotation:
+            imgResult = imgResult.rotate(-90, expand=True)
 
         return imgResult
 

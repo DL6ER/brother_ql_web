@@ -80,6 +80,8 @@ class PrinterQueue:
                 cut=queue_entry['cut'],
                 rotate=rotate)
 
+        self._printQueue.clear()
+
         info = send(qlr.data, self._device_specifier)
         logger.info('Sent %d bytes to printer %s', len(qlr.data), self._device_specifier)
         logger.info('Printer response: %s', str(info))
