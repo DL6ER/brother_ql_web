@@ -32,6 +32,27 @@ For now I have added Docker support and the ability to print red images on suppo
 -   Print images on red/black paper
 -   Dockerized
 
+### Docker Compose
+
+You may also use the example [`docker-compose.yml`](./docker-compose.yml) file provided in this repository to quickly get started with Docker Compose:
+
+``` yaml
+services:
+  brother_ql_web:
+    image: davidramiro/brother-ql-web:latest # latest online version
+    # build: . # building locally from source (see git clone below)
+    container_name: brother_ql_web
+    restart: always
+    ports:
+      - "8013:8013"
+    devices:
+      - "/dev/usb/lp0:/dev/usb/lp0"
+    command: >
+      --model QL-800
+      --default-label-size 62
+      file:///dev/usb/lp0
+```
+
 ### Run via Docker
 
 You can pull the image from `davidramiro/brother-ql-web` on Docker Hub.

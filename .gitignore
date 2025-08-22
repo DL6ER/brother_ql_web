@@ -1,3 +1,6 @@
+# Docker override file (may want to add custom printer path)
+docker-compose.override.yml
+
 # ignore config.json
 config.json
 
