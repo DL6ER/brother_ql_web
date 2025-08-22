@@ -1,7 +1,9 @@
 from enum import Enum, auto
 from qrcode import QRCode, constants
 from PIL import Image, ImageDraw, ImageFont
+import logging
 
+logger = logging.getLogger(__name__)
 
 class LabelContent(Enum):
     TEXT_ONLY = auto()
@@ -31,6 +33,28 @@ class TextAlign(Enum):
 
 
 class SimpleLabel:
+    def _ensure_pil_image(self, img) -> Image.Image:
+        """Ensure the image is a PIL.Image.Image instance."""
+        if isinstance(img, Image.Image):
+            return img
+        # Try to convert PyPNGImage or other types to PIL.Image
+        try:
+            # Try to get bytes and open as PIL
+            import io
+            if hasattr(img, 'tobytes') and hasattr(img, 'size') and hasattr(img, 'mode'):
+                return Image.frombytes(img.mode, img.size, img.tobytes())
+            elif hasattr(img, 'to_pil_image'):
+                return img.to_pil_image()
+            elif hasattr(img, 'as_pil_image'):
+                return img.as_pil_image()
+            elif hasattr(img, 'save'):
+                buf = io.BytesIO()
+                img.save(buf, format='PNG')
+                buf.seek(0)
+                return Image.open(buf)
+        except Exception:
+            pass
+        raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
     qr_correction_mapping = {
         'L': constants.ERROR_CORRECT_L,
         'M': constants.ERROR_CORRECT_M,
@@ -51,7 +75,7 @@ class SimpleLabel:
             text_align=TextAlign.CENTER,
             qr_size=10,
             qr_correction='L',
-            image_mode='grayscale',
+            image_fit=True,
             image=None,
             font_path='',
             font_size=70,
@@ -71,6 +95,7 @@ class SimpleLabel:
         self._font_path = font_path
         self._font_size = font_size
         self._line_spacing = line_spacing
+        self._image_fit = image_fit
 
     @property
     def label_content(self):
@@ -123,8 +148,56 @@ class SimpleLabel:
         else:
             img = None
 
+        # Initialize dimensions
+        width, height = self._width, self._height
+        margin_left, margin_right, margin_top, margin_bottom = self._label_margin
+
+        # Resize image to fit if image_fit is True
         if img is not None:
-            img_width, img_height = img.size
+            # Ensure img is a PIL image
+            pil_img = self._ensure_pil_image(img)
+
+            # Resize image to fit if image_fit is True
+            if self._image_fit:
+                # Calculate the maximum allowed dimensions
+                max_width = max(width - margin_left - margin_right, 1)
+                max_height = max(height - margin_top - margin_bottom, 1)
+
+                # Get image dimensions
+                img_width, img_height = pil_img.size
+
+                # Print the original image size
+                logger.debug(f"Maximal allowed dimensions: {max_width}x{max_height} mm")
+                logger.debug(f"Original image size: {img_width}x{img_height} px")
+
+                # Resize the image to fit within the maximum dimensions
+                scale = 1.0
+                if self._label_orientation == LabelOrientation.STANDARD:
+                    if self._label_type in (LabelType.ENDLESS_LABEL,):
+                        # Only width is considered for endless label without rotation
+                        scale = min(max_width / img_width, 1.0)
+                    else:
+                        # Both dimensions are considered for standard label
+                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                else:
+                    if self._label_type in (LabelType.ENDLESS_LABEL,):
+                        # Only height is considered for endless label without rotation
+                        scale = min(max_height / img_height, 1.0)
+                    else:
+                        # Both dimensions are considered for standard label
+                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                logger.debug(f"Scaling image by factor: {scale}")
+
+                # Resize the image
+                new_size = (int(img_width * scale), int(img_height * scale))
+                logger.debug(f"Resized image size: {new_size} px")
+                pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+                # Update image dimensions
+                img_width, img_height = pil_img.size
+            else:
+                # No resizing requested
+                img_width, img_height = pil_img.size
+            img = pil_img
         else:
             img_width, img_height = (0, 0)
 
@@ -133,9 +206,7 @@ class SimpleLabel:
         else:
             textsize = (0, 0, 0, 0)
 
-        width, height = self._width, self._height
-        margin_left, margin_right, margin_top, margin_bottom = self._label_margin
-
+        # Adjust label size for endless label
         if self._label_orientation == LabelOrientation.STANDARD:
             if self._label_type in (LabelType.ENDLESS_LABEL,):
                 height = img_height + textsize[3] - textsize[1] + margin_top + margin_bottom

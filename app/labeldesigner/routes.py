@@ -140,6 +140,7 @@ def create_label_from_request(request):
         'qrcode_correction': d.get('qrcode_correction', 'L'),
         'image_mode': d.get('image_mode', "grayscale"),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
+        'image_fit': int(d.get('image_fit', 1)) > 0,
         'font_size': int(d.get('font_size', 100)),
         'line_spacing': int(d.get('line_spacing', 100)),
         'font_family': d.get('font_family'),
@@ -241,6 +242,7 @@ def create_label_from_request(request):
         qr_size=context['qrcode_size'],
         qr_correction=context['qrcode_correction'],
         image=get_uploaded_image(request.files.get('image', None)),
+        image_fit=context['image_fit'],
         font_path=get_font_path(context['font_family'], context['font_style']),
         font_size=context['font_size'],
         line_spacing=context['line_spacing']
