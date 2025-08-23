@@ -90,6 +90,24 @@ $(document).ready(function() {
         // Set line spacing
         $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
     });
+
+    // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
+    $('#labelText').on('click keyup', function(e) {
+        var textarea = this;
+        var caret = textarea.selectionStart;
+        var lines = textarea.value.split(/\r?\n/);
+        var charCount = 0;
+        var lineIdx = 0;
+        for (var i = 0; i < lines.length; i++) {
+            var nextCount = charCount + (lines[i] ? lines[i].length : 0) + 1; // +1 for newline
+            if (caret < nextCount) {
+                lineIdx = i;
+                break;
+            }
+            charCount = nextCount;
+        }
+        $('#lineSelect').val(lineIdx).trigger('change');
+    });
 });
 
 function formData(cut_once) {
