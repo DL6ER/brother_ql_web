@@ -1,3 +1,4 @@
+import logging
 import os
 
 from flask import current_app, render_template, request, make_response
@@ -138,6 +139,28 @@ def create_printer_from_request(request):
         label_size = context['label_size']
     )
 
+# Parse text form data from frontend
+def parse_text_form(form):
+    parsed = []
+    for key, value in form.items():
+        if key.startswith('text['):
+            # Get index of first ']'
+            end = key.index(']')
+            # Extract index this line corresponds to
+            idx = int(key[5:end])
+            # Get index of property's ']'
+            second_end=key[end+1:].index(']')
+            # Extract property name
+            prop = key[end+2:end+1+second_end]
+
+            # Create entry if it doesn't exist
+            if idx > len(parsed)-1:
+                parsed.append({})
+
+            # Assign value to the corresponding property
+            parsed[idx][prop] = value
+
+    return parsed
 
 def create_label_from_request(request):
     d=request.values
@@ -150,17 +173,12 @@ def create_label_from_request(request):
         'margin_bottom': float(d.get('margin_bottom', 45))/100.,
         'margin_left': float(d.get('margin_left', 35))/100.,
         'margin_right': float(d.get('margin_right', 35))/100.,
-        'text': d.get('text', None),
-        'align': d.get('align', 'center'),
+        'text': parse_text_form(request.form),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
         'image_mode': d.get('image_mode', "grayscale"),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': int(d.get('image_fit', 1)) > 0,
-        'font_size': int(d.get('font_size', 100)),
-        'line_spacing': int(d.get('line_spacing', 100)),
-        'font_family': d.get('font_family'),
-        'font_style': d.get('font_style'),
         'print_color': d.get('print_color', 'black'),
     }
 
@@ -244,6 +262,10 @@ def create_label_from_request(request):
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
 
+    # For each line in text, we determine and add the font path
+    for line in context['text']:
+        line['font_path'] = get_font_path(line['font_family'], line['font_style'])
+
     return SimpleLabel(
         width=width,
         height=height,
@@ -251,21 +273,17 @@ def create_label_from_request(request):
         label_orientation=label_orientation,
         label_type=label_type,
         label_margin=(
-            int(context['font_size']*context['margin_left']),
-            int(context['font_size']*context['margin_right']),
-            int(context['font_size']*context['margin_top']),
-            int(context['font_size']*context['margin_bottom'])
+            int(context['margin_left']),
+            int(context['margin_right']),
+            int(context['margin_top']),
+            int(context['margin_bottom'])
         ),
         fore_color=
             (255, 0, 0) if 'red' in context['label_size'] and context['print_color'] == 'red'
             else (0, 0, 0),
         text=context['text'],
-        text_align=context['align'],
         qr_size=context['qrcode_size'],
         qr_correction=context['qrcode_correction'],
         image=get_uploaded_image(request.files.get('image', None)),
         image_fit=context['image_fit'],
-        font_path=get_font_path(context['font_family'], context['font_style']),
-        font_size=context['font_size'],
-        line_spacing=context['line_spacing']
     )

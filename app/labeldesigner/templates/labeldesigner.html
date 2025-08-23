@@ -56,40 +56,56 @@
                     </div>
                     <div id="collapse2" class="collapse show" aria-labelledby="heading2" data-parent="#accordion">
                         <div class="card-body">
-                            <label for="fontFamily" style="margin-bottom: 0">Font Family:</label>
-                            <select class="form-control" id="fontFamily" onChange="updateStyles()">
-                                {% for font_family_name in font_family_names %}
-                                    <option {% if default_font_family == font_family_name %}selected{% endif %}>{{font_family_name}}</option>
-                                {% endfor %}
-                            </select>
-
-                            <label for="fontStyle" style="margin-top: 10px; margin-bottom: 0">Font Style:</label>
-                            <select class="form-control" id="fontStyle" onChange="preview()">
-                            </select>
-
-                            <label for="fontSize" style="margin-top: 10px; margin-bottom: 0">Font Size:</label>
-                            <input id="fontSize" class="form-control" type="number" min="1" value="{{default_font_size}}" onChange="preview()" required>
-
-                            <label for="fontAlign" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
-                            <div class="btn-group btn-group-toggle" data-toggle="buttons">
-                                <label class="btn btn-secondary ">
-                                    <input type="radio" name="fontAlign" onchange="preview()" value="left" aria-label="Left Align"><span class="fas fa-align-left" aria-hidden="true"></span>
-                                </label>
-                                <label class="btn btn-secondary active">
-                                    <input type="radio" name="fontAlign" onchange="preview()" value="center" aria-label="Center Align" checked=""><span class="fas fa-align-center" aria-hidden="true"></span>
-                                </label>
-                                <label class="btn btn-secondary">
-                                    <input type="radio" name="fontAlign" onchange="preview()" value="right" aria-label="Right Align"><span class="fas fa-align-right" aria-hidden="true"></span>
+                            <div id="fontSettingsLineSelector">
+                                <label for="lineSelect" style="margin-bottom: 0">Select Line:</label>
+                                <select class="form-control" id="lineSelect">
+                                </select>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" value="1" id="syncFontSettings" checked>
+                                <label class="form-check-label" for="syncFontSettings">
+                                    Use same font for all lines
                                 </label>
                             </div>
 
-                            <label for="lineSpacing" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Line Spacing:</label>
-                            <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
-                                {% for line_spacing in line_spacings %}
-                                <label class="btn btn-secondary {% if default_line_spacing == line_spacing %}active{% endif %}" id="lineSpacing{{line_spacing}}">
-                                    <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing == line_spacing %}checked{% endif %}>{{line_spacing}}%
-                                </label>
-                                {% endfor %}
+                            <div id="fontSettingsContainer">
+                                <div id="fontSetting">
+                                    <label for="fontFamily" style="margin-bottom: 0">Font Family:</label>
+                                    <select class="form-control" id="fontFamily" onChange="updateStyles()">
+                                        {% for font_family_name in font_family_names %}
+                                            <option {% if default_font_family == font_family_name %}selected{% endif %}>{{font_family_name}}</option>
+                                        {% endfor %}
+                                    </select>
+
+                                    <label for="fontStyle" style="margin-top: 10px; margin-bottom: 0">Font Style:</label>
+                                    <select class="form-control" id="fontStyle" onChange="preview()">
+                                    </select>
+
+                                    <label for="fontSize" style="margin-top: 10px; margin-bottom: 0">Font Size:</label>
+                                    <input id="fontSize" class="form-control" type="number" min="1" value="{{default_font_size}}" onChange="preview()" required>
+
+                                    <label for="fontAlign" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
+                                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
+                                        <label class="btn btn-secondary ">
+                                            <input type="radio" name="fontAlign" onchange="preview()" value="left" aria-label="Left Align"><span class="fas fa-align-left" aria-hidden="true"></span>
+                                        </label>
+                                        <label class="btn btn-secondary active">
+                                            <input type="radio" name="fontAlign" onchange="preview()" value="center" aria-label="Center Align" checked><span class="fas fa-align-center" aria-hidden="true"></span>
+                                        </label>
+                                        <label class="btn btn-secondary">
+                                            <input type="radio" name="fontAlign" onchange="preview()" value="right" aria-label="Right Align"><span class="fas fa-align-right" aria-hidden="true"></span>
+                                        </label>
+                                    </div>
+
+                                    <label for="lineSpacing" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Line Spacing:</label>
+                                    <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                        {% for line_spacing in line_spacings %}
+                                        <label class="btn btn-secondary {% if default_line_spacing == line_spacing %}active{% endif %}" id="lineSpacing{{line_spacing}}">
+                                            <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing == line_spacing %}checked{% endif %}>{{line_spacing}}%
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
                             </div>
 
                         </div>
@@ -175,28 +191,28 @@
                             <div class="input-group marginsTopBottom">
                                 <input id="marginTop" class="form-control" type="number" min="0" max="200" value="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
                                 <div class="input-group-append">
-                                    <span class="input-group-text" id="marginTop-addon">%</span>
+                                    <span class="input-group-text" id="marginTop-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginBottom" style="margin-top: 10px; margin-bottom: 0">Margin Bottom:</label>
                             <div class="input-group marginsTopBottom">
                                 <input id="marginBottom" class="form-control" type="number" min="0" max="200" value="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
                                 <div class="input-group-append">
-                                    <span class="input-group-text" id="marginBottom-addon">%</span>
+                                    <span class="input-group-text" id="marginBottom-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginLeft" style="margin-top: 10px; margin-bottom: 0">Margin Left:</label>
                             <div class="input-group marginsLeftRight">
                                 <input id="marginLeft" class="form-control" type="number" min="0" max="200" value="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
                                 <div class="input-group-append">
-                                    <span class="input-group-text" id="marginLeft-addon">%</span>
+                                    <span class="input-group-text" id="marginLeft-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginRight" style="margin-top: 10px; margin-bottom: 0">Margin Right:</label>
                             <div class="input-group marginsLeftRight">
                                 <input id="marginRight" class="form-control" type="number" min="0" max="200" value="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
                                 <div class="input-group-append">
-                                    <span class="input-group-text" id="marginRight-addon">%</span>
+                                    <span class="input-group-text" id="marginRight-addon">px</span>
                                 </div>
                             </div>
                         </div>
@@ -299,6 +315,11 @@
 {% endblock %}
 
 {% block javascript %}
+const red_support = {{ 'true' if red_support else 'false' }};
+const url_for_print_text = '{{ url_for('.print_text') }}';
+const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
+const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
+const default_dpi = {{ default_dpi }};
 {{ super() }}
 {% include "main.js" %}
 {% endblock %}

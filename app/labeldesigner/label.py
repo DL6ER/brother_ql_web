@@ -71,15 +71,11 @@ class SimpleLabel:
             label_type=LabelType.ENDLESS_LABEL,
             label_margin=(0, 0, 0, 0),  # Left, Right, Top, Bottom
             fore_color=(0, 0, 0),  # Red, Green, Blue
-            text='',
-            text_align=TextAlign.CENTER,
+            text={},
             qr_size=10,
             qr_correction='L',
             image_fit=True,
-            image=None,
-            font_path='',
-            font_size=70,
-            line_spacing=100):
+            image=None):
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -88,13 +84,9 @@ class SimpleLabel:
         self._label_margin = label_margin
         self._fore_color = fore_color
         self.text = text
-        self._text_align = text_align
         self._qr_size = qr_size
         self.qr_correction = qr_correction
         self._image = image
-        self._font_path = font_path
-        self._font_size = font_size
-        self._line_spacing = line_spacing
         self._image_fit = image_fit
 
     @property
@@ -202,8 +194,10 @@ class SimpleLabel:
             img_width, img_height = (0, 0)
 
         if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE):
-            textsize = self._get_text_size()
+            bboxes = self._draw_text(None, [])
+            textsize = self._compute_bbox(bboxes)
         else:
+            bboxes = []
             textsize = (0, 0, 0, 0)
 
         # Adjust label size for endless label
@@ -246,14 +240,7 @@ class SimpleLabel:
             imgResult.paste(img, image_offset)
 
         if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE):
-            draw = ImageDraw.Draw(imgResult)
-            draw.multiline_text(
-                text_offset,
-                self._prepare_text(self._text),
-                self._fore_color,
-                font=self._get_font(),
-                align=self._text_align,
-                spacing=int(self._font_size*((self._line_spacing - 100) / 100)))
+            self._draw_text(imgResult, bboxes)
 
         # Check if the image needs rotation (only applied when generating
         # preview images)
@@ -280,27 +267,39 @@ class SimpleLabel:
             back_color="white")
         return qr_img
 
-    def _get_text_size(self):
-        font = self._get_font()
-        img = Image.new('L', (20, 20), 'white')
+    def _draw_text(self, img = None, bboxes = []):
+        """
+        Returns a list of bounding boxes for each line, so each line can use a different font.
+        """
+        do_draw = img is not None
+        if not do_draw:
+            img = Image.new('L', (20, 20), 'white')
         draw = ImageDraw.Draw(img)
-        return draw.multiline_textbbox(
-            (0, 0),
-            self._prepare_text(self._text),
-            font=font,
-            align=self._text_align,
-            spacing=int(self._font_size*((self._line_spacing - 100) / 100)))
+        y = 0
+        for i, line in enumerate(self.text):
+            # Workaround for empty lines to not vanish
+            text = line['text']
+            if len(text) == 0:
+                text = ' '
+            spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100))
+            font = self._get_font(line['font_path'], line['font_size'])
+            if not do_draw:
+                bbox = draw.textbbox((0, y), text, font=font, align=line['align'])
+                line_spacing = (
+                    draw.textbbox((0, 0), "A", font)[3] + spacing
+                )
+                bboxes.append((bbox, y))
+                y += line_spacing + (spacing if i < len(self.text)-1 else 0)
+            else:
+                bbox = bboxes[i][0]
+                y = bboxes[i][1]
+                draw.text((bbox[0], y), text, self._fore_color, font=font, align=line['align'], spacing=spacing)
+        # Return total bbox
+        # each in form (left, top, right, bottom)
+        return bboxes
 
-    @staticmethod
-    def _prepare_text(text):
-        # workaround for a bug in multiline_textsize()
-        # when there are empty lines in the text:
-        lines = []
-        for line in text.split('\n'):
-            if line == '':
-                line = ' '
-            lines.append(line)
-        return '\n'.join(lines)
+    def _compute_bbox(self, bboxes):
+        return (bboxes[0][0][0], bboxes[0][0][1], bboxes[-1][0][2], bboxes[-1][0][3] * 1.1)
 
-    def _get_font(self):
-        return ImageFont.truetype(self._font_path, self._font_size)
+    def _get_font(self, font_path, font_size):
+        return ImageFont.truetype(font_path, int(font_size))

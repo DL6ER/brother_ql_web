@@ -1,40 +1,130 @@
+
+// Returns an array of font settings for each line of label text.
+// Each new line inherits the font settings of the previous line.
+var fontSettingsPerLine = [];
+function setFontSettingsPerLine() {
+    var text = $('#labelText').val() || '';
+    var lines = text.split(/\r?\n/);
+    if (lines.length === 0) lines = [''];
+
+    // Default font settings from the current UI controls
+    var currentFont = {
+        font_family:  $('#fontFamily option:selected').text(),
+        font_style:   $('#fontStyle option:selected').text(),
+        font_size:    $('#fontSize').val(),
+        align:        $('input[name=fontAlign]:checked').val(),
+        line_spacing: $('input[name=lineSpacing]:checked').val()
+    };
+
+    // Create lines in the <option> with id #lineSelect
+    var lineSelect = $('#lineSelect');
+    // Get currently selected line number
+    var selectedLine = lineSelect.val();
+    // Recreate options with possibly updated text
+    lineSelect.empty();
+    $.each(lines, function(index, line) {
+        lineSelect.append($("<option></option>")
+            .attr("value", index).text(lines[index] || '(line ' + (index + 1) + ' is empty)'));
+    });
+    if (selectedLine !== null) {
+        // Select the previously active line
+        lineSelect.val(selectedLine);
+    } else {
+        // If no line is selected, we select the first one
+        lineSelect.val(0);
+    }
+
+    // Should we use the same font settings for all lines?
+    const isSynced = $('#syncFontSettings').is(':checked');
+    if (isSynced) {
+        for (var i = 0; i < lines.length; i++) {
+            fontSettingsPerLine[i] = Object.assign({}, currentFont);
+            fontSettingsPerLine[i]['text'] = lines[i];
+        }
+        return;
+    }
+
+    // We may need to initialize new lines with current font settings
+    if (fontSettingsPerLine.length < lines.length) {
+        for (var i = fontSettingsPerLine.length; i < lines.length; i++) {
+            if (i === selectedLine || selectedLine === null) {
+                // Initialize with default
+                fontSettingsPerLine.push(Object.assign({}, currentFont));
+            } else {
+                // Inherit from previous line
+                fontSettingsPerLine.push(Object.assign({}, fontSettingsPerLine[i-1]));
+            }
+
+            // Set text
+            fontSettingsPerLine[i]['text'] = lines[i];
+        }
+    }
+
+    // If we have more font settings, remove the excess
+    while (fontSettingsPerLine.length > lines.length) {
+        fontSettingsPerLine.pop();
+    }
+
+    // Update the current line's font settings
+    if (fontSettingsPerLine[selectedLine]) {
+        fontSettingsPerLine[selectedLine] = Object.assign({}, currentFont);
+        fontSettingsPerLine[selectedLine]['text'] = lines[selectedLine];
+    }
+}
+
+// Update font controls when a line is selected
+$(document).ready(function() {
+    $('#lineSelect').on('change', function() {
+        var idx = parseInt($(this).val(), 10);
+        if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
+        var fs = fontSettingsPerLine[idx];
+        // Set font family
+        $('#fontFamily').val(fs.font_family);
+        updateStyles();
+        // Set font style
+        $('#fontStyle').val(fs.font_style);
+        // Set font size
+        $('#fontSize').val(fs.font_size);
+        // Set alignment
+        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+        // Set line spacing
+        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+    });
+});
+
 function formData(cut_once) {
-    var text = $('#labelText').val();
-    if (text == '') text = ' ';
-    return {
-        text:        text,
-        font_family: $('#fontFamily option:selected').text(),
-        font_style:  $('#fontStyle option:selected').text(),
-        font_size:   $('#fontSize').val(),
-        label_size:  $('#labelSize option:selected').val(),
-        align:       $('input[name=fontAlign]:checked').val(),
-        orientation: $('input[name=orientation]:checked').val(),
-        margin_top:    $('#marginTop').val(),
-        margin_bottom: $('#marginBottom').val(),
-        margin_left:   $('#marginLeft').val(),
-        margin_right:  $('#marginRight').val(),
-        print_type:    $('input[name=printType]:checked').val(),
-        qrcode_size:   $('#qrCodeSize').val(),
-        qrcode_correction: $('#qrCodeCorrection option:selected').val(),
+    data = {
+        text:               fontSettingsPerLine,
+        orientation:        $('input[name=orientation]:checked').val(),
+        margin_top:         $('#marginTop').val(),
+        margin_bottom:      $('#marginBottom').val(),
+        margin_left:        $('#marginLeft').val(),
+        margin_right:       $('#marginRight').val(),
+        print_type:         $('input[name=printType]:checked').val(),
+        qrcode_size:        $('#qrCodeSize').val(),
+        qrcode_correction:  $('#qrCodeCorrection option:selected').val(),
         image_bw_threshold: $('#imageBwThreshold').val(),
         image_mode:         $('input[name=imageMode]:checked').val(),
         image_fit:          $('#imageFitCheckbox').is(':checked') ? 1 : 0,
-        print_count:       $('#printCount').val(),
-        log_level:         $('#logLevel').val(),
-        {% if red_support %}
-        print_color:       $('input[name=printColor]:checked').val(),
-        {% endif %}
-        line_spacing:      $('input[name=lineSpacing]:checked').val(),
-        cut_once:          cut_once ? 1 : 0,
+        print_count:        $('#printCount').val(),
+        log_level:          $('#logLevel').val(),
+        line_spacing:       $('input[name=lineSpacing]:checked').val(),
+        cut_once:           cut_once ? 1 : 0,
     }
+
+    if (red_support) {
+        data['print_color'] = $('input[name=printColor]:checked').val();
+    }
+
+    return data;
 }
 
 function updatePreview(data) {
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
     img.onload = function() {
-        $('#labelWidth').html( (img.naturalWidth /{{default_dpi}}*2.54).toFixed(1));
-        $('#labelHeight').html((img.naturalHeight/{{default_dpi}}*2.54).toFixed(1));
+        $('#labelWidth').html( (img.naturalWidth /default_dpi*2.54).toFixed(1));
+        $('#labelHeight').html((img.naturalHeight/default_dpi*2.54).toFixed(1));
     };
 }
 
@@ -43,7 +133,7 @@ function updateStyles() {
 
     $.ajax({
         type:        'POST',
-        url:         '{{url_for('.get_font_styles')}}',
+        url:         url_for_get_font_styles,
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         data:        {font: font_familiy},
         success: function( data ) {
@@ -76,19 +166,19 @@ function preview() {
         $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
     }
 
-    {% if red_support %}
-    if ($('#labelSize option:selected').val().includes('red')) {
-        $('#print_color_black').removeClass('disabled');
-        $('#print_color_red').removeClass('disabled');
-        $('#image_mode_red_and_black').removeClass('disabled');
-        $('#image_mode_colored').removeClass('disabled');
-    } else {
-        $('#print_color_black').addClass('disabled').prop('active', true);
-        $('#print_color_red').addClass('disabled');
-        $('#image_mode_red_and_black').addClass('disabled');
-        $('#image_mode_colored').addClass('disabled');
+    if (red_support) {
+        if ($('#labelSize option:selected').val().includes('red')) {
+            $('#print_color_black').removeClass('disabled');
+            $('#print_color_red').removeClass('disabled');
+            $('#image_mode_red_and_black').removeClass('disabled');
+            $('#image_mode_colored').removeClass('disabled');
+        } else {
+            $('#print_color_black').addClass('disabled').prop('active', true);
+            $('#print_color_red').addClass('disabled');
+            $('#image_mode_red_and_black').addClass('disabled');
+            $('#image_mode_colored').addClass('disabled');
+        }
     }
-    {% endif %}
 
     if($('input[name=printType]:checked').val() == 'image') {
         $('#groupLabelText').hide();
@@ -104,9 +194,11 @@ function preview() {
         return;
     }
 
+    setFontSettingsPerLine();
+
     $.ajax({
         type:        'POST',
-        url:         '{{url_for('.get_preview_from_image')}}?return_format=base64',
+        url:         url_for_get_preview + '?return_format=base64',
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         data:        formData(),
         success: function( data ) {
@@ -140,7 +232,7 @@ function print(cut_once = false) {
         type:     'POST',
         dataType: 'json',
         data:     formData(cut_once),
-        url:      '{{url_for('.print_text')}}',
+        url:      url_for_print_text,
         success:  setStatus,
         error:    setStatus
     });
@@ -151,9 +243,9 @@ var imageDropZone;
 Dropzone.options.myAwesomeDropzone = {
     url: function() {
         if (dropZoneMode == 'preview') {
-            return "{{url_for('.get_preview_from_image')}}?return_format=base64";
+            return url_for_get_preview + "?return_format=base64";
         } else {
-            return "{{url_for('.print_text')}}";
+            return url_for_print_text;
         }
     },
     paramName: "image",
