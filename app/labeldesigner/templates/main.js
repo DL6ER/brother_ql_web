@@ -80,9 +80,8 @@ $(document).ready(function() {
         var fs = fontSettingsPerLine[idx];
         // Set font family
         $('#fontFamily').val(fs.font_family);
-        updateStyles();
         // Set font style
-        $('#fontStyle').val(fs.font_style);
+        updateStyles(fs.font_style);
         // Set font size
         $('#fontSize').val(fs.font_size);
         // Set alignment
@@ -146,7 +145,7 @@ function updatePreview(data) {
     };
 }
 
-function updateStyles() {
+function updateStyles(style = null) {
     font_familiy = $('#fontFamily option:selected').text()
 
     $.ajax({
@@ -160,7 +159,9 @@ function updateStyles() {
             $.each(data, function (key, value) {
                 styleSelect.append($("<option></option>")
                     .attr("value", key).text(key));
-                if ('Book,Regular'.includes(key)) {
+                if (style) {
+                    styleSelect.val(style);
+                } else if ('Book,Regular'.includes(key)) {
                     styleSelect.val(key);
                 }
             });
@@ -315,6 +316,5 @@ Dropzone.options.myAwesomeDropzone = {
 };
 
 window.onload = function() {
-    updateStyles();
-    preview();
+    updateStyles(); // this also triggers preview()
 };

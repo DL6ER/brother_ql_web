@@ -299,7 +299,10 @@ class SimpleLabel:
         return bboxes
 
     def _compute_bbox(self, bboxes):
-        return (bboxes[0][0][0], bboxes[0][0][1], bboxes[-1][0][2], bboxes[-1][0][3] * 1.1)
+        # Iterate over right margins of multiple text lines and find the maximum
+        # width nneeded to fit all lines of text
+        max_width = max(bbox[0][2] for bbox in bboxes)
+        return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3] * 1.1)
 
     def _get_font(self, font_path, font_size):
         return ImageFont.truetype(font_path, int(font_size))

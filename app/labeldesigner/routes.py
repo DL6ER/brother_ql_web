@@ -199,7 +199,7 @@ def create_label_from_request(request):
             if font_style_name not in FONTS.fonts[font_family_name]:
                 font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
             if font_style_name not in FONTS.fonts[font_family_name]:
-                raise LookupError("Unknown font style: %s" % font_style_name)
+                raise LookupError("Unknown font style: %s for font %s" % (font_style_name, font_family_name))
             font_path = FONTS.fonts[font_family_name][font_style_name]
         except KeyError:
             raise LookupError("Couln't find the font & style")
