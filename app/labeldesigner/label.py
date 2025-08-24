@@ -301,9 +301,27 @@ class SimpleLabel:
                 bboxes.append((bbox, y))
                 y += line_spacing + (spacing if i < len(self.text)-1 else 0)
             else:
-                x = bboxes[i][0][0] + text_offset[0]
-                y = bboxes[i][1] + text_offset[1]
-                draw.text((x, y), text, self._fore_color, font=font, align=line['align'], spacing=spacing)
+                anchor = None
+                align = line['align']
+                if align == "left":
+                    anchor = "lt"
+                    min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
+                    x = min_bbox_x + text_offset[0]
+                    y = bboxes[i][1] + text_offset[1]
+                elif align == "center":
+                    anchor = "mt"
+                    min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
+                    max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
+                    x = (max_bbox_x - min_bbox_x) // 2 + min_bbox_x + text_offset[0]
+                    y = bboxes[i][1] + text_offset[1]
+                elif align == "right":
+                    anchor = "rt"
+                    max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
+                    x = max_bbox_x + text_offset[0]
+                    y = bboxes[i][1] + text_offset[1]
+                else:
+                    logger.error(f"Unsupported alignment: {line['align']}")
+                draw.text((x, y), text, self._fore_color, font=font, anchor=anchor, align=align, spacing=spacing)
 
         # Return total bbox
         # each in form (left, top, right, bottom)
