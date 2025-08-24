@@ -147,7 +147,7 @@ class SimpleLabel:
         # Resize image to fit if image_fit is True
         if img is not None:
             # Ensure img is a PIL image
-            pil_img = self._ensure_pil_image(img)
+            img = self._ensure_pil_image(img)
 
             # Resize image to fit if image_fit is True
             if self._image_fit:
@@ -156,7 +156,7 @@ class SimpleLabel:
                 max_height = max(height - margin_top - margin_bottom, 1)
 
                 # Get image dimensions
-                img_width, img_height = pil_img.size
+                img_width, img_height = img.size
 
                 # Print the original image size
                 logger.debug(f"Maximal allowed dimensions: {max_width}x{max_height} mm")
@@ -183,13 +183,12 @@ class SimpleLabel:
                 # Resize the image
                 new_size = (int(img_width * scale), int(img_height * scale))
                 logger.debug(f"Resized image size: {new_size} px")
-                pil_img = pil_img.resize(new_size, Image.Resampling.LANCZOS)
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
                 # Update image dimensions
-                img_width, img_height = pil_img.size
+                img_width, img_height = img.size
             else:
                 # No resizing requested
-                img_width, img_height = pil_img.size
-            img = pil_img
+                img_width, img_height = img.size
         else:
             img_width, img_height = (0, 0)
 
@@ -214,6 +213,10 @@ class SimpleLabel:
                 vertical_offset_text += (margin_top - margin_bottom)//2
             else:
                 vertical_offset_text = margin_top
+                if self._label_content == LabelContent.TEXT_QRCODE:
+                    # Slightly increase the margin to get some distance from the
+                    # QR code
+                    vertical_offset_text *= 1.25
 
             vertical_offset_text += img_height
             horizontal_offset_text = max((width - textsize[2])//2, 0)
@@ -227,11 +230,16 @@ class SimpleLabel:
                 horizontal_offset_text = max((width - img_width - textsize[2])//2, 0)
             else:
                 horizontal_offset_text = margin_left
+                if self._label_content == LabelContent.TEXT_QRCODE:
+                    # Slightly increase the margin to get some distance from the
+                    # QR code
+                    horizontal_offset_text *= 1.25
+
             horizontal_offset_text += img_width
             horizontal_offset_image = margin_left
             vertical_offset_image = (height - img_height)//2
 
-        text_offset = horizontal_offset_text, vertical_offset_text - textsize[1]
+        text_offset = horizontal_offset_text, vertical_offset_text
         image_offset = horizontal_offset_image, vertical_offset_image
 
         imgResult = Image.new('RGB', (int(width), int(height)), 'white')
@@ -240,7 +248,7 @@ class SimpleLabel:
             imgResult.paste(img, image_offset)
 
         if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE):
-            self._draw_text(imgResult, bboxes)
+            self._draw_text(imgResult, bboxes, text_offset)
 
         # Check if the image needs rotation (only applied when generating
         # preview images)
@@ -260,14 +268,18 @@ class SimpleLabel:
             box_size=self._qr_size,
             border=0,
         )
-        qr.add_data(self._text.encode("utf-8-sig"))
+        # Combine texts
+        text = ""
+        for line in self.text:
+            text += line['text'] + "\n"
+        qr.add_data(text.encode("utf-8-sig"))
         qr.make(fit=True)
         qr_img = qr.make_image(
             fill_color='red' if (255, 0, 0) == self._fore_color else 'black',
             back_color="white")
         return qr_img
 
-    def _draw_text(self, img = None, bboxes = []):
+    def _draw_text(self, img = None, bboxes = [], text_offset = (0, 0)):
         """
         Returns a list of bounding boxes for each line, so each line can use a different font.
         """
@@ -285,15 +297,14 @@ class SimpleLabel:
             font = self._get_font(line['font_path'], line['font_size'])
             if not do_draw:
                 bbox = draw.textbbox((0, y), text, font=font, align=line['align'])
-                line_spacing = (
-                    draw.textbbox((0, 0), "A", font)[3] + spacing
-                )
+                line_spacing = draw.textbbox((0, 0), "§", font)[3] + spacing
                 bboxes.append((bbox, y))
                 y += line_spacing + (spacing if i < len(self.text)-1 else 0)
             else:
-                bbox = bboxes[i][0]
-                y = bboxes[i][1]
-                draw.text((bbox[0], y), text, self._fore_color, font=font, align=line['align'], spacing=spacing)
+                x = bboxes[i][0][0] + text_offset[0]
+                y = bboxes[i][1] + text_offset[1]
+                draw.text((x, y), text, self._fore_color, font=font, align=line['align'], spacing=spacing)
+
         # Return total bbox
         # each in form (left, top, right, bottom)
         return bboxes

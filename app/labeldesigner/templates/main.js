@@ -37,6 +37,7 @@ function setFontSettingsPerLine() {
     // Should we use the same font settings for all lines?
     const isSynced = $('#syncFontSettings').is(':checked');
     if (isSynced) {
+        fontSettingsPerLine = [];
         for (var i = 0; i < lines.length; i++) {
             fontSettingsPerLine[i] = Object.assign({}, currentFont);
             fontSettingsPerLine[i]['text'] = lines[i];
@@ -54,9 +55,6 @@ function setFontSettingsPerLine() {
                 // Inherit from previous line
                 fontSettingsPerLine.push(Object.assign({}, fontSettingsPerLine[i-1]));
             }
-
-            // Set text
-            fontSettingsPerLine[i]['text'] = lines[i];
         }
     }
 
@@ -68,7 +66,11 @@ function setFontSettingsPerLine() {
     // Update the current line's font settings
     if (fontSettingsPerLine[selectedLine]) {
         fontSettingsPerLine[selectedLine] = Object.assign({}, currentFont);
-        fontSettingsPerLine[selectedLine]['text'] = lines[selectedLine];
+    }
+
+    // Set text
+    for (var i = 0; i < lines.length; i++) {
+        fontSettingsPerLine[i]['text'] = lines[i];
     }
 }
 
