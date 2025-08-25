@@ -79,7 +79,8 @@ You may also use the example [`docker-compose.yml`](./docker-compose.yml) file p
 ``` yaml
 services:
   brother_ql_web:
-    build: .
+    image: ghcr.io/dl6er/brother-ql-web:latest
+    # build: . # you may also build the container locally
     container_name: brother_ql_web
     restart: always
     ports:
@@ -97,10 +98,7 @@ To build the image locally:
 ```bash
 git clone https://github.com/DL6ER/brother_ql_web.git
 cd brother_ql_web
-docker buildx build -t brother-ql-web .
-
-# alternatively, if buildx is not available
-docker build -t brother-ql-web .
+docker compose build
 ```
 
 ### Usage
