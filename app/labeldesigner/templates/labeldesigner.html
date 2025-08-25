@@ -116,19 +116,26 @@
                 <div class="card">
                     <div class="card-header" id="heading4">
                         <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse4" aria-expanded="true" aria-controls="collapse4">
-                            <span class="fas fa-qrcode" aria-hidden="true"></span> QR Code Settings
+                            <span class="fas fa-qrcode" aria-hidden="true"></span> Code Settings
                         </button>
                     </div>
                     <div id="collapse4" class="collapse" aria-labelledby="heading4" data-parent="#accordion">
                         <div class="card-body">
-                            <label for="qrCodeSize" style="margin-bottom: 0">QR Code Size:</label>
-                            <input id="qrCodeSize" class="form-control" type="number" min="1" value="{{default_qr_size}}" onChange="preview()" required>
+                            <label for="barcodeType" style="margin-bottom: 0">Barcode Type:</label>
+                            <select class="form-control" id="barcodeType" onChange="preview()"></select>
 
-                            <label for="qrCodeCorrection" style="margin-top: 10px; margin-bottom: 0">Error Correction:</label>
-                            <select class="form-control" id="qrCodeCorrection" onChange="preview()">
-                                <option value="L">About 7% can be corrected.</option>
-                                <option value="M">About 15% can be corrected.</option>
-                                <option value="Q">About 25% can be corrected.</option>
+                            <div id="qrCodeSizeContainer">
+                                <label for="qrCodeSize" style="margin-top: 10px; margin-bottom: 0">QR Code Size:</label>
+                                <input id="qrCodeSize" class="form-control" type="number" min="1" value="{{default_qr_size}}" onChange="preview()"
+                                    required>
+                            </div>
+
+                            <div id="qrCodeCorrectionContainer">
+                                <label for="qrCodeCorrection" style="margin-top: 10px; margin-bottom: 0">Error Correction:</label>
+                                <select class="form-control" id="qrCodeCorrection" onChange="preview()">
+                                    <option value="L">About 7% can be corrected.</option>
+                                    <option value="M">About 15% can be corrected.</option>
+                                    <option value="Q">About 25% can be corrected.</option>
                                 <option value="H">About 30% can be corrected.</option>
                             </select>
                         </div>
@@ -276,11 +283,12 @@
             </label>
             <label class="btn btn-secondary" id="printTypeQrCode">
                 <input type="radio" name="printType" onchange="preview()" value="qrcode" aria-label="Text">
-                <span class="fas fa-qrcode" aria-hidden="true"></span><br>QR Code
+                <span class="fas fa-qrcode" aria-hidden="true"></span><br>Code
             </label>
             <label class="btn btn-secondary" id="printTypeQrCodeText">
                 <input type="radio" name="printType" onchange="preview()" value="qrcode_text" aria-label="QR Code + Text">
-                <span class="fas fa-qrcode" aria-hidden="true"></span><br>QR Code+Text
+                <span class="fas fa-barcode" aria-hidden="true"></span> <span class="fas fa-font"
+                    aria-hidden="true"></span><br>Code+Text
             </label>
             <label class="btn btn-secondary" id="printTypeImage">
                 <input type="radio" name="printType" onchange="preview()" value="image" aria-label="Image">
@@ -302,7 +310,7 @@
         <fieldset class="form-group">
             <label for="previewImg" style="margin-bottom: 0">Label Preview:</label><br />
             <img id="previewImg" style="border: 1px solid #ced4da; max-height: 350px; width: auto; max-width: 100%; margin-bottom: 10px;" />
-            <p>Printed size w/o margins: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
+            <p>Printed size: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
 
             <div class="form-group">
                 <label for="printCount" style="margin-top: 10px; margin-bottom: 0">Print Count:</label>
@@ -339,7 +347,9 @@ const red_support = {{ 'true' if red_support else 'false' }};
 const url_for_print_text = '{{ url_for('.print_text') }}';
 const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
 const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
+const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
 const default_dpi = {{ default_dpi }};
+
 {{ super() }}
 {% include "main.js" %}
 {% endblock %}

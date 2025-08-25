@@ -4,3 +4,4 @@ flask_bootstrap4
 qrcode
 pdf2image
 Pillow==10.*
+python-barcode[images]

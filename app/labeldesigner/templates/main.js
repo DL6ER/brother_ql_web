@@ -80,10 +80,17 @@ $(document).ready(function() {
         var idx = parseInt($(this).val(), 10);
         if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
         var fs = fontSettingsPerLine[idx];
-        // Set font family
-        $('#fontFamily').val(fs.font_family);
-        // Set font style
-        updateStyles(fs.font_style);
+        // Only set font family and get styles if font family is changed
+        if (fs.font_family !== $('#fontFamily option:selected').text()) {
+            // Set font family
+            $('#fontFamily').val(fs.font_family);
+            // Set font style
+            updateStyles(fs.font_style);
+        }
+        else {
+            // Only set font style
+            $('#fontStyle').val(fs.font_style);
+        }
         // Set font size
         $('#fontSize').val(fs.font_size);
         // Set alignment
@@ -120,6 +127,7 @@ function formData(cut_once) {
         margin_left:        $('#marginLeft').val(),
         margin_right:       $('#marginRight').val(),
         print_type:         $('input[name=printType]:checked').val(),
+        barcode_type: $('#barcodeType').val(),
         qrcode_size:        $('#qrCodeSize').val(),
         qrcode_correction:  $('#qrCodeCorrection option:selected').val(),
         image_bw_threshold: $('#imageBwThreshold').val(),
@@ -144,6 +152,7 @@ function formData(cut_once) {
 }
 
 function updatePreview(data) {
+    setStatus({ 'preview': true });
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
     img.onload = function() {
@@ -221,6 +230,7 @@ function preview() {
     }
 
     setFontSettingsPerLine();
+    setStatus({ 'preview': false });
 
     $.ajax({
         type:        'POST',
@@ -229,15 +239,30 @@ function preview() {
         data:        formData(),
         success: function( data ) {
             updatePreview(data);
+        },
+        error: function (xhr, _status, error) {
+            message = xhr.responseJSON ? xhr.responseJSON.message : error;
+            data = { 'success': false, 'message': message };
+            setStatus(data, 'Preview generation failed');
         }
     });
 }
 
-function setStatus(data) {
+function setStatus(data, what = null) {
+    if (data.hasOwnProperty('preview')) {
+        if (data['preview']) {
+            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-eye"></i><span>Preview generated successfully.</span></div>');
+        }
+        else {
+            // We are currently busy preparing the preview
+            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Generating preview...</span></div>');
+        }
+        return;
+    }
     if (data['success']) {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
     } else {
-        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>Printing was unsuccessful:<br />' + data['message'] + '</span></div>');
+        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + ':<br />' + data['message'] + '</span></div>');
     }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
@@ -259,11 +284,17 @@ function print(cut_once = false) {
         dataType: 'json',
         data:     formData(cut_once),
         url:      url_for_print_text,
-        success:  setStatus,
-        error:    setStatus
+        success: function () {
+            data = { 'success': true };
+            setStatus(data);
+        },
+        error: function (xhr, _status, error) {
+            message = xhr.responseJSON ? xhr.responseJSON.message : error;
+            data = { 'success': false, 'message': message };
+            setStatus(data, 'Printing failed');
+        }
     });
 }
-
 
 var imageDropZone;
 Dropzone.options.myAwesomeDropzone = {
@@ -322,6 +353,38 @@ Dropzone.options.myAwesomeDropzone = {
     }
 };
 
-window.onload = function() {
+
+function toggleQrSettings() {
+    var barcodeType = document.getElementById('barcodeType');
+    var qrCodeSize = document.getElementById('qrCodeSizeContainer');
+    var qrCodeCorrection = document.getElementById('qrCodeCorrectionContainer');
+    if (barcodeType) {
+        qrCodeSize.style.display = (barcodeType.value === 'QR') ? '' : 'none';
+        qrCodeCorrection.style.display = (barcodeType.value === 'QR') ? '' : 'none';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    // Populate barcode select menu from /api/barcodes
+    fetch(url_for_get_barcodes)
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('barcodeType');
+            barcodes = data['barcodes'];
+            if (select && Array.isArray(barcodes) && barcodes.length > 0) {
+                barcodes.forEach((barcode, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = barcode;
+                    opt.textContent = barcode;
+                    if (idx === 0) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                toggleQrSettings();
+                select.addEventListener('change', toggleQrSettings);
+            }
+        });
+});
+
+window.onload = function () {
     updateStyles(); // this also triggers preview()
 };

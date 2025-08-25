@@ -1,7 +1,8 @@
 import logging
 import os
 
-from flask import current_app, render_template, request, make_response
+import barcode
+from flask import current_app, jsonify, render_template, request, make_response
 
 from brother_ql.devicedependent import label_type_specs, label_sizes, two_color_support
 from brother_ql.devicedependent import ENDLESS_LABEL, DIE_CUT_LABEL, ROUND_DIE_CUT_LABEL
@@ -59,17 +60,31 @@ def get_font_styles():
     return FONTS.fonts[font]
 
 
+@bp.route('/api/barcodes', methods=['GET'])
+def get_barcodes():
+    barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]
+    # Add QR at the top
+    barcodes.insert(0, 'QR')
+    return {
+        'barcodes': barcodes
+    }
+
+
 @bp.route('/api/preview', methods=['POST', 'GET'])
 def get_preview_from_image():
     # Set log level if provided
     log_level = request.values.get('log_level')
     if log_level:
-        import logging
         level = getattr(logging, log_level.upper(), None)
         if isinstance(level, int):
             current_app.logger.setLevel(level)
     label = create_label_from_request(request)
-    im = label.generate(rotate=True)
+    try:
+        im = label.generate(rotate=True)
+    except Exception as e:
+        current_app.logger.exception(e)
+        # Generate error 400 response
+        return make_response(jsonify({'message': str(e)}), 400)
 
     return_format = request.values.get('return_format', 'png')
 
@@ -111,8 +126,9 @@ def print_text():
         cut_once = int(request.values.get('cut_once', 0)) == 1
     except Exception as e:
         return_dict['message'] = str(e)
-        current_app.logger.error('Exception happened: %s', e)
-        return return_dict
+        current_app.logger.exception(e)
+        # Generate error 400 response
+        return make_response(jsonify(return_dict), 400)
 
     printer.add_label_to_queue(label, print_count, cut_once)
 
@@ -120,8 +136,9 @@ def print_text():
         printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
-        current_app.logger.error('Exception happened: %s', e)
-        return return_dict
+        current_app.logger.exception(e)
+        # Generate error 400 response
+        return make_response(jsonify(return_dict), 400)
 
     return_dict['success'] = True
     return return_dict
@@ -179,6 +196,7 @@ def create_label_from_request(request):
         'border_distanceY': int(d.get('border_distance_y', 0)),
         'border_color': d.get('border_color', 'black'),
         'text': parse_text_form(request.form),
+        'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
         'image_mode': d.get('image_mode', "grayscale"),
@@ -288,6 +306,7 @@ def create_label_from_request(request):
         ),
         fore_color=fore_color,
         text=context['text'],
+        barcode_type=context['barcode_type'],
         qr_size=context['qrcode_size'],
         qr_correction=context['qrcode_correction'],
         image=get_uploaded_image(request.files.get('image', None)),

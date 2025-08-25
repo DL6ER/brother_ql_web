@@ -2,6 +2,8 @@ from enum import Enum, auto
 from qrcode import QRCode, constants
 from PIL import Image, ImageDraw, ImageFont
 import logging
+import barcode
+from barcode.writer import ImageWriter
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,7 @@ class SimpleLabel:
             label_content=LabelContent.TEXT_ONLY,
             label_orientation=LabelOrientation.STANDARD,
             label_type=LabelType.ENDLESS_LABEL,
+            barcode_type="QR",
             label_margin=(0, 0, 0, 0),  # Left, Right, Top, Bottom
             fore_color=(0, 0, 0),  # Red, Green, Blue
             text={},
@@ -85,6 +88,7 @@ class SimpleLabel:
         self.label_content = label_content
         self.label_orientation = label_orientation
         self.label_type = label_type
+        self.barcode_type = barcode_type
         self._label_margin = label_margin
         self._fore_color = fore_color
         self.text = text
@@ -142,7 +146,10 @@ class SimpleLabel:
 
     def generate(self, rotate = False):
         if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE):
-            img = self._generate_qr()
+            if self.barcode_type == "QR":
+                img = self._generate_qr()
+            else:
+                img = self._generate_barcode()
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
             img = self._image
         else:
@@ -284,6 +291,11 @@ class SimpleLabel:
             # Draw (rounded) rectangle
             draw.rounded_rectangle(rect, radius=self._border_roundness, outline=self._border_color, width=self._border_thickness)
         return imgResult
+
+    def _generate_barcode(self):
+        barcode_generator = barcode.get_barcode_class(self.barcode_type)
+        my_barcode = barcode_generator(self.text[0]['text'], writer=ImageWriter())
+        return my_barcode.render()
 
     def _generate_qr(self):
         qr = QRCode(
