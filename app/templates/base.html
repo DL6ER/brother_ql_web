@@ -42,9 +42,16 @@ Label Designer | Brother QL
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarContent">
-            <ul class="navbar-nav mr-auto">
-                <li  class="nav-item">
-                    <a class="nav-link" href="{{ url_for('main.index') }}">Home</a>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item d-flex align-items-center">
+                    <span class="nav-link pr-2" style="display: flex; align-items: center; gap: 0.5em;">
+                        <span class="fas fa-print" aria-hidden="true"></span>
+                        <span id="printerInfo" style="color: #fff; font-size: 1em;">
+                            <span id="printerModel">{{ printer_model }}</span>
+                            <span style="color: #aaa;">@</span>
+                            <code id="printerPath">{{ printer_path }}</code>
+                        </span>
+                    </span>
                 </li>
             </ul>
         </div>

@@ -247,15 +247,11 @@
                 <div class="card">
                     <div class="card-header" id="heading6">
                         <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse6" aria-expanded="true" aria-controls="collapse6">
-                            <span class="fas fa-print" aria-hidden="true"></span> Printer Settings
+                            <span class="fas fa-wrench" aria-hidden="true"></span> Advanced Settings
                         </button>
                     </div>
                     <div id="collapse6" class="collapse" aria-labelledby="heading6" data-parent="#accordion">
                         <div class="card-body">
-                            <label for="printerPath" style="margin-bottom: 0">Printer path:</label>
-                            <input type="text" class="form-control mb-3" id="printerPath" value="{{ printer_path }}" disabled>
-                            <label for="printerModel" style="margin-bottom: 0">Printer model:</label>
-                            <input type="text" class="form-control mb-3" id="printerModel" value="{{ printer_model }}" disabled>
                             <label for="logLevel" style="margin-bottom: 0">Log Level:</label>
                             <select class="form-control mb-3" id="logLevel" onChange="preview()">
                                 <option value="CRITICAL">CRITICAL</option>

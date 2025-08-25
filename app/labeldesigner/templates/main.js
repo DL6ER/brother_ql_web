@@ -237,7 +237,7 @@ function setStatus(data) {
     if (data['success']) {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
     } else {
-        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>Printing was unsuccessful:<br />'+data['message']+'</span></div>');
+        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>Printing was unsuccessful:<br />' + data['message'] + '</span></div>');
     }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
