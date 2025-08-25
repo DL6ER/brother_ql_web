@@ -96,6 +96,23 @@ All in all, the web server offers:
 -   an API at `/api/print/text?text=Your_Text&font_size=100&font_family=Minion%20Pro%20(%20Semibold%20)`
     to print a label containing 'Your Text' with the specified font properties.
 
+
+### Contributing / Development
+
+To contribute to this project, follow these steps:
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/davidramiro/brother_ql_web.git
+   cd brother_ql_web
+   ```
+
+2. Make your changes and test them locally using Docker.
+
+3. Submit a pull request with a clear description of your changes.
+
+This project offers a **Development Container** for easy local development. You can right away start coding without worrying about the environment setup using the free and open source IDE [VSCode](https://code.visualstudio.com/). Other editors may be able to utilize the provided Dockerfile for a similar setup. Note that the provided devcontaier does not mount any possibly existing local USB printers for compatibility reasons. You may want to edit `.devcontainer/devcontainer.json` to mount such local devices.
+
 ### License
 
 This software is published under the terms of the GPLv3, see the LICENSE file in the repository.
