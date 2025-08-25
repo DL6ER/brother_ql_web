@@ -23,7 +23,8 @@ LABEL_SIZES = [(
     name,
     label_type_specs[name]['name'],
     (label_type_specs[name]['kind'] in (
-        ROUND_DIE_CUT_LABEL,))  # True if round label
+        ROUND_DIE_CUT_LABEL,)),  # True if round label
+    label_type_specs[name]['tape_size'],
 ) for name in label_sizes]
 
 

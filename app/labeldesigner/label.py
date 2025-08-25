@@ -58,10 +58,10 @@ class SimpleLabel:
             pass
         raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
     qr_correction_mapping = {
-        'L': constants.ERROR_CORRECT_L,
         'M': constants.ERROR_CORRECT_M,
-        'Q': constants.ERROR_CORRECT_Q,
-        'H': constants.ERROR_CORRECT_H
+        'L': constants.ERROR_CORRECT_L,
+        'H': constants.ERROR_CORRECT_H,
+        'Q': constants.ERROR_CORRECT_Q
     }
 
     def __init__(

@@ -11,13 +11,18 @@
                         <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse1" aria-expanded="true" aria-controls="collapse1">
                             <span class="fas fa-file" aria-hidden="true"></span> Label Size
                         </button>
+                        <span id="labelMismatchIcon" class="float-right text-danger" style="display: none;">
+                            <span class="fas fa-exclamation-triangle" aria-hidden="true"></span>
+                        </span>
                     </div>
                     <div id="collapse1" class="collapse" aria-labelledby="heading1" data-parent="#accordion">
                         <div class="card-body">
                             <label for="labelSize" style="margin-bottom: 0">Label Size:</label>
                             <select class="form-control" id="labelSize" onChange="preview()">
-                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-round="{{label_size[2]}}" {% if default_label_size == label_size[0] %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
+                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}" data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size == label_size[0] %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
                             </select>
+                            <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
+                            <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>
 
                             <label for="orientation" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
                             <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">

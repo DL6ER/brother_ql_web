@@ -26,9 +26,13 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ![Supported barcodes](./screenshots/image4.png)
 
+### Automatic printer and label detection
+
+![Automatic printer and label detection](./screenshots/image5.png)
+
 ## New Features
 
-- Automatic printer detection
+- Automatic printer and label detection
 - Support for more printers via `brother_ql-inventree` (**new**)
     - QL-500
     - QL-550
