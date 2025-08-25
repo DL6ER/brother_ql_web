@@ -252,17 +252,25 @@ function setStatus(data, what = null) {
     if (data.hasOwnProperty('preview')) {
         if (data['preview']) {
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-eye"></i><span>Preview generated successfully.</span></div>');
+            // Draw a black frame around the preview image
+            $('#previewImgContainer').css('border', '5px solid black');
         }
         else {
             // We are currently busy preparing the preview
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Generating preview...</span></div>');
+            // Draw a gray frame around the preview image
+            $('#previewImgContainer').css('border', '5px solid gray');
         }
         return;
     }
     if (data['success']) {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
+        // Draw a green frame around the preview image
+        $('#previewImgContainer').css('border', '5px solid green');
     } else {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + ':<br />' + data['message'] + '</span></div>');
+        // Draw a red frame around the preview image
+        $('#previewImgContainer').css('border', '5px solid red');
     }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);

@@ -309,7 +309,10 @@
     <div class="col-md-4">
         <fieldset class="form-group">
             <label for="previewImg" style="margin-bottom: 0">Label Preview:</label><br />
-            <img id="previewImg" style="border: 1px solid #ced4da; max-height: 350px; width: auto; max-width: 100%; margin-bottom: 10px;" />
+            <div id="previewImgContainer"
+                style="display: inline-block; border: 1px solid #ced4da; max-height: 350px; width: auto; max-width: 100%; margin-bottom: 10px;">
+                <img id="previewImg" style="max-height: 350px; width: auto; max-width: 100%; display: block;" />
+            </div>
             <p>Printed size: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
 
             <div class="form-group">
