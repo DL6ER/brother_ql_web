@@ -129,10 +129,15 @@ function formData(cut_once) {
         log_level:          $('#logLevel').val(),
         line_spacing:       $('input[name=lineSpacing]:checked').val(),
         cut_once:           cut_once ? 1 : 0,
+        border_thickness:   $('#borderThickness').val(),
+        border_roundness:   $('#borderRoundness').val(),
+        border_distance_x:  $('#borderDistanceX').val(),
+        border_distance_y:  $('#borderDistanceY').val(),
     }
 
     if (red_support) {
         data['print_color'] = $('input[name=printColor]:checked').val();
+        data['border_color'] = $('input[name=borderColor]:checked').val();
     }
 
     return data;

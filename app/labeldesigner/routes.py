@@ -173,6 +173,11 @@ def create_label_from_request(request):
         'margin_bottom': int(d.get('margin_bottom', 12)),
         'margin_left': int(d.get('margin_left', 20)),
         'margin_right': int(d.get('margin_right', 20)),
+        'border_thickness': int(d.get('border_thickness', 1)),
+        'border_roundness': int(d.get('border_roundness', 0)),
+        'border_distanceX': int(d.get('border_distance_x', 0)),
+        'border_distanceY': int(d.get('border_distance_y', 0)),
+        'border_color': d.get('border_color', 'black'),
         'text': parse_text_form(request.form),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
@@ -266,6 +271,9 @@ def create_label_from_request(request):
     for line in context['text']:
         line['font_path'] = get_font_path(line['font_family'], line['font_style'])
 
+    fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
+    border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
+
     return SimpleLabel(
         width=width,
         height=height,
@@ -278,12 +286,14 @@ def create_label_from_request(request):
             int(context['margin_top']),
             int(context['margin_bottom'])
         ),
-        fore_color=
-            (255, 0, 0) if 'red' in context['label_size'] and context['print_color'] == 'red'
-            else (0, 0, 0),
+        fore_color=fore_color,
         text=context['text'],
         qr_size=context['qrcode_size'],
         qr_correction=context['qrcode_correction'],
         image=get_uploaded_image(request.files.get('image', None)),
         image_fit=context['image_fit'],
+        border_thickness=context['border_thickness'],
+        border_roundness=context['border_roundness'],
+        border_distance=(context['border_distanceX'], context['border_distanceY']),
+        border_color=border_color
     )

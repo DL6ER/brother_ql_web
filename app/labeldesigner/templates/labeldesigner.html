@@ -4,7 +4,7 @@
 <div class="row">
     <div class="col-md-4">
         <fieldset class="form-group">
-            <div class="accordion" id="accordion">
+            <div class="accordion" id="accordion" style="max-height: 90vh; overflow-y: auto;">
 
                 <div class="card">
                     <div class="card-header" id="heading1">
@@ -182,7 +182,7 @@
                 <div class="card">
                     <div class="card-header" id="heading3">
                         <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse3" aria-expanded="true" aria-controls="collapse3">
-                            <span class="fas fa-arrows-alt" aria-hidden="true"></span> Printing Margins
+                            <span class="fas fa-arrows-alt" aria-hidden="true"></span> Margins and Borders
                         </button>
                     </div>
                     <div id="collapse3" class="collapse" aria-labelledby="heading3" data-parent="#accordion">
@@ -215,6 +215,30 @@
                                     <span class="input-group-text" id="marginRight-addon">px</span>
                                 </div>
                             </div>
+                            <hr style="margin: 1.2em 0;" />
+                            <label for="borderThickness" style="margin-bottom: 0">Border Thickness (0 = disabled):</label>
+                            <input id="borderThickness" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <label for="borderRoundness" style="margin-bottom: 0">Border Roundness:</label>
+                            <input id="borderRoundness" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <label for="borderDistanceX" style="margin-bottom: 0">Border Distance (left/right):</label>
+                            <input id="borderDistanceX" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <label for="borderDistanceY" style="margin-bottom: 0">Border Distance (top/bottom):</label>
+                            <input id="borderDistanceY" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            
+                            {% if red_support %}
+                            <label for="borderColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
+                                Color:</label>
+                            <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                <label class="btn btn-dark" id="border_color_black">
+                                    <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black">Black
+                                </label>
+                                <label class="btn btn-danger" id="border_color_red">
+                                    <input type="radio" name="borderColor" onchange="preview()" value="red" aria-label="Red">Red
+                                </label>
+                            </div>
+                            {% else %}
+                            <input type="hidden" id="borderColor" value="black" />
+                            {% endif %}
                         </div>
                         <!-- class="card-body" -->
                     </div>

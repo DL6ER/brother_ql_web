@@ -75,7 +75,11 @@ class SimpleLabel:
             qr_size=10,
             qr_correction='L',
             image_fit=True,
-            image=None):
+            image=None,
+            border_thickness=1,
+            border_roundness=0,
+            border_distance=(0, 0),
+            border_color=(0, 0, 0)):
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -88,6 +92,10 @@ class SimpleLabel:
         self.qr_correction = qr_correction
         self._image = image
         self._image_fit = image_fit
+        self._border_thickness = border_thickness
+        self._border_roundness = border_roundness
+        self._border_distance = border_distance
+        self._border_color = border_color
 
     @property
     def label_content(self):
@@ -259,6 +267,22 @@ class SimpleLabel:
         if rotate and preview_needs_rotation:
             imgResult = imgResult.rotate(-90, expand=True)
 
+        # Draw border if thickness > 0
+        if self._border_thickness > 0:
+            draw = ImageDraw.Draw(imgResult)
+            # Calculate border rectangle (inside the image, respecting thickness)
+            rect = [self._border_distance[0],
+                    self._border_distance[1],
+                    imgResult.width - self._border_distance[0],
+                    imgResult.height - self._border_distance[1]]
+            # Validity checks on rect:
+            # - x1 >= x0
+            # - y1 >= y0
+            if rect[2] < rect[0] or rect[3] < rect[1]:
+                raise ValueError("Invalid border rectangle")
+
+            # Draw (rounded) rectangle
+            draw.rounded_rectangle(rect, radius=self._border_roundness, outline=self._border_color, width=self._border_thickness)
         return imgResult
 
     def _generate_qr(self):
@@ -293,8 +317,14 @@ class SimpleLabel:
             text = line['text']
             if len(text) == 0:
                 text = ' '
-            spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100))
+            
+            # Calculate spacing
+            spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
+
+            # Get font
             font = self._get_font(line['font_path'], line['font_size'])
+
+            # Either calculate bbox or actually draw
             if not do_draw:
                 bbox = draw.textbbox((0, y), text, font=font, align=line['align'])
                 line_spacing = draw.textbbox((0, 0), "§", font)[3] + spacing
@@ -303,33 +333,41 @@ class SimpleLabel:
             else:
                 anchor = None
                 align = line['align']
+
+                # Left aligned text
                 if align == "left":
                     anchor = "lt"
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = min_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
+
+                # Center aligned text
                 elif align == "center":
                     anchor = "mt"
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = (max_bbox_x - min_bbox_x) // 2 + min_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
+
+                # Right aligned text
                 elif align == "right":
                     anchor = "rt"
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = max_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
+
+                # else: error
                 else:
                     logger.error(f"Unsupported alignment: {line['align']}")
                 draw.text((x, y), text, self._fore_color, font=font, anchor=anchor, align=align, spacing=spacing)
 
         # Return total bbox
-        # each in form (left, top, right, bottom)
+        # each in form (x0, y0, x1, y1)
         return bboxes
 
     def _compute_bbox(self, bboxes):
         # Iterate over right margins of multiple text lines and find the maximum
-        # width nneeded to fit all lines of text
+        # width needed to fit all lines of text
         max_width = max(bbox[0][2] for bbox in bboxes)
         return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3] * 1.1)
 
