@@ -1,20 +1,32 @@
 # brother_ql_web
 
-This is a web service to print labels on Brother QL label printers.
-
-You need Python 3 or Docker for this software to work.
-
+This is a dockerized `python3` web service to print labels on Brother QL label printers.
 The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design).
-There's also a screenshot showing [how it looks on a smartphone](./screenshots/Label-Designer_Phone.png)
-
-## Fork info
 
 There are a lot of forks of the `brother_ql` and `brother_ql_web` repos from [pklaus](https://github.com/pklaus/brother_ql).
 This fork tries to support many more printers and provide additional features.
 
 Additional printer support comes from [matmair/brother_ql-inventree](https://github.com/matmair/brother_ql-inventree) as a dependency for communicating with the printers and [tbnobody/brother_ql_web](https://github.com/tbnobody/brother_ql_web) as a base for the frontend as there have been a few fixes and improvements implemented over there.This fork also builds on enhancements from [dersimn/brother_ql_web](https://github.com/dersimn/brother_ql_web) for which we are grateful, too.
 
-### New Features
+## Screenshots
+
+### Barcode with text
+
+![Barcode](./screenshots/image1.png)
+
+### QR code with text
+
+![QR code](./screenshots/image2.png)
+
+### Image with auto-fit
+
+![Image with auto-fit](./screenshots/image3.png)
+
+### Supported barcodes
+
+![Supported barcodes](./screenshots/image4.png)
+
+## New Features
 
 - Support for more printers via `brother_ql-inventree` (**new**)
     - QL-500
@@ -101,24 +113,6 @@ All in all, the web server offers:
 
 -   a web GUI allowing you to print your labels, and
 -   an API.
-
-## Screenshots
-
-### Barcode with text
-
-![Barcode](./screenshots/image1.png)
-
-### QR code with text
-
-![QR code](./screenshots/image2.png)
-
-### Image with auto-fit
-
-![Image with auto-fit](./screenshots/image3.png)
-
-### Supported barcodes
-
-![Supported barcodes](./screenshots/image4.png)
 
 ### Contributing / Development
 
