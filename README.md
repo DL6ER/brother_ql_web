@@ -9,38 +9,65 @@ There's also a screenshot showing [how it looks on a smartphone](./screenshots/L
 
 ## Fork info
 
-There are a lot of forks of the `brother_ql` and `brother_ql_web` repos from [pklaus](https://github.com/pklaus/brother_ql). I tried to cherry pick a fairly recent and well maintainable state by using [matmair/brother_ql-inventree](https://github.com/matmair/brother_ql-inventree) as a dependency for communicating with the printers and [tbnobody/brother_ql_web](https://github.com/tbnobody/brother_ql_web) as a base for the frontend as there have been a few fixes and improvements implemented over there.
+There are a lot of forks of the `brother_ql` and `brother_ql_web` repos from [pklaus](https://github.com/pklaus/brother_ql).
+This fork tries to support many more printers and provide additional features.
 
-For now I have added Docker support and the ability to print red images on supported paper/printers.
+Additional printer support comes from [matmair/brother_ql-inventree](https://github.com/matmair/brother_ql-inventree) as a dependency for communicating with the printers and [tbnobody/brother_ql_web](https://github.com/tbnobody/brother_ql_web) as a base for the frontend as there have been a few fixes and improvements implemented over there.This fork also builds on enhancements from [dersimn/brother_ql_web](https://github.com/dersimn/brother_ql_web) for which we are grateful, too.
 
-![Screenshot](./screenshots/Label-Designer_Desktop.png)
+### New Features
 
-### Additional Features
-
--   Print text as QR Code
+- Support for more printers via `brother_ql-inventree` (**new**)
+    - QL-500
+    - QL-550
+    - QL-560
+    - QL-570
+    - QL-580N
+    - **QL-600**
+    - QL-650TD
+    - QL-700
+    - QL-710W
+    - QL-720NW
+    - QL-800
+    - QL-810W
+    - QL-820NWB
+    - QL-1050
+    - QL-1060N
+    - **QL-1100**
+    - **QL-1110NWB**
+    - **QL-1115NWB**
+-   Support individual fonts/sizes and spacing for each line of text on the labels
+-   Auto-fit images best onto the labels to avoid cropping
+-   Print text as QR Code or barcode
     -   Add text to QR Code
     -   Change size of QR Code
 -   Upload files to print
     -   .pdf, .png and .jpg files
     -   automatically convertion to black/white image
 -   Change print color for black/white/red labels
--   Print lables multiple times
+-   Support borders (multi-color, also with rounded edges)
+-   Print labels multiple times
     -   Cut every label
     -   Cut only after the last label
+- Better error handling
+- A colored frame around the preview indicating the current status
+    - no color = idle
+    - gray = busy
+    - green = printing successful
+    - red = error needing your attention
 -   Migrated GUI to Bootstrap 4
--   Make preview for round labels.. round
+-   Make preview for round labels... round
 -   Print images on red/black paper
 -   Dockerized
+-   Devcontainer for ease of development/contributing
 
-### Docker Compose
+## Docker Compose
 
 You may also use the example [`docker-compose.yml`](./docker-compose.yml) file provided in this repository to quickly get started with Docker Compose:
 
 ``` yaml
 services:
   brother_ql_web:
-    image: davidramiro/brother-ql-web:latest # latest online version
-    # build: . # building locally from source (see git clone below)
+    build: .
     container_name: brother_ql_web
     restart: always
     ports:
@@ -53,30 +80,10 @@ services:
       file:///dev/usb/lp0
 ```
 
-### Run via Docker
-
-You can pull the image from `davidramiro/brother-ql-web` on Docker Hub.
-You have to pass your printer model as `--model` argument. At the end of the arguments you have to add your device socket (linux kernel backend), USB identifier (pyusb backend) or network address (TCP).
-Please note you might have to pass your device to the container via the `--device` flag.
-
-Example command to start the application, connecting to a QL-800 on `/dev/usb/lp0`, setting label size to 62mm:
-
-```bash
-docker run -d \
-    --restart=always \
-    --name=brother-ql-web \
-    -p 8013:8013 \
-    --device=/dev/usb/lp0 \
-    davidramiro/brother-ql-web:latest \
-    --default-label-size 62 \
-    --model QL-800 \
-    file:///dev/usb/lp0
-```
-
 To build the image locally:
 
 ```bash
-git clone https://github.com/davidramiro/brother_ql_web.git
+git clone https://github.com/DL6ER/brother_ql_web.git
 cd brother_ql_web
 docker buildx build -t brother-ql-web .
 
@@ -92,26 +99,44 @@ You will then be forwarded by default to the interactive web gui located at `/la
 
 All in all, the web server offers:
 
--   a Web GUI allowing you to print your labels at `/labeldesigner`,
--   an API at `/api/print/text?text=Your_Text&font_size=100&font_family=Minion%20Pro%20(%20Semibold%20)`
-    to print a label containing 'Your Text' with the specified font properties.
+-   a web GUI allowing you to print your labels, and
+-   an API.
 
+## Screenshots
+
+### Barcode with text
+
+![Barcode](./screenshots/image1.png)
+
+### QR code with text
+
+![QR code](./screenshots/image2.png)
+
+### Image with auto-fit
+
+![Image with auto-fit](./screenshots/image3.png)
+
+### Supported barcodes
+
+![Supported barcodes](./screenshots/image4.png)
 
 ### Contributing / Development
 
 To contribute to this project, follow these steps:
 
-1. Clone the repository:
+1. Create a [fork in your own namespace](https://github.com/DL6ER/brother_ql_web/fork)
+
+2. Clone the repository:
    ```bash
-   git clone https://github.com/davidramiro/brother_ql_web.git
+   git clone https://github.com/<your name goes here>/brother_ql_web.git
    cd brother_ql_web
    ```
 
-2. Make your changes and test them locally using Docker.
+2. Make your changes and test them locally, preferably inside the convenient devcontainer.
 
 3. Submit a pull request with a clear description of your changes.
 
-This project offers a **Development Container** for easy local development. You can right away start coding without worrying about the environment setup using the free and open source IDE [VSCode](https://code.visualstudio.com/). Other editors may be able to utilize the provided Dockerfile for a similar setup. Note that the provided devcontaier does not mount any possibly existing local USB printers for compatibility reasons. You may want to edit `.devcontainer/devcontainer.json` to mount such local devices.
+This project offers a **Development Container** for easy local development. You can right away start coding without worrying about the environment setup using the free and open source IDE [VSCode](https://code.visualstudio.com/). Other editors may be able to utilize the provided Dockerfile for a similar setup. Note that the provided devcontainer does not mount any possibly existing local USB printers for compatibility reasons. You may want to edit `.devcontainer/devcontainer.json` to mount such local devices.
 
 ### License
 
