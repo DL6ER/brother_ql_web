@@ -150,6 +150,8 @@ class SimpleLabel:
                 img = self._generate_qr()
             else:
                 img = self._generate_barcode()
+                # Remove the first line of text as the barcode already contains it
+                self.text = self.text[1:]
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
             img = self._image
         else:
@@ -207,7 +209,7 @@ class SimpleLabel:
         else:
             img_width, img_height = (0, 0)
 
-        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE):
+        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE) and len(self.text) > 0:
             bboxes = self._draw_text(None, [])
             textsize = self._compute_bbox(bboxes)
         else:
@@ -262,7 +264,7 @@ class SimpleLabel:
         if img is not None:
             imgResult.paste(img, image_offset)
 
-        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE):
+        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE) and len(self.text) > 0:
             self._draw_text(imgResult, bboxes, text_offset)
 
         # Check if the image needs rotation (only applied when generating
