@@ -27,7 +27,7 @@ def create_app(config_class=Config):
 
     app.logger.setLevel(app.config['LOG_LEVEL'])
 
-    main(app)
+    init_fonts_and_args(app)
 
     app.config['BOOTSTRAP_SERVE_LOCAL'] = True
     bootstrap.init_app(app)
@@ -44,13 +44,15 @@ def create_app(config_class=Config):
     return app
 
 
-def main(app):
+def init_fonts_and_args(app):
     global FONTS
 
     FONTS = fonts.Fonts()
     FONTS.scan_global_fonts()
 
-    parse_args(app)
+    # Only parse command-line arguments if not running under pytest
+    if not any('pytest' in arg for arg in sys.argv[0:1]):
+        parse_args(app)
 
     if app.config['FONT_FOLDER']:
         FONTS.scan_fonts_folder(app.config['FONT_FOLDER'])

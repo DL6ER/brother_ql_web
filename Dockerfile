@@ -11,24 +11,25 @@ WORKDIR /app
 COPY ./requirements.txt /app/requirements.txt
 
 RUN if [ $TARGETARCH == "arm" ]; then \
-        apk update --no-cache && \
-        apk add --no-cache \
-        # Build dependencies for Pillow
-        gcc \
-        musl-dev \
-        zlib-dev \
-        jpeg-dev \
-        tiff-dev \
-        freetype-dev \
-        lcms2-dev \
-        libwebp-dev \
-        tcl-dev \
-        tk-dev \
-        harfbuzz-dev \
-        fribidi-dev \
-        libimagequant-dev \
-        libxcb-dev \
-        openjpeg-dev \
+    apk update --no-cache && \
+    apk add --no-cache \
+    # Build dependencies for Pillow
+    gcc \
+    musl-dev \
+    zlib-dev \
+    jpeg-dev \
+    tiff-dev \
+    freetype-dev \
+    lcms2-dev \
+    libwebp-dev \
+    tcl-dev \
+    tk-dev \
+    harfbuzz-dev \
+    fribidi-dev \
+    libimagequant-dev \
+    libxcb-dev \
+    openjpeg-dev \
+    bash \
     ; fi
 
 RUN apk update --no-cache && \
@@ -43,7 +44,8 @@ RUN apk update --no-cache && \
     font-inconsolata \
     font-dejavu \
     font-noto \
-    poppler-utils && \
+    poppler-utils \
+    bash && \
     fc-cache -f && \
     pip3 install -r requirements.txt
 
