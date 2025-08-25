@@ -28,6 +28,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ## New Features
 
+- Automatic printer detection
 - Support for more printers via `brother_ql-inventree` (**new**)
     - QL-500
     - QL-550
@@ -89,7 +90,6 @@ services:
     devices:
       - "/dev/usb/lp0:/dev/usb/lp0"
     command: >
-      --model QL-800
       --default-label-size 62
       file:///dev/usb/lp0
 ```

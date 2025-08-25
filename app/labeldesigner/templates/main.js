@@ -1,3 +1,12 @@
+// Global printer status object to be populated from the API
+var printer_status = {
+    'errors': [],
+    'model': 'Unknown',
+    'media_width': 62,
+    'media_length': 0,
+    'phase_type': 'Unknown',
+    'red_support': false
+};
 
 // Returns an array of font settings for each line of label text.
 // Each new line inherits the font settings of the previous line.
@@ -147,7 +156,7 @@ function formData(cut_once) {
         border_distance_y:  $('#borderDistanceY').val(),
     }
 
-    if (red_support) {
+    if (printer_status['red_support']) {
         data['print_color'] = $('input[name=printColor]:checked').val();
         data['border_color'] = $('input[name=borderColor]:checked').val();
     }
@@ -205,7 +214,7 @@ function preview() {
         $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
     }
 
-    if (red_support) {
+    if (printer_status['red_support']) {
         if ($('#labelSize option:selected').val().includes('red')) {
             $('#print_color_black').removeClass('disabled');
             $('#print_color_red').removeClass('disabled');
@@ -397,6 +406,48 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 });
 
+function updatePrinterStatus() {
+    const printerModel = document.getElementById('printerModel');
+    if (printerModel) {
+        printerModel.textContent = printer_status.model || 'Unknown';
+    }
+    const printerPath = document.getElementById('printerPath');
+    if (printerPath) {
+        printerPath.textContent = printer_status.path || 'Unknown';
+    }
+    if (printer_status['red_support']) {
+        $(".red-support").show();
+    } else {
+        $(".red-support").hide();
+    }
+
+    if (printer_status.errors && printer_status.errors.length > 0) {
+        setStatus({'success': false})
+        const printerErrors = document.getElementById('statusBox');
+        if (printerErrors) {
+            printerErrors.innerHTML = '';
+            printer_status.errors.forEach((error) => {
+                const li = document.createElement('li');
+                li.textContent = error;
+                printerErrors.appendChild(li);
+            });
+            printerErrors.parentElement.style.display = '';
+        }
+    }
+}
+
+function getPrinterStatus() {
+    fetch(url_for_get_printer_status)
+        .then(response => response.json())
+        .then(data => {
+            printer_status = data;
+            updatePrinterStatus();
+        });
+}
+
 window.onload = function () {
+    getPrinterStatus();
+    // Update printer status every 5 seconds
+    setInterval(getPrinterStatus, 5000);
     updateStyles(); // this also triggers preview()
 };

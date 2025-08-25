@@ -4,7 +4,7 @@ import os
 import barcode
 from flask import current_app, jsonify, render_template, request, make_response
 
-from brother_ql.devicedependent import label_type_specs, label_sizes, two_color_support
+from brother_ql.devicedependent import label_type_specs, label_sizes
 from brother_ql.devicedependent import ENDLESS_LABEL, DIE_CUT_LABEL, ROUND_DIE_CUT_LABEL
 
 from . import bp
@@ -12,7 +12,7 @@ from app.utils import convert_image_to_bw, convert_image_to_grayscale, convert_i
 from app import FONTS
 
 from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
-from .printer import PrinterQueue
+from .printer import PrinterQueue, get_ptr_status
 
 LINE_SPACINGS = (100, 150, 200, 250, 300)
 
@@ -29,11 +29,9 @@ LABEL_SIZES = [(
 
 @bp.route('/')
 def index():
-    RED_SUPPORT = current_app.config['PRINTER_MODEL'] in two_color_support
     return render_template('labeldesigner.html',
                            font_family_names=FONTS.fontlist(),
                            label_sizes=LABEL_SIZES,
-                           red_support=RED_SUPPORT,
                            default_label_size=current_app.config['LABEL_DEFAULT_SIZE'],
                            default_font_size=current_app.config['LABEL_DEFAULT_FONT_SIZE'],
                            default_orientation=current_app.config['LABEL_DEFAULT_ORIENTATION'],
@@ -47,9 +45,7 @@ def index():
                            default_margin_top=current_app.config['LABEL_DEFAULT_MARGIN_TOP'],
                            default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
                            default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
-                           default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT'],
-                           printer_path=current_app.config['PRINTER_PRINTER'],
-                           printer_model=current_app.config['PRINTER_MODEL']
+                           default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
                            )
 
 
@@ -99,6 +95,11 @@ def get_preview_from_image():
         return response
 
 
+@bp.route('/api/printer_status', methods=['GET'])
+def get_printer_status():
+    return get_ptr_status(current_app.config['PRINTER_PRINTER'])
+
+
 @bp.route('/api/print', methods=['POST', 'GET'])
 def print_text():
     """
@@ -133,14 +134,14 @@ def print_text():
     printer.add_label_to_queue(label, print_count, cut_once)
 
     try:
-        printer.process_queue()
+        status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
         # Generate error 400 response
         return make_response(jsonify(return_dict), 400)
 
-    return_dict['success'] = True
+    return_dict['success'] = status
     return return_dict
 
 

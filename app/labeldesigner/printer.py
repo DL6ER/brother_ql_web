@@ -1,6 +1,8 @@
 import logging
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
+from brother_ql.devicedependent import two_color_support
+from brother_ql.backends.helpers import get_printer, get_status
 from .label import LabelOrientation, LabelType, LabelContent
 
 logger = logging.getLogger(__name__)
@@ -52,7 +54,7 @@ class PrinterQueue:
                  'cut': cut
                  })
 
-    def process_queue(self):
+    def process_queue(self) -> bool:
         qlr = BrotherQLRaster(self._model)
 
         for queue_entry in self._printQueue:
@@ -85,3 +87,42 @@ class PrinterQueue:
         info = send(qlr.data, self._device_specifier)
         logger.info('Sent %d bytes to printer %s', len(qlr.data), self._device_specifier)
         logger.info('Printer response: %s', str(info))
+        
+        if info['did_print'] and info['ready_for_next_job']:
+            logger.info('Label printed successfully and printer is ready for next job')
+            return True
+
+        return False
+
+def get_ptr_status(device_specifier):
+    status = {
+        "errors": [],
+        "path": device_specifier,
+        "media_category": "DK",
+        "media_length": 0,
+        "media_type": "Continuous length tape",
+        "media_width": 62,
+        "model": "Unknown",
+        "model_code": 56,
+        "phase_type": "Unknown",
+        "series_code": 52,
+        "setting": None,
+        "status_code": 0,
+        "status_type": "Unknown",
+        "tape_color": "",
+        "text_color": "",
+        "red_support": False
+    }
+
+    try:
+        printer = get_printer(device_specifier)
+        printer_state = get_status(printer)
+        for key in printer_state:
+            status[key] = printer_state.get(key, status[key])
+            if key == 'model':
+                status['red_support'] = printer_state['model'] in two_color_support
+        return status
+    except Exception as e:
+        logger.exception(e)
+        status['errors'] = [str(e)]
+        return status
