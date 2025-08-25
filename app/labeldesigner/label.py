@@ -327,53 +327,80 @@ class SimpleLabel:
         draw = ImageDraw.Draw(img)
         y = 0
         for i, line in enumerate(self.text):
-            # Workaround for empty lines to not vanish
-            text = line['text']
-            if len(text) == 0:
-                text = ' '
-            
+            color = self._fore_color
+
             # Calculate spacing
             spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
 
             # Get font
             font = self._get_font(line['font_path'], line['font_size'])
 
+            # Determine anchors
+            anchor = None
+            align = line['align']
+
+            # Left aligned text
+            if align == "left":
+                anchor = "lt"
+            # Center aligned text
+            elif align == "center":
+                anchor = "mt"
+            # Right aligned text
+            elif align == "right":
+                anchor = "rt"
+            # else: error
+            else:
+                logger.error(f"Unsupported alignment: {align}")
+                return
+
+            if do_draw and 'font_inverted' in line and line['font_inverted'] == "true":
+                # Draw a filled rectangle
+                center_x = 0
+                if anchor == "lt":
+                    min_bbox_x = text_offset[0] + min(bbox[0][0] for bbox in bboxes)
+                    max_bbox_x = text_offset[0] + bboxes[i][0][2] # max(bbox[0][2] for bbox in bboxes)
+                elif anchor == "mt":
+                    min_bbox_x = min(bbox[0][0] for bbox in bboxes)
+                    max_bbox_x = max(bbox[0][2] for bbox in bboxes)
+                    center_x = (min_bbox_x + max_bbox_x) // 2
+                    min_bbox_x = text_offset[0] + center_x - (bboxes[i][0][2] - bboxes[i][0][0]) // 2
+                    max_bbox_x = text_offset[0] + center_x + (bboxes[i][0][2] - bboxes[i][0][0]) // 2
+                elif anchor == "rt":
+                    max_bbox_x = text_offset[0] + max(bbox[0][2] for bbox in bboxes)
+                    min_bbox_x = max_bbox_x - (bboxes[i][0][2] - bboxes[i][0][0])
+                shift = 0.1 * int(line['font_size'])
+                y_min = bboxes[i][0][1] + text_offset[1] - shift
+                y_max = bboxes[i][0][3] + text_offset[1] - shift
+                draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=self._fore_color)
+                color = (255, 255, 255)
+
             # Either calculate bbox or actually draw
             if not do_draw:
-                bbox = draw.textbbox((0, y), text, font=font, align=line['align'])
-                line_spacing = draw.textbbox((0, 0), "§", font)[3] + spacing
+                Ag = draw.textbbox((0, y), "Ag", font, anchor="lt")
+                bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
+                # Get bbox with width of text and dummy height
+                bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
                 bboxes.append((bbox, y))
-                y += line_spacing + (spacing if i < len(self.text)-1 else 0)
+                y += bbox[3] - bbox[1] + (spacing if i < len(self.text)-1 else 0)
             else:
-                anchor = None
-                align = line['align']
-
                 # Left aligned text
                 if align == "left":
-                    anchor = "lt"
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = min_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
-
                 # Center aligned text
                 elif align == "center":
-                    anchor = "mt"
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = (max_bbox_x - min_bbox_x) // 2 + min_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
-
                 # Right aligned text
                 elif align == "right":
-                    anchor = "rt"
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = max_bbox_x + text_offset[0]
                     y = bboxes[i][1] + text_offset[1]
 
-                # else: error
-                else:
-                    logger.error(f"Unsupported alignment: {line['align']}")
-                draw.text((x, y), text, self._fore_color, font=font, anchor=anchor, align=align, spacing=spacing)
+                draw.text((x, y), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
 
         # Return total bbox
         # each in form (x0, y0, x1, y1)
@@ -383,7 +410,7 @@ class SimpleLabel:
         # Iterate over right margins of multiple text lines and find the maximum
         # width needed to fit all lines of text
         max_width = max(bbox[0][2] for bbox in bboxes)
-        return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3] * 1.1)
+        return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3])
 
     def _get_font(self, font_path, font_size):
         return ImageFont.truetype(font_path, int(font_size))

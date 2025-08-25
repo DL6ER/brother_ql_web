@@ -48,6 +48,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
     - **QL-1110NWB**
     - **QL-1115NWB**
 -   Support individual fonts/sizes and spacing for each line of text on the labels
+-   Allow text inversion for emphasized text even without color
 -   Auto-fit images best onto the labels to avoid cropping
 -   Print text as QR Code or barcode
     -   Add text to QR Code

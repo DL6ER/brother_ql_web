@@ -12,6 +12,7 @@ function setFontSettingsPerLine() {
         font_family:  $('#fontFamily option:selected').text(),
         font_style:   $('#fontStyle option:selected').text(),
         font_size:    $('#fontSize').val(),
+        font_inverted: $('#fontInverted').is(':checked'),
         align:        $('input[name=fontAlign]:checked').val(),
         line_spacing: $('input[name=lineSpacing]:checked').val()
     };
@@ -97,6 +98,8 @@ $(document).ready(function() {
         $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
         // Set line spacing
         $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+        // Set font inversion
+        $('#fontInverted').prop('checked', fs.font_inverted);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls

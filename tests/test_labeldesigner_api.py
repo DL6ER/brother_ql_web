@@ -20,6 +20,19 @@ EXAMPLE_FORMDATA = {
     'cut_once': '0',
 }
 
+
+def verify_image(response_data, expected_image_path):
+    # Compare generated preview with the image in file (if it exists)
+    if not UPDATE_IMAGES and os.path.isfile(expected_image_path):
+        with open(expected_image_path, 'rb') as f:
+            expected_data = f.read()
+        assert response_data == expected_data
+        return
+
+    # Write image into file
+    with open(expected_image_path, 'wb') as f:
+        f.write(response_data)
+
 @pytest.fixture
 def client():
     my_app = create_app()
@@ -84,6 +97,43 @@ def test_generate_preview(client):
     assert response.data == expected_data
 
 
+def test_generate_preview_inverted(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text[0][font_family]'] = 'DejaVu Sans'
+    data['text[0][font_style]'] = 'Regular'
+    data['text[0][text]'] = '!!! LEFT !!!'
+    data['text[0][font_size]'] = '50'
+    data['text[0][align]'] = 'left'
+    data['text[0][font_inverted]'] = 'true'
+
+    data['text[1][font_family]'] = 'DejaVu Sans'
+    data['text[1][font_style]'] = 'Regular'
+    data['text[1][text]'] = '!!! CENTER !!!'
+    data['text[1][font_size]'] = '50'
+    data['text[1][align]'] = 'center'
+    data['text[1][font_inverted]'] = 'true'
+
+    data['text[2][font_family]'] = 'DejaVu Sans'
+    data['text[2][font_style]'] = 'Regular'
+    data['text[2][text]'] = '!!! RIGHT !!!'
+    data['text[2][font_size]'] = '50'
+    data['text[2][align]'] = 'right'
+    data['text[2][font_inverted]'] = 'true'
+
+    data['text[3][font_family]'] = 'Droid Sans Mono'
+    data['text[3][font_style]'] = 'Regular'
+    data['text[3][text]'] = '-- LONG MONO TEXT --'
+    data['text[3][font_size]'] = '50'
+    data['text[3][align]'] = 'center'
+
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png', 'text/plain']
+
+    # Check image
+    verify_image(response.data, 'tests/preview_inverted.png')
+
+
 def test_generate_preview_rotated(client):
     data = EXAMPLE_FORMDATA.copy()
     data['orientation'] = 'rotated'
@@ -99,15 +149,8 @@ def test_generate_preview_rotated(client):
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
 
-    # Write image into file
-    if UPDATE_IMAGES:
-        with open('tests/preview_rotated.png', 'wb') as f:
-            f.write(response.data)
-
-    # Compare generated preview with the image in file
-    with open('tests/preview_rotated.png', 'rb') as f:
-        expected_data = f.read()
-    assert response.data == expected_data
+    # Check image
+    verify_image(response.data, 'tests/preview_rotated.png')
 
 
 def test_generate_ean13(client):
