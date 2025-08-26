@@ -77,7 +77,7 @@ class SimpleLabel:
             text={},
             qr_size=10,
             qr_correction='L',
-            image_fit=True,
+            image_fit=False,
             image=None,
             border_thickness=1,
             border_roundness=0,
