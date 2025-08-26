@@ -28,6 +28,7 @@
     <link rel="stylesheet" href="{{url_for('static', filename='css/dropzone.min.css')}}">
     <link rel="stylesheet" href="{{url_for('static', filename='css/basic.min.css')}}">
     <link rel="stylesheet" href="{{url_for('static', filename='css/custom.css')}}">
+    <link rel="stylesheet" href="{{url_for('static', filename='css/darkmode.css')}}">
 {% endblock styles %}
 
 {% block title %}
@@ -71,7 +72,9 @@ Label Designer | Brother QL
 {% block scripts %}
     {{ super() }}
     <script src="{{url_for('static', filename='js/dropzone.min.js')}}"></script>
+    <script src="{{url_for('static', filename='js/darkmode.js')}}"></script>
     <script type="text/javascript">
         {% block javascript %} {% endblock %}
     </script>
+    <script src="{{url_for('static', filename='js/main.js')}}"></script>
 {% endblock %}

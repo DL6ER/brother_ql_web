@@ -30,6 +30,10 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ![Automatic printer and label detection](./screenshots/image5.png)
 
+### Native dark mode
+
+![Native dark mode](./screenshots/image6.png)
+
 ## New Features
 
 - Automatic printer and label detection
@@ -67,6 +71,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
     -   Cut every label
     -   Cut only after the last label
 - Better error handling
+- Native dark mode
 - A colored frame around the preview indicating the current status
     - no color = idle
     - gray = busy

@@ -1,0 +1,109 @@
+/* Default: light mode, dark mode overrides below */
+body.dark-mode {
+background: #181a1b !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .card,
+.dark-mode .form-control,
+.dark-mode .btn,
+.dark-mode .dropdown-menu,
+.dark-mode .alert {
+background-color: #23272b !important;
+color: #e8e6e3 !important;
+border-color: #444 !important;
+}
+
+.dark-mode .btn-primary,
+.dark-mode .btn-secondary,
+.dark-mode .btn-dark,
+.dark-mode .btn-danger {
+background-color: #343a40 !important;
+color: #e8e6e3 !important;
+border-color: #444 !important;
+}
+
+.dark-mode .btn-primary:hover,
+.dark-mode .btn-secondary:hover,
+.dark-mode .btn-dark:hover,
+.dark-mode .btn-danger:hover {
+background-color: #495057 !important;
+}
+
+.dark-mode .form-control {
+background-color: #23272b !important;
+color: #e8e6e3 !important;
+border-color: #444 !important;
+}
+
+.dark-mode .input-group-text,
+.dark-mode .dropdown-menu {
+background-color: #23272b !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .alert-info {
+background-color: #1e2225 !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .alert-success {
+background-color: #1e2b1e !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .alert-warning {
+background-color: #2b241e !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .alert-danger {
+background-color: #2b1e1e !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .form-check-label,
+.dark-mode label,
+.dark-mode .card-header {
+color: #e8e6e3 !important;
+}
+
+.dark-mode .accordion .card-header {
+background-color: #23272b !important;
+}
+
+.dark-mode .dropdown-item {
+background-color: #23272b !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .dropdown-item:hover {
+background-color: #343a40 !important;
+}
+
+.dark-mode .btn-link {
+color: #e8e6e3 !important;
+}
+
+.dark-mode .btn-link:hover {
+color: #f8d90f !important;
+}
+
+.dark-mode .form-text {
+color: #b0b0b0 !important;
+}
+
+.dark-mode .input-group-append .input-group-text {
+background-color: #23272b !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .dropzone {
+background: #23272b !important;
+border: 2px dashed #444 !important;
+color: #e8e6e3 !important;
+}
+
+.dark-mode .dropzone .dz-message {
+color: #b0b0b0 !important;
+}

@@ -2,6 +2,11 @@
 
 {% block app_content %}
 <div class="row">
+    <!-- Dark mode toggle button -->
+    <div id="darkModeToggle"
+        style="position: absolute; top: 10px; right: 20px; z-index: 1000; cursor: pointer; font-size: 1.6em;">
+        <span id="darkModeIcon" title="Toggle dark mode" style="transition: color 0.2s;"></span>
+    </div>
     <div class="col-md-4">
         <fieldset class="form-group">
             <div class="accordion" id="accordion" style="max-height: 90vh; overflow-y: auto;">
@@ -360,5 +365,4 @@ const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};
 
 {{ super() }}
-{% include "main.js" %}
 {% endblock %}
