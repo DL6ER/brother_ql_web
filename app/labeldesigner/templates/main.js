@@ -1,3 +1,12 @@
+// Global printer status object to be populated from the API
+var printer_status = {
+    'errors': [],
+    'model': 'Unknown',
+    'media_width': 62,
+    'media_length': 0,
+    'phase_type': 'Unknown',
+    'red_support': false
+};
 
 // Returns an array of font settings for each line of label text.
 // Each new line inherits the font settings of the previous line.
@@ -9,10 +18,11 @@ function setFontSettingsPerLine() {
 
     // Default font settings from the current UI controls
     var currentFont = {
-        font_family:  $('#fontFamily option:selected').text(),
-        font_style:   $('#fontStyle option:selected').text(),
-        font_size:    $('#fontSize').val(),
-        align:        $('input[name=fontAlign]:checked').val(),
+        font_family: $('#fontFamily option:selected').text(),
+        font_style: $('#fontStyle option:selected').text(),
+        font_size: $('#fontSize').val(),
+        font_inverted: $('#fontInverted').is(':checked'),
+        align: $('input[name=fontAlign]:checked').val(),
         line_spacing: $('input[name=lineSpacing]:checked').val()
     };
 
@@ -22,7 +32,7 @@ function setFontSettingsPerLine() {
     var selectedLine = lineSelect.val();
     // Recreate options with possibly updated text
     lineSelect.empty();
-    $.each(lines, function(index, line) {
+    $.each(lines, function (index, line) {
         lineSelect.append($("<option></option>")
             .attr("value", index).text(lines[index] || '(line ' + (index + 1) + ' is empty)'));
     });
@@ -53,7 +63,7 @@ function setFontSettingsPerLine() {
                 fontSettingsPerLine.push(Object.assign({}, currentFont));
             } else {
                 // Inherit from previous line
-                fontSettingsPerLine.push(Object.assign({}, fontSettingsPerLine[i-1]));
+                fontSettingsPerLine.push(Object.assign({}, fontSettingsPerLine[i - 1]));
             }
         }
     }
@@ -75,8 +85,8 @@ function setFontSettingsPerLine() {
 }
 
 // Update font controls when a line is selected
-$(document).ready(function() {
-    $('#lineSelect').on('change', function() {
+$(document).ready(function () {
+    $('#lineSelect').on('change', function () {
         var idx = parseInt($(this).val(), 10);
         if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
         var fs = fontSettingsPerLine[idx];
@@ -97,10 +107,12 @@ $(document).ready(function() {
         $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
         // Set line spacing
         $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+        // Set font inversion
+        $('#fontInverted').prop('checked', fs.font_inverted);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
-    $('#labelText').on('click keyup', function(e) {
+    $('#labelText').on('click keyup', function (e) {
         var textarea = this;
         var caret = textarea.selectionStart;
         var lines = textarea.value.split(/\r?\n/);
@@ -120,31 +132,31 @@ $(document).ready(function() {
 
 function formData(cut_once) {
     data = {
-        text:               fontSettingsPerLine,
+        text: fontSettingsPerLine,
         label_size: $('#labelSize').val(),
-        orientation:        $('input[name=orientation]:checked').val(),
-        margin_top:         $('#marginTop').val(),
-        margin_bottom:      $('#marginBottom').val(),
-        margin_left:        $('#marginLeft').val(),
-        margin_right:       $('#marginRight').val(),
-        print_type:         $('input[name=printType]:checked').val(),
+        orientation: $('input[name=orientation]:checked').val(),
+        margin_top: $('#marginTop').val(),
+        margin_bottom: $('#marginBottom').val(),
+        margin_left: $('#marginLeft').val(),
+        margin_right: $('#marginRight').val(),
+        print_type: $('input[name=printType]:checked').val(),
         barcode_type: $('#barcodeType').val(),
-        qrcode_size:        $('#qrCodeSize').val(),
-        qrcode_correction:  $('#qrCodeCorrection option:selected').val(),
+        qrcode_size: $('#qrCodeSize').val(),
+        qrcode_correction: $('#qrCodeCorrection option:selected').val(),
         image_bw_threshold: $('#imageBwThreshold').val(),
-        image_mode:         $('input[name=imageMode]:checked').val(),
-        image_fit:          $('#imageFitCheckbox').is(':checked') ? 1 : 0,
-        print_count:        $('#printCount').val(),
-        log_level:          $('#logLevel').val(),
-        line_spacing:       $('input[name=lineSpacing]:checked').val(),
-        cut_once:           cut_once ? 1 : 0,
-        border_thickness:   $('#borderThickness').val(),
-        border_roundness:   $('#borderRoundness').val(),
-        border_distance_x:  $('#borderDistanceX').val(),
-        border_distance_y:  $('#borderDistanceY').val(),
+        image_mode: $('input[name=imageMode]:checked').val(),
+        image_fit: $('#imageFitCheckbox').is(':checked') ? 1 : 0,
+        print_count: $('#printCount').val(),
+        log_level: $('#logLevel').val(),
+        line_spacing: $('input[name=lineSpacing]:checked').val(),
+        cut_once: cut_once ? 1 : 0,
+        border_thickness: $('#borderThickness').val(),
+        border_roundness: $('#borderRoundness').val(),
+        border_distance_x: $('#borderDistanceX').val(),
+        border_distance_y: $('#borderDistanceY').val(),
     }
 
-    if (red_support) {
+    if (printer_status['red_support']) {
         data['print_color'] = $('input[name=printColor]:checked').val();
         data['border_color'] = $('input[name=borderColor]:checked').val();
     }
@@ -156,9 +168,9 @@ function updatePreview(data) {
     setStatus({ 'preview': true });
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
-    img.onload = function() {
-        $('#labelWidth').html( (img.naturalWidth /default_dpi*2.54).toFixed(1));
-        $('#labelHeight').html((img.naturalHeight/default_dpi*2.54).toFixed(1));
+    img.onload = function () {
+        $('#labelWidth').html((img.naturalWidth / default_dpi * 2.54).toFixed(1));
+        $('#labelHeight').html((img.naturalHeight / default_dpi * 2.54).toFixed(1));
     };
 }
 
@@ -166,11 +178,11 @@ function updateStyles(style = null) {
     font_familiy = $('#fontFamily option:selected').text()
 
     $.ajax({
-        type:        'POST',
-        url:         url_for_get_font_styles,
+        type: 'POST',
+        url: url_for_get_font_styles,
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-        data:        {font: font_familiy},
-        success: function( data ) {
+        data: { font: font_familiy },
+        success: function (data) {
             var styleSelect = $('#fontStyle');
             styleSelect.empty();
             $.each(data, function (key, value) {
@@ -188,6 +200,8 @@ function updateStyles(style = null) {
 }
 
 function preview() {
+    // Check label against installed label in the printer
+    updatePrinterStatus();
     if ($('#labelSize option:selected').data('round') == 'True') {
         $('img#previewImg').addClass('roundPreviewImage');
     } else {
@@ -202,7 +216,7 @@ function preview() {
         $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
     }
 
-    if (red_support) {
+    if (printer_status['red_support']) {
         if ($('#labelSize option:selected').val().includes('red')) {
             $('#print_color_black').removeClass('disabled');
             $('#print_color_red').removeClass('disabled');
@@ -216,7 +230,7 @@ function preview() {
         }
     }
 
-    if($('input[name=printType]:checked').val() == 'image') {
+    if ($('input[name=printType]:checked').val() == 'image') {
         $('#groupLabelText').hide();
         $('#groupLabelImage').show()
     } else {
@@ -224,7 +238,7 @@ function preview() {
         $('#groupLabelImage').hide();
     }
 
-    if($('input[name=printType]:checked').val() == 'image') {
+    if ($('input[name=printType]:checked').val() == 'image') {
         dropZoneMode = 'preview';
         imageDropZone.processQueue();
         return;
@@ -234,11 +248,11 @@ function preview() {
     setStatus({ 'preview': false });
 
     $.ajax({
-        type:        'POST',
-        url:         url_for_get_preview + '?return_format=base64',
+        type: 'POST',
+        url: url_for_get_preview + '?return_format=base64',
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-        data:        formData(),
-        success: function( data ) {
+        data: formData(),
+        success: function (data) {
             updatePreview(data);
         },
         error: function (xhr, _status, error) {
@@ -282,17 +296,17 @@ function print(cut_once = false) {
     $('#dropdownPrintButton').prop('disabled', true);
     $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Processing print request...</span></div>');
 
-    if($('input[name=printType]:checked').val() == 'image') {
+    if ($('input[name=printType]:checked').val() == 'image') {
         dropZoneMode = 'print';
         imageDropZone.processQueue();
         return;
     }
 
     $.ajax({
-        type:     'POST',
+        type: 'POST',
         dataType: 'json',
-        data:     formData(cut_once),
-        url:      url_for_print_text,
+        data: formData(cut_once),
+        url: url_for_print_text,
         success: function () {
             data = { 'success': true };
             setStatus(data);
@@ -307,7 +321,7 @@ function print(cut_once = false) {
 
 var imageDropZone;
 Dropzone.options.myAwesomeDropzone = {
-    url: function() {
+    url: function () {
         if (dropZoneMode == 'preview') {
             return url_for_get_preview + "?return_format=base64";
         } else {
@@ -319,26 +333,26 @@ Dropzone.options.myAwesomeDropzone = {
     maxFiles: 1,
     addRemoveLinks: true,
     autoProcessQueue: false,
-    init: function() {
+    init: function () {
         imageDropZone = this;
 
-        this.on("addedfile", function() {
+        this.on("addedfile", function () {
             if (this.files[1] != null) {
                 this.removeFile(this.files[0]);
             }
         });
     },
 
-    sending: function(file, xhr, data) {
+    sending: function (file, xhr, data) {
         // append all parameters to the request
         fd = formData(false);
 
-        $.each(fd, function(key, value){
+        $.each(fd, function (key, value) {
             data.append(key, value);
         });
     },
 
-    success: function(file, response) {
+    success: function (file, response) {
         // If preview or print was successfull update the previewpane or print status
         if (dropZoneMode == 'preview') {
             updatePreview(response);
@@ -348,13 +362,13 @@ Dropzone.options.myAwesomeDropzone = {
         file.status = Dropzone.QUEUED;
     },
 
-    accept: function(file, done) {
+    accept: function (file, done) {
         // If a valid file was added, perform the preview
         done();
         preview();
     },
 
-    removedfile: function(file) {
+    removedfile: function (file) {
         file.previewElement.remove();
         preview();
         // Insert a dummy image
@@ -394,6 +408,78 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 });
 
+function updatePrinterStatus() {
+    const printerModel = document.getElementById('printerModel');
+    if (printerModel) {
+        printerModel.textContent = printer_status.model || 'Unknown';
+    }
+    const printerPath = document.getElementById('printerPath');
+    if (printerPath) {
+        printerPath.textContent = printer_status.path || 'Unknown';
+    }
+    if (printer_status['red_support']) {
+        $(".red-support").show();
+    } else {
+        $(".red-support").hide();
+    }
+
+    const labelSizeX = document.getElementById('label-width');
+    const labelSizeY = document.getElementById('label-height');
+    if (labelSizeX && labelSizeY) {
+        labelSizeX.textContent = printer_status.media_width + " mm";
+        if (printer_status.media_length > 0) {
+            labelSizeY.textContent = printer_status.media_length + " mm";
+        }
+        else if (printer_status.media_type === 'Continuous length tape') {
+            labelSizeY.textContent = "endless";
+        }
+        else {
+            labelSizeY.textContent = "???";
+        }
+    }
+
+    // Check for label size mismatch compared to data-x property of select
+    const labelSizeSelect = document.getElementById('labelSize');
+    if (labelSizeSelect) {
+        const selectedOption = labelSizeSelect.options[labelSizeSelect.selectedIndex];
+        const dataX = selectedOption.getAttribute('data-x');
+        const dataY = selectedOption.getAttribute('data-y');
+        if (printer_status.media_width !== parseInt(dataX) || printer_status.media_length !== parseInt(dataY)) {
+            labelMismatch.style.display = '';
+            labelMismatchIcon.style.display = '';
+        } else {
+            labelMismatch.style.display = 'none';
+            labelMismatchIcon.style.display = 'none';
+        }
+    }
+
+    if (printer_status.errors && printer_status.errors.length > 0) {
+        setStatus({ 'success': false })
+        const printerErrors = document.getElementById('statusBox');
+        if (printerErrors) {
+            printerErrors.innerHTML = '';
+            printer_status.errors.forEach((error) => {
+                const li = document.createElement('li');
+                li.textContent = error;
+                printerErrors.appendChild(li);
+            });
+            printerErrors.parentElement.style.display = '';
+        }
+    }
+}
+
+function getPrinterStatus() {
+    fetch(url_for_get_printer_status)
+        .then(response => response.json())
+        .then(data => {
+            printer_status = data;
+            updatePrinterStatus();
+        });
+}
+
 window.onload = function () {
+    getPrinterStatus();
+    // Update printer status every 5 seconds
+    setInterval(getPrinterStatus, 5000);
     updateStyles(); // this also triggers preview()
 };

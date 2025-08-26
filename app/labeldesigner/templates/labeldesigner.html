@@ -11,13 +11,18 @@
                         <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse1" aria-expanded="true" aria-controls="collapse1">
                             <span class="fas fa-file" aria-hidden="true"></span> Label Size
                         </button>
+                        <span id="labelMismatchIcon" class="float-right text-danger" style="display: none;">
+                            <span class="fas fa-exclamation-triangle" aria-hidden="true"></span>
+                        </span>
                     </div>
                     <div id="collapse1" class="collapse" aria-labelledby="heading1" data-parent="#accordion">
                         <div class="card-body">
                             <label for="labelSize" style="margin-bottom: 0">Label Size:</label>
                             <select class="form-control" id="labelSize" onChange="preview()">
-                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-round="{{label_size[2]}}" {% if default_label_size == label_size[0] %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
+                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}" data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size == label_size[0] %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
                             </select>
+                            <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
+                            <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>
 
                             <label for="orientation" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
                             <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
@@ -31,17 +36,17 @@
                                 </label>
                             </div>
 
-                            {% if red_support %}
-                            <label for="printColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print Color:</label>
-                            <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
-                                <label class="btn btn-dark" id="print_color_black">
-                                    <input type="radio" name="printColor" onchange="preview()" value="black" aria-label="Black">Black
-                                </label>
-                                <label class="btn btn-danger" id="print_color_red">
-                                    <input type="radio" name="printColor" onchange="preview()" value="red" aria-label="Red">Red
-                                </label>
+                            <div class="red-support">
+                                <label for="printColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print Color:</label>
+                                <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                    <label class="btn btn-dark" id="print_color_black">
+                                        <input type="radio" name="printColor" onchange="preview()" value="black" aria-label="Black">Black
+                                    </label>
+                                    <label class="btn btn-danger" id="print_color_red">
+                                        <input type="radio" name="printColor" onchange="preview()" value="red" aria-label="Red">Red
+                                    </label>
+                                </div>
                             </div>
-                            {% endif %}
 
                         </div>
                         <!-- class="card-body" -->
@@ -105,6 +110,12 @@
                                         </label>
                                         {% endfor %}
                                     </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" onchange="preview()" value="1" id="fontInverted" checked>
+                                        <label class="form-check-label" for="fontInverted">
+                                            Invert text
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
 
@@ -161,16 +172,16 @@
                                 <input type="radio" name="imageMode" onchange="preview()" value="grayscale" aria-label="Grayscale" {% if default_image_mode == 'grayscale' %}checked{% endif %}>
                                 <span class="fas fa-ruler-vertical" aria-hidden="true"> Grayscale
                             </label>
-                            {% if red_support %}
-                            <label class="btn btn-secondary {% if default_image_mode == 'colored' %}active{% endif %}" id="image_mode_colored">
-                                <input type="radio" name="imageMode" onchange="preview()" value="colored" aria-label="Colored" {% if default_image_mode == 'colored' %}checked{% endif %}>
-                                <span class="fas fa-ruler-horizontal" aria-hidden="true"> Colored
-                            </label>
-                            <label class="btn btn-secondary {% if default_image_mode == 'red_and_black' %}active{% endif %}" id="image_mode_red_and_black">
-                                <input type="radio" name="imageMode" onchange="preview()" value="red_and_black" aria-label="Red & Black" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
-                                <span class="fas fa-ruler-vertical" aria-hidden="true"> Red & Black
-                            </label>
-                            {% endif %}
+                            <div class="red-support">
+                                <label class="btn btn-secondary {% if default_image_mode == 'colored' %}active{% endif %}" id="image_mode_colored">
+                                    <input type="radio" name="imageMode" onchange="preview()" value="colored" aria-label="Colored" {% if default_image_mode == 'colored' %}checked{% endif %}>
+                                    <span class="fas fa-ruler-horizontal" aria-hidden="true"> Colored
+                                </label>
+                                <label class="btn btn-secondary {% if default_image_mode == 'red_and_black' %}active{% endif %}" id="image_mode_red_and_black">
+                                    <input type="radio" name="imageMode" onchange="preview()" value="red_and_black" aria-label="Red & Black" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
+                                    <span class="fas fa-ruler-vertical" aria-hidden="true"> Red & Black
+                                </label>
+                            </div>
 
                             <div class="form-check mt-3">
                                 <input class="form-check-input" type="checkbox" value="1" onchange="preview()" id="imageFitCheckbox" checked>
@@ -231,21 +242,19 @@
                             <input id="borderDistanceX" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
                             <label for="borderDistanceY" style="margin-bottom: 0">Border Distance (top/bottom):</label>
                             <input id="borderDistanceY" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
-                            
-                            {% if red_support %}
-                            <label for="borderColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
-                                Color:</label>
-                            <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
-                                <label class="btn btn-dark" id="border_color_black">
-                                    <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black">Black
-                                </label>
-                                <label class="btn btn-danger" id="border_color_red">
-                                    <input type="radio" name="borderColor" onchange="preview()" value="red" aria-label="Red">Red
-                                </label>
+
+                            <div class="red-support">
+                                <label for="borderColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
+                                    Color:</label>
+                                <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                    <label class="btn btn-dark" id="border_color_black">
+                                        <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black">Black
+                                    </label>
+                                    <label class="btn btn-danger" id="border_color_red">
+                                        <input type="radio" name="borderColor" onchange="preview()" value="red" aria-label="Red">Red
+                                    </label>
+                                </div>
                             </div>
-                            {% else %}
-                            <input type="hidden" id="borderColor" value="black" />
-                            {% endif %}
                         </div>
                         <!-- class="card-body" -->
                     </div>
@@ -343,11 +352,11 @@
 {% endblock %}
 
 {% block javascript %}
-const red_support = {{ 'true' if red_support else 'false' }};
 const url_for_print_text = '{{ url_for('.print_text') }}';
 const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
 const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
+const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};
 
 {{ super() }}
