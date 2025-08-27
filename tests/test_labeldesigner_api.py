@@ -93,15 +93,8 @@ def test_generate_preview(client):
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
 
-    # Write image into file
-    if UPDATE_IMAGES:
-        with open('tests/preview_simple.png', 'wb') as f:
-            f.write(response.data)
-
-    # Compare generated preview with the image in file
-    with open('tests/preview_simple.png', 'rb') as f:
-        expected_data = f.read()
-    assert response.data == expected_data
+    # Check image
+    verify_image(response.data, 'tests/preview_simple.png')
 
 
 def test_generate_preview_inverted(client):
@@ -258,7 +251,7 @@ def test_generate_qr(client):
     verify_image(response.data, 'tests/preview_qr.png')
 
 
-def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False):
+def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
     data = EXAMPLE_FORMDATA.copy()
     my_file = FileStorage(
         stream=open(image_path, "rb"),
@@ -267,6 +260,10 @@ def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool =
     )
     data['print_type'] = 'image'
     data['image'] = my_file
+    data['image_mode'] = image_mode
+
+    if image_mode == "black":
+        data['image_bw_threshold'] = '128'
 
     data['image_fit'] = '1' if fit else '0'
     data['orientation'] = 'rotated' if rotated else 'normal'
@@ -281,7 +278,7 @@ def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool =
             }
         ])
 
-    expected_img_path = "tests/preview_image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + ".png"
+    expected_img_path = "tests/preview_image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
@@ -321,6 +318,18 @@ def test_image_with_text_rotated(client):
 
 def test_image_with_text_fit_rotated(client):
     image_test(client, text=True, rotated=True, fit=True)
+
+
+def test_image_color_fit(client):
+    image_test(client, image_mode="colored", fit=True)
+
+
+def test_image_red_and_black_fit(client):
+    image_test(client, image_mode="red_and_black", fit=True)
+
+
+def test_image_black_fit(client):
+    image_test(client, image_mode="black", fit=True)
 
 # We cannot test the print functionality without a physical printer
 # def test_print_text(client):
