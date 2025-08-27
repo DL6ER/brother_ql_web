@@ -2,7 +2,7 @@ import logging
 import os
 
 import barcode
-from flask import current_app, jsonify, render_template, request, make_response
+from flask import current_app, json, jsonify, render_template, request, make_response
 
 from brother_ql.devicedependent import label_type_specs, label_sizes
 from brother_ql.devicedependent import ENDLESS_LABEL, DIE_CUT_LABEL, ROUND_DIE_CUT_LABEL
@@ -159,27 +159,10 @@ def create_printer_from_request(request):
     )
 
 # Parse text form data from frontend
-def parse_text_form(form):
-    parsed = []
-    for key, value in form.items():
-        if key.startswith('text['):
-            # Get index of first ']'
-            end = key.index(']')
-            # Extract index this line corresponds to
-            idx = int(key[5:end])
-            # Get index of property's ']'
-            second_end=key[end+1:].index(']')
-            # Extract property name
-            prop = key[end+2:end+1+second_end]
-
-            # Create entry if it doesn't exist
-            if idx > len(parsed)-1:
-                parsed.append({})
-
-            # Assign value to the corresponding property
-            parsed[idx][prop] = value
-
-    return parsed
+def parse_text_form(input):
+    if not input or len(input) == 0:
+        return []
+    return json.loads(input)
 
 def create_label_from_request(request):
     d=request.values
@@ -197,7 +180,7 @@ def create_label_from_request(request):
         'border_distanceX': int(d.get('border_distance_x', 0)),
         'border_distanceY': int(d.get('border_distance_y', 0)),
         'border_color': d.get('border_color', 'black'),
-        'text': parse_text_form(request.form),
+        'text': parse_text_form(d.get('text', '')),
         'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
