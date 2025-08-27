@@ -132,7 +132,7 @@ $(document).ready(function () {
 
 function formData(cut_once) {
     data = {
-        text: fontSettingsPerLine,
+        text: JSON.stringify(fontSettingsPerLine),
         label_size: $('#labelSize').val(),
         orientation: $('input[name=orientation]:checked').val(),
         margin_top: $('#marginTop').val(),
@@ -231,21 +231,19 @@ function preview() {
     }
 
     if ($('input[name=printType]:checked').val() == 'image') {
-        $('#groupLabelText').hide();
-        $('#groupLabelImage').show()
+        $('#groupLabelImage').show();
     } else {
-        $('#groupLabelText').show();
         $('#groupLabelImage').hide();
     }
+
+    setFontSettingsPerLine();
+    setStatus({ 'preview': false });
 
     if ($('input[name=printType]:checked').val() == 'image') {
         dropZoneMode = 'preview';
         imageDropZone.processQueue();
         return;
     }
-
-    setFontSettingsPerLine();
-    setStatus({ 'preview': false });
 
     $.ajax({
         type: 'POST',
@@ -305,6 +303,7 @@ function print(cut_once = false) {
     $.ajax({
         type: 'POST',
         dataType: 'json',
+        contentType: 'application/json',
         data: formData(cut_once),
         url: url_for_print_text,
         success: function () {
@@ -345,7 +344,7 @@ Dropzone.options.myAwesomeDropzone = {
 
     sending: function (file, xhr, data) {
         // append all parameters to the request
-        fd = formData(false);
+        let fd = formData(false);
 
         $.each(fd, function (key, value) {
             data.append(key, value);

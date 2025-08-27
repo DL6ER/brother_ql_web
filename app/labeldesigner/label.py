@@ -108,6 +108,18 @@ class SimpleLabel:
     @label_content.setter
     def label_content(self, value):
         self._label_content = value
+    
+    @property
+    def want_text(self):
+        return self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0
+    
+    @property
+    def need_image_text_distance(self):
+        return self._label_content in (LabelContent.TEXT_QRCODE,
+                                       LabelContent.IMAGE_BW,
+                                       LabelContent.IMAGE_GRAYSCALE,
+                                       LabelContent.IMAGE_RED_BLACK,
+                                       LabelContent.IMAGE_COLORED)
 
     @property
     def text(self):
@@ -209,7 +221,7 @@ class SimpleLabel:
         else:
             img_width, img_height = (0, 0)
 
-        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE) and len(self.text) > 0:
+        if self.want_text:
             bboxes = self._draw_text(None, [])
             textsize = self._compute_bbox(bboxes)
         else:
@@ -230,7 +242,7 @@ class SimpleLabel:
                 vertical_offset_text += (margin_top - margin_bottom)//2
             else:
                 vertical_offset_text = margin_top
-                if self._label_content == LabelContent.TEXT_QRCODE:
+                if self.need_image_text_distance:
                     # Slightly increase the margin to get some distance from the
                     # QR code
                     vertical_offset_text *= 1.25
@@ -247,7 +259,7 @@ class SimpleLabel:
                 horizontal_offset_text = max((width - img_width - textsize[2])//2, 0)
             else:
                 horizontal_offset_text = margin_left
-                if self._label_content == LabelContent.TEXT_QRCODE:
+                if self.need_image_text_distance:
                     # Slightly increase the margin to get some distance from the
                     # QR code
                     horizontal_offset_text *= 1.25
@@ -264,7 +276,7 @@ class SimpleLabel:
         if img is not None:
             imgResult.paste(img, image_offset)
 
-        if self._label_content in (LabelContent.TEXT_ONLY, LabelContent.TEXT_QRCODE) and len(self.text) > 0:
+        if self.want_text:
             self._draw_text(imgResult, bboxes, text_offset)
 
         # Check if the image needs rotation (only applied when generating
@@ -326,6 +338,7 @@ class SimpleLabel:
             img = Image.new('L', (20, 20), 'white')
         draw = ImageDraw.Draw(img)
         y = 0
+        logger.warning("Drawing text with offset %s", text_offset)
         for i, line in enumerate(self.text):
             color = self._fore_color
 

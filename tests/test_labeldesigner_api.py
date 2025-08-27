@@ -1,5 +1,6 @@
 
 
+import json
 import sys
 import os
 import pytest
@@ -12,11 +13,6 @@ EXAMPLE_FORMDATA = {
     'print_type': 'text',
     'label_size': '62',
     'orientation': 'standard',
-    'text[0][font_family]': 'DejaVu Sans',
-    'text[0][font_style]': 'Regular',
-    'text[0][text]': 'Test',
-    'text[0][font_size]': '40',
-    'text[0][align]': 'center',
     'print_count': '1',
     'cut_once': '0',
 }
@@ -76,58 +72,66 @@ def test_get_barcodes(client):
 
 def test_generate_preview(client):
     data = EXAMPLE_FORMDATA.copy()
-    data['text[0][text]'] = 'Left'
-    data['text[0][font_size]'] = '60'
-    data['text[0][align]'] = 'left'
-    data['text[1][font_family]'] = 'Droid Sans Mono'
-    data['text[1][font_style]'] = 'Regular'
-    data['text[1][text]'] = '-- LONG MONO TEXT --'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': 'Left',
+            'font_size': '60',
+            'align': 'left'
+        },
+        {
+            'font_family': 'Droid Sans Mono',
+            'font_style': 'Regular',
+            'text': '-- LONG MONO TEXT --',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
 
-    # Write image into file
-    if UPDATE_IMAGES:
-        with open('tests/preview_simple.png', 'wb') as f:
-            f.write(response.data)
-
-    # Compare generated preview with the image in file
-    with open('tests/preview_simple.png', 'rb') as f:
-        expected_data = f.read()
-    assert response.data == expected_data
+    # Check image
+    verify_image(response.data, 'tests/preview_simple.png')
 
 
 def test_generate_preview_inverted(client):
     data = EXAMPLE_FORMDATA.copy()
-    data['text[0][font_family]'] = 'DejaVu Sans'
-    data['text[0][font_style]'] = 'Regular'
-    data['text[0][text]'] = '!!! LEFT !!!'
-    data['text[0][font_size]'] = '50'
-    data['text[0][align]'] = 'left'
-    data['text[0][font_inverted]'] = 'true'
-
-    data['text[1][font_family]'] = 'DejaVu Sans'
-    data['text[1][font_style]'] = 'Regular'
-    data['text[1][text]'] = '!!! CENTER !!!'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
-    data['text[1][font_inverted]'] = 'true'
-
-    data['text[2][font_family]'] = 'DejaVu Sans'
-    data['text[2][font_style]'] = 'Regular'
-    data['text[2][text]'] = '!!! RIGHT !!!'
-    data['text[2][font_size]'] = '50'
-    data['text[2][align]'] = 'right'
-    data['text[2][font_inverted]'] = 'true'
-
-    data['text[3][font_family]'] = 'Droid Sans Mono'
-    data['text[3][font_style]'] = 'Regular'
-    data['text[3][text]'] = '-- LONG MONO TEXT --'
-    data['text[3][font_size]'] = '50'
-    data['text[3][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '!!! LEFT !!!',
+            'font_size': '50',
+            'align': 'left',
+            'font_inverted': 'true'
+        },
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '!!! CENTER !!!',
+            'font_size': '50',
+            'align': 'center',
+            'font_inverted': 'true'
+        },
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '!!! RIGHT !!!',
+            'font_size': '50',
+            'align': 'right',
+            'font_inverted': 'true'
+        },
+        {
+            'font_family': 'Droid Sans Mono',
+            'font_style': 'Regular',
+            'text': '-- LONG MONO TEXT --',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
@@ -140,14 +144,22 @@ def test_generate_preview_inverted(client):
 def test_generate_preview_rotated(client):
     data = EXAMPLE_FORMDATA.copy()
     data['orientation'] = 'rotated'
-    data['text[0][text]'] = 'Left'
-    data['text[0][font_size]'] = '60'
-    data['text[0][align]'] = 'left'
-    data['text[1][font_family]'] = 'Droid Sans Mono'
-    data['text[1][font_style]'] = 'Regular'
-    data['text[1][text]'] = '-- LONG MONO TEXT --'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': 'Left',
+            'font_size': '60',
+            'align': 'left'
+        },
+        {
+            'font_family': 'Droid Sans Mono',
+            'font_style': 'Regular',
+            'text': '-- LONG MONO TEXT --',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
@@ -160,12 +172,22 @@ def test_generate_ean13(client):
     data = EXAMPLE_FORMDATA.copy()
     data['print_type'] = 'qrcode_text'
     data['barcode_type'] = 'ean13'
-    data['text[0][text]'] = '123456789012'
-    data['text[1][font_family]'] = 'Droid Serif'
-    data['text[1][font_style]'] = 'Bold'
-    data['text[1][text]'] = 'Some example product'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '123456789012',
+            'font_size': '60',
+            'align': 'left'
+        },
+        {
+            'font_family': 'Droid Serif',
+            'font_style': 'Bold',
+            'text': 'Some example product',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
@@ -178,12 +200,22 @@ def test_invalid_ean13(client):
     data = EXAMPLE_FORMDATA.copy()
     data['print_type'] = 'qrcode_text'
     data['barcode_type'] = 'ean13'
-    data['text[0][text]'] = '1234567890'
-    data['text[1][font_family]'] = 'Droid Serif'
-    data['text[1][font_style]'] = 'Bold'
-    data['text[1][text]'] = 'Some example product'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '1234567890',
+            'font_size': '60',
+            'align': 'left'
+        },
+        {
+            'font_family': 'Droid Serif',
+            'font_style': 'Bold',
+            'text': 'Some example product',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 400
     assert response.is_json
@@ -195,12 +227,22 @@ def test_generate_qr(client):
     data = EXAMPLE_FORMDATA.copy()
     data['print_type'] = 'qrcode_text'
     data['barcode_type'] = 'QR'
-    data['text[0][text]'] = '123456789012'
-    data['text[1][font_family]'] = 'Droid Serif'
-    data['text[1][font_style]'] = 'Bold'
-    data['text[1][text]'] = 'Some example product'
-    data['text[1][font_size]'] = '50'
-    data['text[1][align]'] = 'center'
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '123456789012',
+            'font_size': '40',
+            'align': 'center'
+        },
+        {
+            'font_family': 'Droid Serif',
+            'font_style': 'Bold',
+            'text': 'Some example product',
+            'font_size': '50',
+            'align': 'center'
+        }
+    ])
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.content_type in ['image/png', 'text/plain']
@@ -209,7 +251,8 @@ def test_generate_qr(client):
     verify_image(response.data, 'tests/preview_qr.png')
 
 
-def prepare_image_data(data, image_path):
+def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
+    data = EXAMPLE_FORMDATA.copy()
     my_file = FileStorage(
         stream=open(image_path, "rb"),
         filename=os.path.basename(image_path),
@@ -217,64 +260,76 @@ def prepare_image_data(data, image_path):
     )
     data['print_type'] = 'image'
     data['image'] = my_file
-    return data
+    data['image_mode'] = image_mode
+
+    if image_mode == "black":
+        data['image_bw_threshold'] = '128'
+
+    data['image_fit'] = '1' if fit else '0'
+    data['orientation'] = 'rotated' if rotated else 'normal'
+    if text:
+        data['text'] = json.dumps([
+            {
+                'font_family': 'DejaVu Sans',
+                'font_style': 'Regular',
+                'text': 'Test',
+                'font_size': '40',
+                'align': 'center'
+            }
+        ])
+
+    expected_img_path = "tests/preview_image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
+
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png', 'text/plain']
+
+    # Check image
+    verify_image(response.data, expected_img_path)
 
 
 def test_image(client):
-    # Try native image rendering
-    data = prepare_image_data(EXAMPLE_FORMDATA, "tests/demo_image.jpg")
-    data['image_mode'] = 'grayscale'
-    data['image_fit'] = '0'
-
-    response = client.post('/labeldesigner/api/preview', data=data)
-    assert response.status_code == 200
-    assert response.content_type in ['image/png', 'text/plain']
-
-    # Check image
-    verify_image(response.data, 'tests/preview_image.png')
+    image_test(client)
 
 
 def test_image_fit(client):
-    # Try with fit
-    data = prepare_image_data(EXAMPLE_FORMDATA, "tests/demo_image.jpg")
-    data['image_mode'] = 'grayscale'
-    data['image_fit'] = '0'
-    data['image_fit'] = '1'
-    response = client.post('/labeldesigner/api/preview', data=data)
-    assert response.status_code == 200
-    assert response.content_type in ['image/png', 'text/plain']
-
-    # Check image
-    verify_image(response.data, 'tests/preview_image_fit.png')
+    image_test(client, fit=True)
 
 
 def test_image_rotated(client):
-    # Try again rotated without fitting
-    data = prepare_image_data(EXAMPLE_FORMDATA, "tests/demo_image.jpg")
-    data['image_mode'] = 'grayscale'
-    data['image_fit'] = '0'
-    data['orientation'] = 'rotated'
-    response = client.post('/labeldesigner/api/preview', data=data)
-    assert response.status_code == 200
-    assert response.content_type in ['image/png', 'text/plain']
-
-    # Check image
-    verify_image(response.data, 'tests/preview_image_rotated.png')
+    image_test(client, rotated=True)
 
 
 def test_image_rotated_fit(client):
+    image_test(client, rotated=True, fit=True)
 
-    # Try again rotated with autofit
-    data = prepare_image_data(EXAMPLE_FORMDATA, "tests/demo_image.jpg")
-    data['image_mode'] = 'grayscale'
-    data['image_fit'] = '1'
-    data['orientation'] = 'rotated'
-    response = client.post('/labeldesigner/api/preview', data=data)
-    assert response.status_code == 200
-    assert response.content_type in ['image/png', 'text/plain']
 
-    # Check image
-    verify_image(response.data, 'tests/preview_image_rotated_fit.png')
+def test_image_with_text(client):
+    image_test(client, text=True)
+
+
+def test_image_with_text_fit(client):
+    image_test(client, text=True, fit=True)
+
+
+def test_image_with_text_rotated(client):
+    image_test(client, text=True, rotated=True)
+
+
+def test_image_with_text_fit_rotated(client):
+    image_test(client, text=True, rotated=True, fit=True)
+
+
+def test_image_color_fit(client):
+    image_test(client, image_mode="colored", fit=True)
+
+
+def test_image_red_and_black_fit(client):
+    image_test(client, image_mode="red_and_black", fit=True)
+
+
+def test_image_black_fit(client):
+    image_test(client, image_mode="black", fit=True)
 
 # We cannot test the print functionality without a physical printer
 # def test_print_text(client):
