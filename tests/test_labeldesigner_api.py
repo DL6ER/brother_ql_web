@@ -1,5 +1,6 @@
 
 
+from datetime import datetime
 import json
 import sys
 import os
@@ -11,7 +12,7 @@ from werkzeug.datastructures import FileStorage
 UPDATE_IMAGES = False
 EXAMPLE_FORMDATA = {
     'print_type': 'text',
-    'label_size': '62',
+    'label_size': 62,
     'orientation': 'standard',
     'print_count': '1',
     'cut_once': '0',
@@ -330,6 +331,50 @@ def test_image_red_and_black_fit(client):
 
 def test_image_black_fit(client):
     image_test(client, image_mode="black", fit=True)
+
+
+def test_generate_datetime(client):
+    data = EXAMPLE_FORMDATA.copy()
+    # Mock current datetime.now
+    data['timestamp'] = int(datetime(2023, 1, 1, 12, 0, 0).timestamp())
+
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '{{datetime:%d.%m.%Y %H:%M:%S}}',
+            'font_size': '30',
+            'align': 'left'
+        }
+    ])
+
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png', 'text/plain']
+
+    # Check image
+    verify_image(response.data, 'tests/datetime.png')
+
+
+def test_generate_counter(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([
+        {
+            'font_family': 'DejaVu Sans',
+            'font_style': 'Regular',
+            'text': '{{counter}}',
+            'font_size': '60',
+            'align': 'left'
+        }
+    ])
+
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png', 'text/plain']
+
+    # Check image
+    verify_image(response.data, 'tests/counter.png')
+
 
 # We cannot test the print functionality without a physical printer
 # def test_print_label(client):

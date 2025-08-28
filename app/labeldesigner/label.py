@@ -4,6 +4,8 @@ from PIL import Image, ImageDraw, ImageFont
 import logging
 import barcode
 from barcode.writer import ImageWriter
+import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +84,8 @@ class SimpleLabel:
             border_thickness=1,
             border_roundness=0,
             border_distance=(0, 0),
-            border_color=(0, 0, 0)):
+            border_color=(0, 0, 0),
+            timestamp=0):
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -100,6 +103,8 @@ class SimpleLabel:
         self._border_roundness = border_roundness
         self._border_distance = border_distance
         self._border_color = border_color
+        self._counter = 1
+        self._timestamp = timestamp
 
     @property
     def label_content(self):
@@ -343,6 +348,22 @@ class SimpleLabel:
         # Fix for completely empty text
         if len(self.text) == 0 or len(self.text[0]['text']) == 0:
             self.text[0]['text'] = " "
+            
+        # Loop over text lines and replace
+        # {{datetime:x}} by current datetime in specified format x
+        # {{counter}} by an incrementing counter
+        for line in self.text:
+            line['text'] = line['text'].replace("{{counter}}", str(self._counter))
+            # Replace {{datetime:x}} with current datetime formatted as x
+            def datetime_replacer(match):
+                fmt = match.group(1)
+                if self._timestamp > 0:
+                    now = datetime.datetime.fromtimestamp(self._timestamp)
+                else:
+                    now = datetime.datetime.now()
+                return now.strftime(fmt)
+            line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
+        self._counter += 1
 
         # Iterate over lines of text
         for i, line in enumerate(self.text):
