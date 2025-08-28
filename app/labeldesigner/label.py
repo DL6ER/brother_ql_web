@@ -108,10 +108,11 @@ class SimpleLabel:
     @label_content.setter
     def label_content(self, value):
         self._label_content = value
-    
-    @property
-    def want_text(self):
-        return self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
+
+    def want_text(self, img):
+        # We always want to draw text (even when empty) when no image is
+        # provided to avoid an error 500 because we created no image at all
+        return img is None or self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
     
     @property
     def need_image_text_distance(self):
@@ -221,7 +222,7 @@ class SimpleLabel:
         else:
             img_width, img_height = (0, 0)
 
-        if self.want_text:
+        if self.want_text(img):
             bboxes = self._draw_text(None, [])
             textsize = self._compute_bbox(bboxes)
         else:
@@ -276,7 +277,7 @@ class SimpleLabel:
         if img is not None:
             imgResult.paste(img, image_offset)
 
-        if self.want_text:
+        if self.want_text(img):
             self._draw_text(imgResult, bboxes, text_offset)
 
         # Check if the image needs rotation (only applied when generating
@@ -338,7 +339,12 @@ class SimpleLabel:
             img = Image.new('L', (20, 20), 'white')
         draw = ImageDraw.Draw(img)
         y = 0
-        logger.warning("Drawing text with offset %s", text_offset)
+
+        # Fix for completely empty text
+        if len(self.text) == 0 or len(self.text[0]['text']) == 0:
+            self.text[0]['text'] = " "
+
+        # Iterate over lines of text
         for i, line in enumerate(self.text):
             color = self._fore_color
 
