@@ -130,7 +130,7 @@ $(document).ready(function () {
     });
 });
 
-function formData(cut_once) {
+function formData(cut_once = false) {
     data = {
         text: JSON.stringify(fontSettingsPerLine),
         label_size: $('#labelSize').val(),
@@ -199,123 +199,107 @@ function updateStyles(style = null) {
     });
 }
 
-function preview() {
+function gen_label(print = false, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
-    if ($('#labelSize option:selected').data('round') == 'True') {
-        $('img#previewImg').addClass('roundPreviewImage');
-    } else {
-        $('img#previewImg').removeClass('roundPreviewImage');
-    }
 
-    if ($('input[name=orientation]:checked').val() == 'standard') {
-        $('.marginsTopBottom').prop('disabled', false).removeAttr('title');
-        $('.marginsLeftRight').prop('disabled', true).prop('title', 'Only relevant if rotated orientation is selected.');
-    } else {
-        $('.marginsTopBottom').prop('disabled', true).prop('title', 'Only relevant if standard orientation is selected.');
-        $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
-    }
-
-    if (printer_status['red_support']) {
-        if ($('#labelSize option:selected').val().includes('red')) {
-            $('#print_color_black').removeClass('disabled');
-            $('#print_color_red').removeClass('disabled');
-            $('#image_mode_red_and_black').removeClass('disabled');
-            $('#image_mode_colored').removeClass('disabled');
+    const preview = !print;
+    if(preview)
+    {
+        // Update preview image based on label size
+        if ($('#labelSize option:selected').data('round') == 'True') {
+            $('img#previewImg').addClass('roundPreviewImage');
         } else {
-            $('#print_color_black').addClass('disabled').prop('active', true);
-            $('#print_color_red').addClass('disabled');
-            $('#image_mode_red_and_black').addClass('disabled');
-            $('#image_mode_colored').addClass('disabled');
+            $('img#previewImg').removeClass('roundPreviewImage');
+        }
+
+        // Disable irrelevant margin controls
+        if ($('input[name=orientation]:checked').val() == 'standard') {
+            $('.marginsTopBottom').prop('disabled', false).removeAttr('title');
+            $('.marginsLeftRight').prop('disabled', true).prop('title', 'Only relevant if rotated orientation is selected.');
+        } else {
+            $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
+            $('.marginsTopBottom').prop('disabled', true).prop('title', 'Only relevant if standard orientation is selected.');
         }
     }
 
+    // Show or hide image upload box
     if ($('input[name=printType]:checked').val() == 'image') {
         $('#groupLabelImage').show();
     } else {
         $('#groupLabelImage').hide();
     }
 
+    // Update font settings for each line
     setFontSettingsPerLine();
-    setStatus({ 'preview': false });
 
+    // Update status box
+    setStatus(preview ? { 'preview': false } : { 'printing': false });
+
+    // Process image upload
     if ($('input[name=printType]:checked').val() == 'image') {
         dropZoneMode = 'preview';
         imageDropZone.processQueue();
         return;
     }
 
+    // Send printing request
+    const url = preview ? url_for_get_preview + '?return_format=base64' : url_for_print_label;
     $.ajax({
         type: 'POST',
-        url: url_for_get_preview + '?return_format=base64',
+        url: url,
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-        data: formData(),
+        data: formData(cut_once),
         success: function (data) {
             updatePreview(data);
         },
         error: function (xhr, _status, error) {
             message = xhr.responseJSON ? xhr.responseJSON.message : error;
             data = { 'success': false, 'message': message };
-            setStatus(data, 'Preview generation failed');
+            const text = preview ? 'Preview generation failed' : 'Printing failed';
+            setStatus(data, text);
         }
     });
 }
 
+function print(cut_once = false) {
+    gen_label(true, cut_once);
+}
+
+function preview() {
+    gen_label(false);
+}
+
 function setStatus(data, what = null) {
-    if (data.hasOwnProperty('preview')) {
+    if (data.hasOwnProperty('preview') || data.hasOwnProperty('printing')) {
         if (data['preview']) {
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-eye"></i><span>Preview generated successfully.</span></div>');
             // Status icon green checkmark
             $('#statusIcon').removeClass().addClass('float-right fas fa-check text-success');
         }
         else {
-            // We are currently busy preparing the preview
-            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Generating preview...</span></div>');
+            // We are currently busy preparing the preview / printing
+            const what = data.hasOwnProperty('printing') ? "Printing" : "Generating preview";
+            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>' + what + '...</span></div>');
             // Status icon muted hourglass
             $('#statusIcon').removeClass().addClass('float-right fas fa-hourglass-half text-muted');
         }
-        return;
     }
-    if (data['success']) {
+    else if (data['success']) {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
         // Status icon green printer
         $('#statusIcon').removeClass().addClass('float-right fas fa-print text-success');
     } else {
-        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + ':<br />' + data['message'] + '</span></div>');
+        extra_info = ''
+        if('message' in data) {
+            extra_info = ':<br />' + data['message']
+        }
+        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + extra_info + '</span></div>');
         // Status icon red exclamation
         $('#statusIcon').removeClass().addClass('float-right fas fa-exclamation-triangle text-danger');
     }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
-}
-
-function print(cut_once = false) {
-    $('#printButton').prop('disabled', true);
-    $('#dropdownPrintButton').prop('disabled', true);
-    $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Processing print request...</span></div>');
-
-    if ($('input[name=printType]:checked').val() == 'image') {
-        dropZoneMode = 'print';
-        imageDropZone.processQueue();
-        return;
-    }
-
-    $.ajax({
-        type: 'POST',
-        dataType: 'json',
-        contentType: 'application/json',
-        data: formData(cut_once),
-        url: url_for_print_text,
-        success: function () {
-            data = { 'success': true };
-            setStatus(data);
-        },
-        error: function (xhr, _status, error) {
-            message = xhr.responseJSON ? xhr.responseJSON.message : error;
-            data = { 'success': false, 'message': message };
-            setStatus(data, 'Printing failed');
-        }
-    });
 }
 
 var imageDropZone;
@@ -324,7 +308,7 @@ Dropzone.options.myAwesomeDropzone = {
         if (dropZoneMode == 'preview') {
             return url_for_get_preview + "?return_format=base64";
         } else {
-            return url_for_print_text;
+            return url_for_print_label;
         }
     },
     paramName: "image",
@@ -416,16 +400,17 @@ function updatePrinterStatus() {
     if (printerPath) {
         printerPath.textContent = printer_status.path || 'Unknown';
     }
-    if (printer_status['red_support']) {
+    if (printer_status['red_support'] === true && $('#labelSize option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
+            $('#print_color_black').prop('active', true);
         $(".red-support").hide();
     }
 
     const labelSizeX = document.getElementById('label-width');
     const labelSizeY = document.getElementById('label-height');
     if (labelSizeX && labelSizeY) {
-        labelSizeX.textContent = printer_status.media_width + " mm";
+        labelSizeX.textContent = printer_status.media_width ?? "???" + " mm";
         if (printer_status.media_length > 0) {
             labelSizeY.textContent = printer_status.media_length + " mm";
         }
@@ -443,7 +428,7 @@ function updatePrinterStatus() {
         const selectedOption = labelSizeSelect.options[labelSizeSelect.selectedIndex];
         const dataX = selectedOption.getAttribute('data-x');
         const dataY = selectedOption.getAttribute('data-y');
-        if (printer_status.media_width !== parseInt(dataX) || printer_status.media_length !== parseInt(dataY)) {
+        if (printer_status.media_width !== null && (printer_status.media_width !== parseInt(dataX) || printer_status.media_length !== parseInt(dataY))) {
             labelMismatch.style.display = '';
             labelMismatchIcon.style.display = '';
         } else {

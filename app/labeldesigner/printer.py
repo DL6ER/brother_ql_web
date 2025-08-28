@@ -92,20 +92,21 @@ class PrinterQueue:
             logger.info('Label printed successfully and printer is ready for next job')
             return True
 
+        logger.warning("Failed to print label")
         return False
 
 def get_ptr_status(device_specifier):
     status = {
         "errors": [],
         "path": device_specifier,
-        "media_category": "DK",
+        "media_category": None,
         "media_length": 0,
-        "media_type": "Continuous length tape",
-        "media_width": 62,
+        "media_type": None,
+        "media_width": None,
         "model": "Unknown",
-        "model_code": 56,
+        "model_code": None,
         "phase_type": "Unknown",
-        "series_code": 52,
+        "series_code": None,
         "setting": None,
         "status_code": 0,
         "status_type": "Unknown",

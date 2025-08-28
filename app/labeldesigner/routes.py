@@ -102,7 +102,7 @@ def get_printer_status():
 
 
 @bp.route('/api/print', methods=['POST', 'GET'])
-def print_text():
+def print_label():
     """
     API to print a label
 
@@ -160,6 +160,7 @@ def create_printer_from_request(request):
 
 # Parse text form data from frontend
 def parse_text_form(input):
+    current_app.logger.warning(input)
     if not input or len(input) == 0:
         return []
     return json.loads(input)

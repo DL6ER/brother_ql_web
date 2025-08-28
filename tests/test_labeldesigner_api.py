@@ -332,7 +332,7 @@ def test_image_black_fit(client):
     image_test(client, image_mode="black", fit=True)
 
 # We cannot test the print functionality without a physical printer
-# def test_print_text(client):
+# def test_print_label(client):
 #    data = {
 #        'print_type': 'text',
 #        'label_size': '62',

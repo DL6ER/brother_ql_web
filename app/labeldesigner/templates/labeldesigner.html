@@ -212,28 +212,28 @@
                         <div class="card-body">
                             <label for="marginTop" style="margin-bottom: 0">Margin Top:</label>
                             <div class="input-group marginsTopBottom">
-                                <input id="marginTop" class="form-control" type="number" min="0" max="200" value="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
+                                <input id="marginTop" class="form-control marginsTopBottom" type="number" min="0" max="200" value="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginTop-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginBottom" style="margin-top: 10px; margin-bottom: 0">Margin Bottom:</label>
                             <div class="input-group marginsTopBottom">
-                                <input id="marginBottom" class="form-control" type="number" min="0" max="200" value="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
+                                <input id="marginBottom" class="form-control marginsTopBottom" type="number" min="0" max="200" value="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginBottom-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginLeft" style="margin-top: 10px; margin-bottom: 0">Margin Left:</label>
                             <div class="input-group marginsLeftRight">
-                                <input id="marginLeft" class="form-control" type="number" min="0" max="200" value="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
+                                <input id="marginLeft" class="form-control marginsLeftRight" type="number" min="0" max="200" value="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginLeft-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginRight" style="margin-top: 10px; margin-bottom: 0">Margin Right:</label>
                             <div class="input-group marginsLeftRight">
-                                <input id="marginRight" class="form-control" type="number" min="0" max="200" value="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
+                                <input id="marginRight" class="form-control marginsLeftRight" type="number" min="0" max="200" value="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginRight-addon">px</span>
                                 </div>
@@ -358,7 +358,7 @@
 {% endblock %}
 
 {% block javascript %}
-const url_for_print_text = '{{ url_for('.print_text') }}';
+const url_for_print_label = '{{ url_for('.print_label') }}';
 const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
 const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';

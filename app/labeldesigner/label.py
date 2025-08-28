@@ -111,7 +111,7 @@ class SimpleLabel:
     
     @property
     def want_text(self):
-        return self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0
+        return self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
     
     @property
     def need_image_text_distance(self):
