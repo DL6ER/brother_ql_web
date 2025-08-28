@@ -265,25 +265,25 @@ function setStatus(data, what = null) {
     if (data.hasOwnProperty('preview')) {
         if (data['preview']) {
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-eye"></i><span>Preview generated successfully.</span></div>');
-            // Draw a black frame around the preview image
-            $('#previewImg').css('outline', '5px solid black');
+            // Status icon green checkmark
+            $('#statusIcon').removeClass().addClass('float-right fas fa-check text-success');
         }
         else {
             // We are currently busy preparing the preview
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>Generating preview...</span></div>');
-            // Draw a gray frame around the preview image
-            $('#previewImg').css('outline', '5px solid gray');
+            // Status icon muted hourglass
+            $('#statusIcon').removeClass().addClass('float-right fas fa-hourglass-half text-muted');
         }
         return;
     }
     if (data['success']) {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
-        // Draw a green frame around the preview image
-        $('#previewImg').css('outline', '5px solid green');
+        // Status icon green printer
+        $('#statusIcon').removeClass().addClass('float-right fas fa-print text-success');
     } else {
         $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + ':<br />' + data['message'] + '</span></div>');
-        // Draw a red frame around the preview image
-        $('#previewImg').css('outline', '5px solid red');
+        // Status icon red exclamation
+        $('#statusIcon').removeClass().addClass('float-right fas fa-exclamation-triangle text-danger');
     }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
