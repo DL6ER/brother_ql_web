@@ -182,7 +182,9 @@ class SimpleLabel:
                 else:
                     now = datetime.datetime.now()
                 return now.strftime(fmt)
-            line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
+            # Performance issue mitigation
+            if len(line['text']) < 100:
+                line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
 
             # Replace {{uuid}} with a new UUID
             if "{{uuid}}" in line['text']:
@@ -196,7 +198,9 @@ class SimpleLabel:
             def env_replacer(match):
                 var_name = match.group(1)
                 return os.getenv(var_name, "")
-            line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
+            # Performance issue mitigation
+            if len(line['text']) < 100:
+                line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
 
         # Increment counter
         self._counter += 1
