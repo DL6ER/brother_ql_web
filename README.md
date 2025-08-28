@@ -34,6 +34,10 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ![Native dark mode](./screenshots/image6.png)
 
+### Template support
+
+![Template support](./screenshots/image7.png)
+
 ## New Features
 
 - Automatic printer and label detection
@@ -57,6 +61,8 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
     - **QL-1110NWB**
     - **QL-1115NWB**
 -   Support individual fonts/sizes and spacing for each line of text on the labels
+-   Dynamic content replacement, e.g., using `{{datetime}}` and `{{counter}}` templates
+-   Import and export of labels in an easily editable format (JSON)
 -   Allow text inversion for emphasized text even without color
 -   Auto-fit images best onto the labels to avoid cropping
 -   Allow text together with images

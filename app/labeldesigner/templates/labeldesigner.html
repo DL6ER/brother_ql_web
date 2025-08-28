@@ -2,13 +2,19 @@
 
 {% block app_content %}
 <div class="row">
-    <!-- Dark mode toggle button -->
-    <div id="darkModeToggle"
-        style="position: absolute; top: 10px; right: 20px; z-index: 1000; cursor: pointer; font-size: 1.6em;">
-        <span id="darkModeIcon" title="Toggle dark mode" style="transition: color 0.2s;"></span>
+    <!-- Dark mode toggle button and settings buttons -->
+    <div style="position: absolute; top: 10px; right: 20px; z-index: 1000; display: flex; gap: 10px; align-items: center;">
+        <div id="darkModeToggle" style="cursor: pointer; font-size: 1.6em;">
+            <span id="darkModeIcon" title="Toggle dark mode" style="transition: color 0.2s;"></span>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="Settings">
+            <button type="button" id="exportSettings" class="btn btn-secondary" title="Export settings"><span class="fas fa-download"></span> Export</button>
+            <button type="button" id="importSettings" class="btn btn-secondary" title="Import settings"><span class="fas fa-upload"></span> Import</button>
+            <button type="button" id="resetSettings" class="btn btn-danger" title="Reset settings"><span class="fas fa-undo"></span> Reset</button>
+        </div>
     </div>
     <div class="col-md-4">
-        <fieldset class="form-group">
+    <fieldset class="form-group">
             <div class="accordion" id="accordion" style="max-height: 90vh; overflow-y: auto;">
 
                 <div class="card">
@@ -72,7 +78,7 @@
                                 </select>
                             </div>
                             <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" value="1" id="syncFontSettings" checked>
+                                <input class="form-check-input" type="checkbox" data-default="1" id="syncFontSettings" checked>
                                 <label class="form-check-label" for="syncFontSettings">
                                     Use same font for all lines
                                 </label>
@@ -92,7 +98,7 @@
                                     </select>
 
                                     <label for="fontSize" style="margin-top: 10px; margin-bottom: 0">Font Size:</label>
-                                    <input id="fontSize" class="form-control" type="number" min="1" value="{{default_font_size}}" onChange="preview()" required>
+                                    <input id="fontSize" class="form-control" type="number" min="1" data-default="{{default_font_size}}" onChange="preview()" required>
 
                                     <label for="fontAlign" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
                                     <div class="btn-group btn-group-toggle" data-toggle="buttons">
@@ -116,7 +122,7 @@
                                         {% endfor %}
                                     </div>
                                     <div class="form-check mb-2">
-                                        <input class="form-check-input" type="checkbox" onchange="preview()" value="1" id="fontInverted" checked>
+                                        <input class="form-check-input" type="checkbox" onchange="preview()" id="fontInverted" data-default="0">
                                         <label class="form-check-label" for="fontInverted">
                                             Invert text
                                         </label>
@@ -142,7 +148,7 @@
 
                             <div id="qrCodeSizeContainer">
                                 <label for="qrCodeSize" style="margin-top: 10px; margin-bottom: 0">QR Code Size:</label>
-                                <input id="qrCodeSize" class="form-control" type="number" min="1" value="{{default_qr_size}}" onChange="preview()"
+                                <input id="qrCodeSize" class="form-control" type="number" min="1" data-default="{{default_qr_size}}" onChange="preview()"
                                     required>
                             </div>
 
@@ -196,7 +202,7 @@
                             </div>
 
                             <label for="imageBwThreshold" style="margin-top: 10px; margin-bottom: 0">Black & White threshold:</label>
-                            <input id="imageBwThreshold" class="form-control" type="number" min="1" max="255" value="{{default_bw_threshold}}" onChange="preview()">
+                            <input id="imageBwThreshold" class="form-control" type="number" min="1" max="255" data-default="{{default_bw_threshold}}" onChange="preview()">
                         </div>
                         <!-- class="card-body" -->
                     </div>
@@ -212,41 +218,41 @@
                         <div class="card-body">
                             <label for="marginTop" style="margin-bottom: 0">Margin Top:</label>
                             <div class="input-group marginsTopBottom">
-                                <input id="marginTop" class="form-control" type="number" min="0" max="200" value="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
+                                <input id="marginTop" class="form-control marginsTopBottom" type="number" min="0" max="200" data-default="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginTop-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginBottom" style="margin-top: 10px; margin-bottom: 0">Margin Bottom:</label>
                             <div class="input-group marginsTopBottom">
-                                <input id="marginBottom" class="form-control" type="number" min="0" max="200" value="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
+                                <input id="marginBottom" class="form-control marginsTopBottom" type="number" min="0" max="200" data-default="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginBottom-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginLeft" style="margin-top: 10px; margin-bottom: 0">Margin Left:</label>
                             <div class="input-group marginsLeftRight">
-                                <input id="marginLeft" class="form-control" type="number" min="0" max="200" value="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
+                                <input id="marginLeft" class="form-control marginsLeftRight" type="number" min="0" max="200" data-default="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginLeft-addon">px</span>
                                 </div>
                             </div>
                             <label for="marginRight" style="margin-top: 10px; margin-bottom: 0">Margin Right:</label>
                             <div class="input-group marginsLeftRight">
-                                <input id="marginRight" class="form-control" type="number" min="0" max="200" value="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
+                                <input id="marginRight" class="form-control marginsLeftRight" type="number" min="0" max="200" data-default="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
                                 <div class="input-group-append">
                                     <span class="input-group-text" id="marginRight-addon">px</span>
                                 </div>
                             </div>
                             <hr style="margin: 1.2em 0;" />
                             <label for="borderThickness" style="margin-bottom: 0">Border Thickness (0 = disabled):</label>
-                            <input id="borderThickness" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <input id="borderThickness" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
                             <label for="borderRoundness" style="margin-bottom: 0">Border Roundness:</label>
-                            <input id="borderRoundness" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <input id="borderRoundness" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
                             <label for="borderDistanceX" style="margin-bottom: 0">Border Distance (left/right):</label>
-                            <input id="borderDistanceX" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <input id="borderDistanceX" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
                             <label for="borderDistanceY" style="margin-bottom: 0">Border Distance (top/bottom):</label>
-                            <input id="borderDistanceY" class="form-control mb-2" type="number" min="0" value="0" onChange="preview()" />
+                            <input id="borderDistanceY" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
 
                             <div class="red-support">
                                 <label for="borderColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
@@ -310,25 +316,52 @@
             </label>
         </div>
 
-        <fieldset class="form-group" id="groupLabelText">
-            <label for="labelText" style="margin-top: 10px; margin-bottom: 0">Label Text:</label>
-            <textarea rows="7" id="labelText" class="form-control" onChange="preview()" onInput="preview()"></textarea>
-        </fieldset>
         <fieldset class="form-group" id="groupLabelImage">
             <label style="margin-top: 10px; margin-bottom: 0">Label Image:</label>
             <form class="dropzone" id="my-awesome-dropzone">
             </form>
         </fieldset>
+        <fieldset class="form-group" id="groupLabelText">
+            <label for="labelText" style="margin-top: 10px; margin-bottom: 0">Label Text:</label>
+            <textarea rows="7" id="labelText" class="form-control" onChange="preview()" onInput="preview()" data-default=""></textarea>
+            <!-- Template info box -->
+            <div class="card mt-2" style="font-size: 0.95em;">
+                <div class="card-header p-2" style="cursor: pointer; user-select: none;" data-toggle="collapse"
+                    data-target="#templateInfoBox" aria-expanded="false" aria-controls="templateInfoBox">
+                    <span class="fas fa-info-circle" aria-hidden="true"></span>
+                    <span style="margin-left: 0.5em;">About label templates <span
+                            class="fas fa-chevron-down float-right"></span></span>
+                </div>
+                <div id="templateInfoBox" class="collapse">
+                    <div class="card-body pt-2 pb-2">
+                        <strong>Templates</strong> allow you to insert dynamic content into your label text. Supported
+                        templates:<br>
+                        <ul style="margin-bottom: 0.5em;">
+                            <li><code>{{'{{datetime:%H:%M:%S %d.%m.%Y'}}}}</code> — Inserts the current date and time when printing.
+                                You can customize the format using <a href="https://strftime.org/" target="_blank"
+                                    rel="noopener">strftime</a> options.</li>
+                            <li><code>{{'{{counter'}}}}</code> — Inserts an up-counting number, increasing for every printed label.
+                            </li>
+                            <li><code>{{'{{uuid'}}}}</code> — Inserts a random UUID (Universally Unique Identifier).</li>
+                            <li><code>{{'{{short-uuid'}}}}</code> — Inserts a shortened version of a UUID.</li>
+                            <li><code>{{'{{env:var}}'}}</code> — Inserts the value of the environment variable <code>var</code>.
+                            </li>
+                        </ul>
+                        <span class="text-muted">Templates are replaced at print time.</span>
+                    </div>
+                </div>
+            </div>
+        </fieldset>
     </div>
     <div class="col-md-4">
-        <fieldset class="form-group">
+    <fieldset class="form-group">
             <label for="previewImg" style="margin-bottom: 0">Label Preview:</label><br />
             <img id="previewImg" style="max-height: 350px; width: auto; max-width: 100%; display: block; margin-bottom: 1em;" />
             <p>Printed size: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
 
             <div class="form-group">
                 <label for="printCount" style="margin-top: 10px; margin-bottom: 0">Print Count:</label>
-                <input id="printCount" class="form-control" type="number" min="1" max="100" value="1" required>
+                <input id="printCount" class="form-control" type="number" min="1" max="100" data-default="1" required>
             </div>
 
             <div class="btn-group btn-block">
@@ -347,6 +380,7 @@
         <div class="card">
             <div class="card-header">
                 <span class="fas fa-terminal" aria-hidden="true" style="margin-right: 0.3em"></span> Status
+                <span id="statusIcon" class="float-right fas fa-exclamation-triangle" aria-hidden="true"></span>
             </div>
             <div id="statusPanel" class="card-body">
                 <div id="statusBox" class="alert alert-secondary" role="alert"><span>Idle...</span></div>
@@ -357,7 +391,7 @@
 {% endblock %}
 
 {% block javascript %}
-const url_for_print_text = '{{ url_for('.print_text') }}';
+const url_for_print_label = '{{ url_for('.print_label') }}';
 const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
 const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';

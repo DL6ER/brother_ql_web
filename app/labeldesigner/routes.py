@@ -102,7 +102,7 @@ def get_printer_status():
 
 
 @bp.route('/api/print', methods=['POST', 'GET'])
-def print_text():
+def print_label():
     """
     API to print a label
 
@@ -188,6 +188,7 @@ def create_label_from_request(request):
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': int(d.get('image_fit', 1)) > 0,
         'print_color': d.get('print_color', 'black'),
+        'timestamp': int(d.get('timestamp', 0))
     }
 
     def get_label_dimensions(label_size):
@@ -299,5 +300,6 @@ def create_label_from_request(request):
         border_thickness=context['border_thickness'],
         border_roundness=context['border_roundness'],
         border_distance=(context['border_distanceX'], context['border_distanceY']),
-        border_color=border_color
+        border_color=border_color,
+        timestamp=context['timestamp']
     )

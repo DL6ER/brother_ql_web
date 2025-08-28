@@ -6,8 +6,12 @@ services:
     restart: always
     ports:
       - "8013:8013"
+    environment:
+      - TZ=Europe/Berlin
 #    devices:
 #      - "/dev/usb/lp0:/dev/usb/lp0"
+    volumes:
+      - /etc/timezone:/etc/timezone:ro
     command: >
       --model QL-800
       --default-label-size 62

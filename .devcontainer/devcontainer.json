@@ -26,9 +26,11 @@
         }
     },
     "runArgs": [
-//        "-v",
-//        "/dev/bus/lp0:/dev/bus/lp0",
-//        "/dev/bus/lp1:/dev/bus/lp1",
-//        "/dev/bus/lp2:/dev/bus/lp2"
+        "-e",
+        "TZ=Europe/Berlin"
+        //        "-v",
+        //        "/dev/usb/lp0:/dev/usb/lp0",
+        //        "/dev/usb/lp1:/dev/usb/lp1",
+        //        "/dev/usb/lp2:/dev/usb/lp2"
     ]
 }
