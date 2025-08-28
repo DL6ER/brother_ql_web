@@ -201,11 +201,10 @@ function updateStyles(style = null) {
     });
 }
 
-function gen_label(print = false, cut_once = false) {
+function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
 
-    const preview = !print;
     if(preview)
     {
         // Update preview image based on label size
@@ -240,13 +239,13 @@ function gen_label(print = false, cut_once = false) {
 
     // Process image upload
     if ($('input[name=printType]:checked').val() == 'image') {
-        dropZoneMode = 'preview';
+        dropZoneMode = preview ? 'preview' : 'print';
         imageDropZone.processQueue();
         return;
     }
 
     // Send printing request
-    const url = preview ? url_for_get_preview + '?return_format=base64' : url_for_print_label;
+    const url = preview ? (url_for_get_preview + '?return_format=base64') : url_for_print_label;
     $.ajax({
         type: 'POST',
         url: url,
@@ -265,11 +264,11 @@ function gen_label(print = false, cut_once = false) {
 }
 
 function print(cut_once = false) {
-    gen_label(true, cut_once);
+    gen_label(false, cut_once);
 }
 
 function preview() {
-    gen_label(false);
+    gen_label(true);
 }
 
 function setStatus(data, what = null) {
