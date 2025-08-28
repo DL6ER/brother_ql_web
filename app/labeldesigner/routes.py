@@ -160,7 +160,6 @@ def create_printer_from_request(request):
 
 # Parse text form data from frontend
 def parse_text_form(input):
-    current_app.logger.warning(input)
     if not input or len(input) == 0:
         return []
     return json.loads(input)

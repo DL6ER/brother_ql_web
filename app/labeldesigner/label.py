@@ -372,7 +372,7 @@ class SimpleLabel:
                 logger.error(f"Unsupported alignment: {align}")
                 return
 
-            if do_draw and 'font_inverted' in line and line['font_inverted'] == "true":
+            if do_draw and 'font_inverted' in line and line['font_inverted']:
                 # Draw a filled rectangle
                 center_x = 0
                 if anchor == "lt":

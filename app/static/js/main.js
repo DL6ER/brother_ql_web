@@ -104,9 +104,11 @@ $(document).ready(function () {
         // Set font size
         $('#fontSize').val(fs.font_size);
         // Set alignment
-        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+        $('input[name=fontAlign]').prop('checked', false).parent().removeClass('active');
+        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active');
         // Set line spacing
-        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active').siblings().removeClass('active');
+        $('input[name=lineSpacing]').prop('checked', false).parent().removeClass('active');
+        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active');
         // Set font inversion
         $('#fontInverted').prop('checked', fs.font_inverted);
     });
@@ -461,9 +463,128 @@ function getPrinterStatus() {
         });
 }
 
+// --- Local Storage Save/Restore/Export/Import/Reset ---
+const LS_KEY = 'labeldesigner_settings_v1';
+function saveAllSettingsToLocalStorage() {
+    const data = {};
+    // Save all input/select/textarea values
+    $('input, select, textarea').each(function() {
+        const key = this.id.length > 0 ? this.id : this.name;
+        if (key.length == 0) return;
+        if (this.type === 'checkbox') {
+            data[key] = $(this).is(':checked');
+        }
+        else if (this.type === 'radio') {
+            if ($(this).is(':checked')) {
+                data[key] = $(this).val();
+            }
+        } else {
+            data[key] = $(this).val();
+        }
+    });
+    // Save fontSettingsPerLine if available
+    if (window.fontSettingsPerLine) {
+        data['fontSettingsPerLine'] = JSON.stringify(window.fontSettingsPerLine);
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(data));
+}
+
+function restoreAllSettingsFromLocalStorage() {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    let data;
+    try { data = JSON.parse(raw); } catch { return; }
+    $('input, select, textarea').each(function() {
+        const key = this.id || this.name;
+        if (!(key in data)) return;
+        if (this.type === 'checkbox' || this.type === 'radio') {
+            $(this).prop('checked', !!data[key]);
+            if (this.type === 'radio') {
+                if ($(this).val() == data[key]) $(this).prop('checked', true);
+            }
+        } else {
+            $(this).val(data[key]);
+        }
+    });
+    // Restore fontSettingsPerLine if available
+    if (data['fontSettingsPerLine'] && window.fontSettingsPerLine) {
+        try {
+            window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
+            $('#lineSelect').val(0).trigger('change');
+        } catch {}
+    }
+    // Trigger preview after restore
+    setTimeout(() => { if (typeof preview === 'function') preview(); }, 100);
+}
+
+function exportSettings() {
+    const data = localStorage.getItem(LS_KEY) || '{}';
+    const blob = new Blob([data], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'labeldesigner_settings.json';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+}
+
+function importSettings() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json';
+    input.onchange = function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(evt) {
+            try {
+                localStorage.setItem(LS_KEY, evt.target.result);
+                restoreAllSettingsFromLocalStorage();
+            } catch {}
+        };
+        reader.readAsText(file);
+    };
+    input.click();
+}
+
+function resetSettings() {
+    if (confirm('Reset all settings to default?')) {
+        localStorage.removeItem(LS_KEY);
+        // Reset font settings
+        window.fontSettingsPerLine = {};
+        set_all_inputs_default(true);
+        location.reload();
+    }
+}
+
+function set_all_inputs_default(force = false) {
+    // Iterate over those <input> that have a data-default propery and set the value if empty
+    $('input[data-default], select[data-default], textarea[data-default]').each(function() {
+        if (!$(this).val() || force) {
+            $(this).val($(this).data('default'));
+        }
+        if (this.type === 'checkbox') {
+            $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') === true);
+        }
+    });
+}
+
 window.onload = function () {
+    set_all_inputs_default();
     getPrinterStatus();
     // Update printer status every 5 seconds
     setInterval(getPrinterStatus, 5000);
     updateStyles(); // this also triggers preview()
+
+    // Restore settings on load
+    restoreAllSettingsFromLocalStorage();
+    // Save on change
+    $(document).on('change input', 'input, select, textarea', function() {
+        saveAllSettingsToLocalStorage();
+    });
+    // Export/Import/Reset buttons
+    $('#exportSettings').on('click', exportSettings);
+    $('#importSettings').on('click', importSettings);
+    $('#resetSettings').on('click', resetSettings);
 };
