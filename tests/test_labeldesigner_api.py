@@ -24,8 +24,8 @@ def verify_image(response_data, expected_image_path):
     if not UPDATE_IMAGES and os.path.isfile(expected_image_path):
         with open(expected_image_path, 'rb') as f:
             expected_data = f.read()
-        assert response_data == expected_data
-        return
+        if response_data != expected_data:
+            raise AssertionError("Generated image does not match expected image")
 
     # Write image into file
     with open(expected_image_path, 'wb') as f:
@@ -333,38 +333,26 @@ def test_image_black_fit(client):
     image_test(client, image_mode="black", fit=True)
 
 
-def test_generate_datetime(client):
+def test_generate_template(client):
     data = EXAMPLE_FORMDATA.copy()
     # Mock current datetime.now
-    data['timestamp'] = int(datetime(2023, 1, 1, 12, 0, 0).timestamp())
+    data['timestamp'] = int(datetime(2023, 3, 18, 12, 15, 30).timestamp())
 
     data['text'] = json.dumps([
         {
             'font_family': 'DejaVu Sans',
             'font_style': 'Regular',
-            'text': '{{datetime:%d.%m.%Y %H:%M:%S}}',
+            'text': '{{datetime:%d.%m.%Y %H:%M:%S}} COUNTER: {{counter}}',
             'font_size': '30',
             'align': 'left'
-        }
-    ])
-
-    response = client.post('/labeldesigner/api/preview', data=data)
-    assert response.status_code == 200
-    assert response.content_type in ['image/png', 'text/plain']
-
-    # Check image
-    verify_image(response.data, 'tests/datetime.png')
-
-
-def test_generate_counter(client):
-    data = EXAMPLE_FORMDATA.copy()
-    data['text'] = json.dumps([
+        },
         {
             'font_family': 'DejaVu Sans',
             'font_style': 'Regular',
-            'text': '{{counter}}',
-            'font_size': '60',
-            'align': 'left'
+            'text': '>> {{datetime:Label created at %H:%M on %m/%d/%y}} <<',
+            'font_size': '20',
+            'align': 'right',
+            'font_inverted': True
         }
     ])
 
@@ -373,7 +361,7 @@ def test_generate_counter(client):
     assert response.content_type in ['image/png', 'text/plain']
 
     # Check image
-    verify_image(response.data, 'tests/counter.png')
+    verify_image(response.data, 'tests/template.png')
 
 
 # We cannot test the print functionality without a physical printer

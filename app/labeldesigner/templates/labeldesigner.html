@@ -324,6 +324,33 @@
         <fieldset class="form-group" id="groupLabelText">
             <label for="labelText" style="margin-top: 10px; margin-bottom: 0">Label Text:</label>
             <textarea rows="7" id="labelText" class="form-control" onChange="preview()" onInput="preview()" data-default=""></textarea>
+            <!-- Template info box -->
+            <div class="card mt-2" style="font-size: 0.95em;">
+                <div class="card-header p-2" style="cursor: pointer; user-select: none;" data-toggle="collapse"
+                    data-target="#templateInfoBox" aria-expanded="false" aria-controls="templateInfoBox">
+                    <span class="fas fa-info-circle" aria-hidden="true"></span>
+                    <span style="margin-left: 0.5em;">About label templates <span
+                            class="fas fa-chevron-down float-right"></span></span>
+                </div>
+                <div id="templateInfoBox" class="collapse">
+                    <div class="card-body pt-2 pb-2">
+                        <strong>Templates</strong> allow you to insert dynamic content into your label text. Supported
+                        templates:<br>
+                        <ul style="margin-bottom: 0.5em;">
+                            <li><code>{{'{{datetime:%H:%M:%S %d.%m.%Y'}}}}</code> — Inserts the current date and time when printing.
+                                You can customize the format using <a href="https://strftime.org/" target="_blank"
+                                    rel="noopener">strftime</a> options.</li>
+                            <li><code>{{'{{counter'}}}}</code> — Inserts an up-counting number, increasing for every printed label.
+                            </li>
+                            <li><code>{{'{{uuid'}}}}</code> — Inserts a random UUID (Universally Unique Identifier).</li>
+                            <li><code>{{'{{short-uuid'}}}}</code> — Inserts a shortened version of a UUID.</li>
+                            <li><code>{{'{{env:var}}'}}</code> — Inserts the value of the environment variable <code>var</code>.
+                            </li>
+                        </ul>
+                        <span class="text-muted">Templates are replaced at print time.</span>
+                    </div>
+                </div>
+            </div>
         </fieldset>
     </div>
     <div class="col-md-4">
