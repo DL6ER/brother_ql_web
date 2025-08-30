@@ -245,7 +245,7 @@ function gen_label(preview = true, cut_once = false) {
     }
 
     // Send printing request
-    const url = preview ? (url_for_get_preview + '?return_format=base64') : url_for_print_label;
+    const url = preview ? (url_for_preview + '?return_format=base64') : url_for_print;
     $.ajax({
         type: 'POST',
         url: url,
@@ -307,9 +307,9 @@ var imageDropZone;
 Dropzone.options.myAwesomeDropzone = {
     url: function () {
         if (dropZoneMode == 'preview') {
-            return url_for_get_preview + "?return_format=base64";
+            return url_for_preview + "?return_format=base64";
         } else {
-            return url_for_print_label;
+            return url_for_print;
         }
     },
     paramName: "image",

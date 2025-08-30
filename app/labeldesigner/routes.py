@@ -67,21 +67,22 @@ def get_barcodes():
     }
 
 
-@bp.route('/api/preview', methods=['POST', 'GET'])
-def get_preview_from_image():
+@bp.route('/api/preview', methods=['POST'])
+def preview_from_image():
     # Set log level if provided
     log_level = request.values.get('log_level')
     if log_level:
         level = getattr(logging, log_level.upper(), None)
         if isinstance(level, int):
             current_app.logger.setLevel(level)
-    label = create_label_from_request(request)
     try:
+        label = create_label_from_request(request)
         im = label.generate(rotate=True)
     except Exception as e:
         current_app.logger.exception(e)
-        # Generate error 400 response
-        return make_response(jsonify({'message': str(e)}), 400)
+        error = 413 if "too long" in str(e) else 400
+        # Generate error response
+        return make_response(jsonify({'message': str(e)}), error)
 
     return_format = request.values.get('return_format', 'png')
 
@@ -198,45 +199,42 @@ def create_label_from_request(request):
             raise LookupError("Unknown label_size")
         return ls['dots_printable']
 
-    def get_font_path(font_family_name, font_style_name):
+    def get_font_path(line: dict):
         try:
-            if font_family_name is None or font_style_name is None:
-                font_family_name = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
-                font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+            font_family_name = line.get('font_family')
+            font_style_name = line.get('font_style')
             if font_family_name not in FONTS.fonts:
                 raise LookupError("Unknown font family: %s" % font_family_name)
             if font_style_name not in FONTS.fonts[font_family_name]:
                 font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
             if font_style_name not in FONTS.fonts[font_family_name]:
-                raise LookupError("Unknown font style: %s for font %s" % (font_style_name, font_family_name))
+                raise LookupError("Unknown font style: %s for font %s" %
+                                  (font_style_name, font_family_name))
             font_path = FONTS.fonts[font_family_name][font_style_name]
         except KeyError:
             raise LookupError("Couln't find the font & style")
         return font_path
 
     def get_uploaded_image(image):
-        try:
-            name, ext = os.path.splitext(image.filename)
-            if ext.lower() in ('.png', '.jpg', '.jpeg'):
-                image = imgfile_to_image(image)
-                if context['image_mode'] == 'grayscale':
-                    return convert_image_to_grayscale(image)
-                elif context['image_mode'] == 'red_and_black':
-                    return convert_image_to_red_and_black(image)
-                elif context['image_mode'] == 'colored':
-                    return image
-                else:
-                    return convert_image_to_bw(image, context['image_bw_threshold'])
-            elif ext.lower() in ('.pdf'):
-                image = pdffile_to_image(image, DEFAULT_DPI)
-                if context['image_mode'] == 'grayscale':
-                    return convert_image_to_grayscale(image)
-                else:
-                    return convert_image_to_bw(image, context['image_bw_threshold'])
+        name, ext = os.path.splitext(image.filename)
+        if ext.lower() in ('.png', '.jpg', '.jpeg'):
+            image = imgfile_to_image(image)
+            if context['image_mode'] == 'grayscale':
+                return convert_image_to_grayscale(image)
+            elif context['image_mode'] == 'red_and_black':
+                return convert_image_to_red_and_black(image)
+            elif context['image_mode'] == 'colored':
+                return image
             else:
-                return None
-        except AttributeError:
-            return None
+                return convert_image_to_bw(image, context['image_bw_threshold'])
+        elif ext.lower() in ('.pdf'):
+            image = pdffile_to_image(image, DEFAULT_DPI)
+            if context['image_mode'] == 'grayscale':
+                return convert_image_to_grayscale(image)
+            else:
+                return convert_image_to_bw(image, context['image_bw_threshold'])
+        else:
+            raise ValueError("Unsupported file type")
 
     if context['print_type'] == 'text':
         label_content = LabelContent.TEXT_ONLY
@@ -271,12 +269,29 @@ def create_label_from_request(request):
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
 
+    # Fix for completely empty text
+    if len(context['text']) > 0 and len(context['text'][0]['text']) == 0:
+        context['text'][0]['text'] = " "
+
     # For each line in text, we determine and add the font path
     for line in context['text']:
-        line['font_path'] = get_font_path(line['font_family'], line['font_style'])
+        if 'font_family' not in line:
+            line['font_family'] = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
+        if 'font_style' not in line:
+            line['font_style'] = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+        if 'font_size' not in line:
+            raise ValueError("Font size is required")
+        line['font_path'] = get_font_path(line)
+
+        # Reject extraordinary long texts
+        if len(line['text']) > 10_000:
+            raise ValueError("Text is too long")
 
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
+
+    uploaded = request.files.get('image', None)
+    image = get_uploaded_image(uploaded) if uploaded is not None else None
 
     return SimpleLabel(
         width=width,
@@ -295,7 +310,7 @@ def create_label_from_request(request):
         barcode_type=context['barcode_type'],
         qr_size=context['qrcode_size'],
         qr_correction=context['qrcode_correction'],
-        image=get_uploaded_image(request.files.get('image', None)),
+        image=image,
         image_fit=context['image_fit'],
         border_thickness=context['border_thickness'],
         border_roundness=context['border_roundness'],

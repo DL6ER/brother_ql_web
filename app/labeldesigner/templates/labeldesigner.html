@@ -391,8 +391,8 @@
 {% endblock %}
 
 {% block javascript %}
-const url_for_print_label = '{{ url_for('.print_label') }}';
-const url_for_get_preview = '{{ url_for('.get_preview_from_image') }}';
+const url_for_print = '{{ url_for('.print_label') }}';
+const url_for_preview = '{{ url_for('.preview_from_image') }}';
 const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
 const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
