@@ -99,7 +99,7 @@ def test_generate_preview(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_simple.png')
+    verify_image(response.data, 'tests/simple.png')
 
 
 def test_generate_preview_inverted(client):
@@ -143,7 +143,7 @@ def test_generate_preview_inverted(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_inverted.png')
+    verify_image(response.data, 'tests/inverted.png')
 
 
 def test_generate_preview_rotated(client):
@@ -170,7 +170,7 @@ def test_generate_preview_rotated(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_rotated.png')
+    verify_image(response.data, 'tests/rotated.png')
 
 
 def test_generate_ean13(client):
@@ -198,7 +198,7 @@ def test_generate_ean13(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_ean13.png')
+    verify_image(response.data, 'tests/ean13.png')
 
 
 def test_invalid_ean13(client):
@@ -253,7 +253,7 @@ def test_generate_qr(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_qr.png')
+    verify_image(response.data, 'tests/qr.png')
 
 
 def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
@@ -283,7 +283,7 @@ def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool =
             }
         ])
 
-    expected_img_path = "tests/preview_image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
+    expected_img_path = "tests/image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
