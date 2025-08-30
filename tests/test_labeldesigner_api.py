@@ -567,11 +567,32 @@ def test_invalid_http_methods(client, method):
     assert response.status_code == 405
 
 
+def test_print_red_text(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Red Text', 'font_size': '24', 'align': 'center', 'font_color': 'red'},
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Red Text INVERTED', 'font_size': '24', 'align': 'center', 'font_inverted': True, 'font_color': 'red'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png']
+
+    # Check image
+    verify_image(response.data, 'tests/red_text.png')
+
+
 def test_large_number_of_text_blocks(client):
     data = EXAMPLE_FORMDATA.copy()
     ALIGNS = ['center', 'left', 'right']
     data['text'] = json.dumps([
-        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': f'--- {i} ---', 'font_size': str(i + 1), 'align': ALIGNS[i % 3], 'font_inverted': bool(i % 2)} for i in range(100)
+        {'font_family': 'DejaVu Sans',
+         'font_style': 'Regular',
+         'text': f'--- {i} ---',
+         'font_size': str(i + 1),
+         'align': ALIGNS[i % 3],
+         'font_inverted': bool(i % 2),
+         'font_color': 'red' if i % 5 == 0 else 'black'
+        } for i in range(100)
     ])
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200

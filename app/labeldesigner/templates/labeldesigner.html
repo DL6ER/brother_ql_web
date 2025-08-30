@@ -46,19 +46,6 @@
                                     <span class="fas fa-ruler-vertical" aria-hidden="true"> Rotated
                                 </label>
                             </div>
-
-                            <div class="red-support">
-                                <label for="printColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print Color:</label>
-                                <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
-                                    <label class="btn btn-dark" id="print_color_black">
-                                        <input type="radio" name="printColor" onchange="preview()" value="black" aria-label="Black">Black
-                                    </label>
-                                    <label class="btn btn-danger" id="print_color_red">
-                                        <input type="radio" name="printColor" onchange="preview()" value="red" aria-label="Red">Red
-                                    </label>
-                                </div>
-                            </div>
-
                         </div>
                         <!-- class="card-body" -->
                     </div>
@@ -126,6 +113,18 @@
                                         <label class="form-check-label" for="fontInverted">
                                             Invert text
                                         </label>
+                                    </div>
+                                    <div class="red-support">
+                                        <label for="printColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
+                                            Color:</label>
+                                        <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                            <label class="btn btn-dark" id="print_color_black">
+                                                <input type="radio" name="fontColor" onchange="preview()" value="black" aria-label="Black">Black
+                                            </label>
+                                            <label class="btn btn-danger" id="print_color_red">
+                                                <input type="radio" name="fontColor" onchange="preview()" value="red" aria-label="Red">Red
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

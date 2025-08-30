@@ -289,6 +289,8 @@ def create_label_from_request(request):
         if len(line['text']) > 10_000:
             raise ValueError("Text is too long")
 
+#    if context['print_color'] == 'red' and not context['red_support']:
+#        raise ValueError("Red font is not supported on this label")
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 

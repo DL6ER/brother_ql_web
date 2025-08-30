@@ -23,7 +23,8 @@ function setFontSettingsPerLine() {
         font_size: $('#fontSize').val(),
         font_inverted: $('#fontInverted').is(':checked'),
         align: $('input[name=fontAlign]:checked').val(),
-        line_spacing: $('input[name=lineSpacing]:checked').val()
+        line_spacing: $('input[name=lineSpacing]:checked').val(),
+        font_color: $('#fontColor').val()
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -111,6 +112,9 @@ $(document).ready(function () {
         $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active');
         // Set font inversion
         $('#fontInverted').prop('checked', fs.font_inverted);
+        // Set font color
+        $('input[name=fontColor]').prop('checked', false).parent().removeClass('active');
+        $('input[name=fontColor][value="' + fs.font_color + '"]').prop('checked', true).parent().addClass('active');
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
@@ -401,7 +405,7 @@ function updatePrinterStatus() {
     if (printerPath) {
         printerPath.textContent = printer_status.path || 'Unknown';
     }
-    if (printer_status['red_support'] === true && $('#labelSize option:selected').val().includes('red')) {
+    if ($('#labelSize option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
             $('#print_color_black').prop('active', true);

@@ -87,7 +87,8 @@ class SimpleLabel:
             border_roundness=0,
             border_distance=(0, 0),
             border_color=(0, 0, 0),
-            timestamp=0):
+            timestamp=0,
+            red_support=False):
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -108,6 +109,7 @@ class SimpleLabel:
         self._border_color = border_color
         self._counter = 1
         self._timestamp = timestamp
+        self._red_support = red_support
 
     @property
     def label_content(self):
@@ -394,8 +396,6 @@ class SimpleLabel:
 
         # Iterate over lines of text
         for i, line in enumerate(self.text):
-            color = self._fore_color
-
             # Calculate spacing
             spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
 
@@ -419,6 +419,11 @@ class SimpleLabel:
             else:
                 raise ValueError(f"Unsupported alignment: {align}")
 
+            red_font = 'font_color' in line and line['font_color'] == 'red'
+#            if red_font and not self._red_support:
+#                raise ValueError("Red font is not supported on this label")
+            color = (255, 0, 0) if red_font else (0, 0, 0)
+
             if do_draw and 'font_inverted' in line and line['font_inverted']:
                 # Draw a filled rectangle
                 center_x = 0
@@ -437,7 +442,8 @@ class SimpleLabel:
                 shift = 0.1 * int(line['font_size'])
                 y_min = bboxes[i][0][1] + text_offset[1] - shift
                 y_max = bboxes[i][0][3] + text_offset[1] - shift
-                draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=self._fore_color)
+                draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=color)
+                # Overwrite font color with white on colored background
                 color = (255, 255, 255)
 
             # Either calculate bbox or actually draw
