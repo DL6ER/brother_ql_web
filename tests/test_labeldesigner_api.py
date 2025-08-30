@@ -229,7 +229,7 @@ def test_invalid_ean13(client):
     assert response.status_code == 400
     assert response.is_json
     data = response.get_json()
-    assert data['message'] == 'EAN must have 12 digits, not 10.'
+    assert data['message'] == 'EAN must have 12 digits, received 10.'
 
 
 def test_generate_qr(client):
