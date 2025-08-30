@@ -195,19 +195,18 @@ def create_label_from_request(request):
 
     def get_font_path(line: dict):
         try:
-            font_family_name = line.get('font_family')
-            font_style_name = line.get('font_style')
-            if font_family_name not in FONTS.fonts:
-                raise LookupError("Unknown font family: %s" % font_family_name)
-            if font_style_name not in FONTS.fonts[font_family_name]:
-                font_style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
-            if font_style_name not in FONTS.fonts[font_family_name]:
+            family_name = line.get('family')
+            style_name = line.get('style')
+            if family_name not in FONTS.fonts:
+                raise LookupError("Unknown font family: %s" % family_name)
+            if style_name not in FONTS.fonts[family_name]:
+                style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+            if style_name not in FONTS.fonts[family_name]:
                 raise LookupError("Unknown font style: %s for font %s" %
-                                  (font_style_name, font_family_name))
-            font_path = FONTS.fonts[font_family_name][font_style_name]
+                                  (style_name, family_name))
+            return FONTS.fonts[family_name][style_name]
         except KeyError:
-            raise LookupError("Couln't find the font & style")
-        return font_path
+            raise LookupError("Couldn't find the requested font + style")
 
     def get_uploaded_image(image):
         name, ext = os.path.splitext(image.filename)
@@ -269,18 +268,22 @@ def create_label_from_request(request):
 
     # For each line in text, we determine and add the font path
     for line in context['text']:
-        if 'font_family' not in line:
-            line['font_family'] = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
-        if 'font_style' not in line:
-            line['font_style'] = current_app.config['LABEL_DEFAULT_FONT_STYLE']
-        if 'font_size' not in line:
+        if 'family' not in line:
+            line['family'] = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
+        if 'style' not in line:
+            line['style'] = current_app.config['LABEL_DEFAULT_FONT_STYLE']
+        if 'size' not in line or not line['size'].isdigit():
             raise ValueError("Font size is required")
-        line['font_path'] = get_font_path(line)
+        if int(line['size']) < 1:
+            raise ValueError("Font size must be at least 1")
+        line['path'] = get_font_path(line)
 
         # Reject extraordinary long texts
         if len(line['text']) > 10_000:
             raise ValueError("Text is too long")
 
+#    if context['print_color'] == 'red' and not context['red_support']:
+#        raise ValueError("Red font is not supported on this label")
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
