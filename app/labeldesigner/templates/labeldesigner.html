@@ -29,8 +29,10 @@
                     <div id="collapse1" class="collapse" aria-labelledby="heading1" data-parent="#accordion">
                         <div class="card-body">
                             <label for="labelSize" style="margin-bottom: 0">Label Size:</label>
-                            <select class="form-control" id="labelSize" onChange="preview()">
-                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}" data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size == label_size[0] %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
+                            <select class="form-control" id="labelSize" onChange="preview()" data-default="{{default_label_size}}">
+                                {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}"
+                                    data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size==label_size[0]
+                                    %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
                             </select>
                             <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
                             <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>
@@ -38,11 +40,13 @@
                             <label for="orientation" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
                             <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
                                 <label class="btn btn-secondary {% if default_orientation == 'standard' %}active{% endif %}" id="orientation_standard">
-                                    <input type="radio" name="orientation" onchange="preview()" value="standard" aria-label="Standard" {% if default_orientation == 'standard' %}checked{% endif %}>
+                                    <input type="radio" name="orientation" onchange="preview()" value="standard" aria-label="Standard" {% if
+                                        default_orientation=='standard' %}checked data-default="1" {% endif %}>
                                     <span class="fas fa-ruler-horizontal" aria-hidden="true"> Standard
                                 </label>
                                 <label class="btn btn-secondary {% if default_orientation == 'rotated' %}active{% endif %}" id="orientation_rotated">
-                                    <input type="radio" name="orientation" onchange="preview()" value="rotated" aria-label="Rotated" {% if default_orientation == 'rotated' %}checked{% endif %}>
+                                    <input type="radio" name="orientation" onchange="preview()" value="rotated" aria-label="Rotated" {% if
+                                        default_orientation=='rotated' %}checked data-default="1" {% endif %}>
                                     <span class="fas fa-ruler-vertical" aria-hidden="true"> Rotated
                                 </label>
                             </div>
@@ -119,7 +123,7 @@
                                             Color:</label>
                                         <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
                                             <label class="btn btn-dark" id="print_color_black">
-                                                <input type="radio" name="fontColor" onchange="preview()" value="black" aria-label="Black">Black
+                                                <input type="radio" name="fontColor" onchange="preview()" value="black" aria-label="Black" data-default="1">Black
                                             </label>
                                             <label class="btn btn-danger" id="print_color_red">
                                                 <input type="radio" name="fontColor" onchange="preview()" value="red" aria-label="Red">Red
@@ -297,7 +301,7 @@
         <label for="printType" class="control-label input-group" style="margin-bottom: 0">Print Type:</label>
         <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
             <label class="btn btn-secondary active" id="printTypeText">
-                <input type="radio" name="printType" onchange="preview()" value="text" aria-label="Text" checked>
+                <input type="radio" name="printType" onchange="preview()" value="text" aria-label="Text" data-default="1" checked>
                 <span class="fas fa-font" aria-hidden="true"></span><br>Text
             </label>
             <label class="btn btn-secondary" id="printTypeQrCode">

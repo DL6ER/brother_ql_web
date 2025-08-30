@@ -18,13 +18,13 @@ function setFontSettingsPerLine() {
 
     // Default font settings from the current UI controls
     var currentFont = {
-        font_family: $('#fontFamily option:selected').text(),
-        font_style: $('#fontStyle option:selected').text(),
-        font_size: $('#fontSize').val(),
-        font_inverted: $('#fontInverted').is(':checked'),
+        family: $('#fontFamily option:selected').text(),
+        style: $('#fontStyle option:selected').text(),
+        size: $('#fontSize').val(),
+        inverted: $('#fontInverted').is(':checked'),
         align: $('input[name=fontAlign]:checked').val(),
         line_spacing: $('input[name=lineSpacing]:checked').val(),
-        font_color: $('#fontColor').val()
+        color: $('input[name=fontColor]:checked').val()
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -92,18 +92,18 @@ $(document).ready(function () {
         if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
         var fs = fontSettingsPerLine[idx];
         // Only set font family and get styles if font family is changed
-        if (fs.font_family !== $('#fontFamily option:selected').text()) {
+        if (fs.family !== $('#fontFamily option:selected').text()) {
             // Set font family
-            $('#fontFamily').val(fs.font_family);
+            $('#fontFamily').val(fs.family);
             // Set font style
-            updateStyles(fs.font_style);
+            updateStyles(fs.style);
         }
         else {
             // Only set font style
-            $('#fontStyle').val(fs.font_style);
+            $('#fontStyle').val(fs.style);
         }
         // Set font size
-        $('#fontSize').val(fs.font_size);
+        $('#fontSize').val(fs.size);
         // Set alignment
         $('input[name=fontAlign]').prop('checked', false).parent().removeClass('active');
         $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active');
@@ -111,10 +111,10 @@ $(document).ready(function () {
         $('input[name=lineSpacing]').prop('checked', false).parent().removeClass('active');
         $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active');
         // Set font inversion
-        $('#fontInverted').prop('checked', fs.font_inverted);
+        $('#fontInverted').prop('checked', fs.inverted);
         // Set font color
         $('input[name=fontColor]').prop('checked', false).parent().removeClass('active');
-        $('input[name=fontColor][value="' + fs.font_color + '"]').prop('checked', true).parent().addClass('active');
+        $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).parent().addClass('active');
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
@@ -201,6 +201,7 @@ function updateStyles(style = null) {
                 }
             });
             styleSelect.trigger("change");
+            preview();
         }
     });
 }
@@ -503,7 +504,7 @@ function restoreAllSettingsFromLocalStorage() {
         if (this.type === 'checkbox' || this.type === 'radio') {
             $(this).prop('checked', !!data[key]);
             if (this.type === 'radio') {
-                if ($(this).val() == data[key]) $(this).prop('checked', true);
+                $(this).prop('checked', $(this).val() == data[key]);
             }
         } else {
             $(this).val(data[key]);
@@ -564,11 +565,15 @@ function resetSettings() {
 function set_all_inputs_default(force = false) {
     // Iterate over those <input> that have a data-default propery and set the value if empty
     $('input[data-default], select[data-default], textarea[data-default]').each(function() {
-        if (!$(this).val() || force) {
-            $(this).val($(this).data('default'));
-        }
-        if (this.type === 'checkbox') {
+        if (this.type === 'checkbox' || this.type === 'radio') {
             $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') === true);
+        }
+        else if (this.type === 'select-one' || this.type === 'number') {
+            $(this).val($(this).data('default'));
+
+        }
+        else if (!$(this).val() || force) {
+            $(this).val($(this).data('default'));
         }
     });
 }
@@ -582,6 +587,7 @@ window.onload = function () {
 
     // Restore settings on load
     restoreAllSettingsFromLocalStorage();
+
     // Save on change
     $(document).on('change input', 'input, select, textarea', function() {
         saveAllSettingsToLocalStorage();

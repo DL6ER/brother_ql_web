@@ -397,10 +397,10 @@ class SimpleLabel:
         # Iterate over lines of text
         for i, line in enumerate(self.text):
             # Calculate spacing
-            spacing = int(int(line['font_size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
+            spacing = int(int(line['size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
 
             # Get font
-            font = self._get_font(line['font_path'], line['font_size'])
+            font = self._get_font(line['path'], line['size'])
 
             # Determine anchors
             anchor = None
@@ -419,12 +419,12 @@ class SimpleLabel:
             else:
                 raise ValueError(f"Unsupported alignment: {align}")
 
-            red_font = 'font_color' in line and line['font_color'] == 'red'
+            red_font = 'color' in line and line['color'] == 'red'
 #            if red_font and not self._red_support:
 #                raise ValueError("Red font is not supported on this label")
             color = (255, 0, 0) if red_font else (0, 0, 0)
 
-            if do_draw and 'font_inverted' in line and line['font_inverted']:
+            if do_draw and 'inverted' in line and line['inverted']:
                 # Draw a filled rectangle
                 center_x = 0
                 if anchor == "lt":
@@ -439,7 +439,7 @@ class SimpleLabel:
                 elif anchor == "rt":
                     max_bbox_x = text_offset[0] + max(bbox[0][2] for bbox in bboxes)
                     min_bbox_x = max_bbox_x - (bboxes[i][0][2] - bboxes[i][0][0])
-                shift = 0.1 * int(line['font_size'])
+                shift = 0.1 * int(line['size'])
                 y_min = bboxes[i][0][1] + text_offset[1] - shift
                 y_max = bboxes[i][0][3] + text_offset[1] - shift
                 draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=color)
@@ -487,5 +487,5 @@ class SimpleLabel:
         max_width = max(bbox[0][2] for bbox in bboxes)
         return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3])
 
-    def _get_font(self, font_path, font_size):
-        return ImageFont.truetype(font_path, int(font_size))
+    def _get_font(self, font_path, size):
+        return ImageFont.truetype(font_path, int(size))
