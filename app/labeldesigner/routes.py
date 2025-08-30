@@ -4,8 +4,7 @@ import os
 import barcode
 from flask import current_app, json, jsonify, render_template, request, make_response
 
-from brother_ql.devicedependent import label_type_specs, label_sizes
-from brother_ql.devicedependent import ENDLESS_LABEL, DIE_CUT_LABEL, ROUND_DIE_CUT_LABEL
+from brother_ql.labels import ALL_LABELS, FormFactor, Label
 
 from . import bp
 from app.utils import convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, pdffile_to_image, imgfile_to_image, image_to_png_bytes
@@ -16,20 +15,12 @@ from .printer import PrinterQueue, get_ptr_status
 
 LINE_SPACINGS = (100, 150, 200, 250, 300)
 
-# Don't change as brother_ql is using this DPI value
 DEFAULT_DPI = 300
-
-LABEL_SIZES = [(
-    name,
-    label_type_specs[name]['name'],
-    (label_type_specs[name]['kind'] in (
-        ROUND_DIE_CUT_LABEL,)),  # True if round label
-    label_type_specs[name]['tape_size'],
-) for name in label_sizes]
-
+HIGH_RES_DPI = 600
 
 @bp.route('/')
 def index():
+    LABEL_SIZES = [ (label.identifier, label.name, label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size) for label in ALL_LABELS ]
     return render_template('labeldesigner.html',
                            font_family_names=FONTS.fontlist(),
                            label_sizes=LABEL_SIZES,
@@ -166,11 +157,13 @@ def parse_text_form(input):
 
 def create_label_from_request(request):
     d=request.values
+    label_size = d.get('label_size', "62")
+    kind = [label.form_factor for label in ALL_LABELS if label.identifier == label_size][0]
     context={
-        'label_size': d.get('label_size', '62'),
+        'label_size': label_size,
         'print_type': d.get('print_type', 'text'),
         'label_orientation': d.get('orientation', 'standard'),
-        'kind': label_type_specs[d.get('label_size', "62")]['kind'],
+        'kind': kind,
         'margin_top': int(d.get('margin_top', 12)),
         'margin_bottom': int(d.get('margin_bottom', 12)),
         'margin_left': int(d.get('margin_left', 20)),
@@ -193,10 +186,9 @@ def create_label_from_request(request):
 
     def get_label_dimensions(label_size):
         try:
-            ls = label_type_specs[context['label_size']]
+            return [label.dots_printable for label in ALL_LABELS if label.identifier == label_size][0]
         except KeyError:
             raise LookupError("Unknown label_size")
-        return ls['dots_printable']
 
     def get_font_path(font_family_name, font_style_name):
         try:
@@ -258,9 +250,9 @@ def create_label_from_request(request):
     else:
         label_orientation = LabelOrientation.STANDARD
 
-    if context['kind'] == ENDLESS_LABEL:
+    if context['kind'] == FormFactor.ENDLESS:
         label_type = LabelType.ENDLESS_LABEL
-    elif context['kind'] == DIE_CUT_LABEL:
+    elif context['kind'] == FormFactor.DIE_CUT:
         label_type = LabelType.DIE_CUT_LABEL
     else:
         label_type = LabelType.ROUND_DIE_CUT_LABEL

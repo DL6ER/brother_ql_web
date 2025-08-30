@@ -1,9 +1,9 @@
 import logging
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
-from brother_ql.devicedependent import two_color_support
 from brother_ql.backends.helpers import get_printer, get_status
 from .label import LabelOrientation, LabelType, LabelContent
+from brother_ql.models import ALL_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +121,7 @@ def get_ptr_status(device_specifier):
         for key in printer_state:
             status[key] = printer_state.get(key, status[key])
             if key == 'model':
-                status['red_support'] = printer_state['model'] in two_color_support
+                status['red_support'] = printer_state['model'] in [model.identifier for model in ALL_MODELS if model.two_color]
         return status
     except Exception as e:
         logger.exception(e)

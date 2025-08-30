@@ -11,8 +11,7 @@ import argparse
 
 from flask import Flask
 from flask_bootstrap import Bootstrap
-
-from brother_ql.devicedependent import models
+from brother_ql.models import ALL_MODELS
 
 from . import fonts
 from config import Config
@@ -78,6 +77,7 @@ def init_fonts_and_args(app):
 
 
 def parse_args(app):
+    models = [model.identifier for model in ALL_MODELS]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--default-label-size', default=False,
                         help='Label size inserted in your printer. Defaults to 62.')
