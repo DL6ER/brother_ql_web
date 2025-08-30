@@ -99,7 +99,7 @@ def test_generate_preview(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_simple.png')
+    verify_image(response.data, 'tests/simple.png')
 
 
 def test_generate_preview_inverted(client):
@@ -143,7 +143,7 @@ def test_generate_preview_inverted(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_inverted.png')
+    verify_image(response.data, 'tests/inverted_text.png')
 
 
 def test_generate_preview_rotated(client):
@@ -170,7 +170,7 @@ def test_generate_preview_rotated(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_rotated.png')
+    verify_image(response.data, 'tests/rotated.png')
 
 
 def test_generate_ean13(client):
@@ -198,7 +198,7 @@ def test_generate_ean13(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_ean13.png')
+    verify_image(response.data, 'tests/barcode_ean13.png')
 
 
 def test_invalid_ean13(client):
@@ -253,10 +253,10 @@ def test_generate_qr(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/preview_qr.png')
+    verify_image(response.data, 'tests/qr.png')
 
 
-def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
+def image_test(client, image_path: str = "tests/_demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
     data = EXAMPLE_FORMDATA.copy()
     my_file = FileStorage(
         stream=open(image_path, "rb"),
@@ -283,7 +283,7 @@ def image_test(client, image_path: str = "tests/demo_image.jpg", rotated: bool =
             }
         ])
 
-    expected_img_path = "tests/preview_image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
+    expected_img_path = "tests/image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
@@ -506,6 +506,7 @@ def test_corrupted_image_upload(client):
     assert 'message' in data
     assert data['message'] == 'Truncated File Read'
 
+
 def test_empty_label(client):
     data = EXAMPLE_FORMDATA.copy()
     data['text'] = json.dumps([])
@@ -597,10 +598,6 @@ def test_file_size_limits(client):
     assert response.status_code == 413
 
 
-# Even more edge-case and robustness tests
-import time
-from flask import Response
-
 def test_extra_fields_ignored(client):
     data = EXAMPLE_FORMDATA.copy()
     data['text'] = json.dumps([
@@ -684,6 +681,97 @@ def test_missing_optional_fields(client):
 
     # Check image
     verify_image(response.data, 'tests/missing_optional_fields.png')
+
+
+# Further advanced test cases
+import unicodedata
+
+def test_invalid_json_structure(client):
+    data = EXAMPLE_FORMDATA.copy()
+    # JSON string, but not a list
+    data['text'] = json.dumps({'foo': 'bar'})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize('size', [0, -1, -100])
+def test_negative_zero_font_size(client, size):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Bad size', 'font_size': str(size), 'align': 'center'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+@pytest.mark.parametrize('size', [0, -1, -100])
+def test_negative_zero_label_size(client, size):
+    data = EXAMPLE_FORMDATA.copy()
+    data['label_size'] = size
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Bad label', 'font_size': '12', 'align': 'center'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+def test_invalid_alignment(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Bad align', 'font_size': '12', 'align': 'diagonal'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+def test_non_string_text_value(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 12345, 'font_size': '12', 'align': 'center'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+def test_conflicting_fields(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_type'] = 'qrcode_text'
+    data['barcode_type'] = 'QR'
+    data['image'] = FileStorage(stream=io.BytesIO(b'img'), filename='img.jpg', content_type='image/jpeg')
+    data['image_mode'] = 'grayscale'
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': 'Conflict', 'font_size': '12', 'align': 'center'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+
+
+def test_unicode_normalization(client):
+    data = EXAMPLE_FORMDATA.copy()
+    s1 = 'Café'
+    s2 = unicodedata.normalize('NFD', s1)
+    data['text'] = json.dumps([
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': s1, 'font_size': '24', 'align': 'center'},
+        {'font_family': 'DejaVu Sans', 'font_style': 'Regular', 'text': s2, 'font_size': '24', 'align': 'center'}
+    ])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png']
+
+    # Check image
+    verify_image(response.data, 'tests/unicode_normalization.png')
+
+
+def test_head_request(client):
+    response = client.head('/labeldesigner/api/preview')
+    assert response.status_code == 405
+
+
+def test_malformed_multipart(client):
+    # Simulate a malformed multipart by sending a bad content-type
+    data = '--bad-boundary\r\nContent-Disposition: form-data; name="text"\r\n\r\nfoo\r\n--bad-boundary--\r\n'
+    response = client.post('/labeldesigner/api/preview', data=data, headers={'Content-Type': 'multipart/form-data; boundary=bad-boundary'})
+    assert response.status_code == 400
 
 # We cannot test the print functionality without a physical printer
 # def test_print_label(client):

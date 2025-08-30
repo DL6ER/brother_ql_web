@@ -117,6 +117,8 @@ def print_label():
         printer = create_printer_from_request(request)
         label = create_label_from_request(request)
         print_count = int(request.values.get('print_count', 1))
+        if print_count < 1:
+            raise ValueError("print_count must be greater than 0")
         cut_once = int(request.values.get('cut_once', 0)) == 1
     except Exception as e:
         return_dict['message'] = str(e)
