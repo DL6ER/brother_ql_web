@@ -392,10 +392,6 @@ class SimpleLabel:
         draw = ImageDraw.Draw(img)
         y = 0
 
-        # Fix for completely empty text
-        if len(self.text) == 0 or len(self.text[0]['text']) == 0:
-            self.text[0]['text'] = " "
-
         # Iterate over lines of text
         for i, line in enumerate(self.text):
             color = self._fore_color
@@ -478,6 +474,9 @@ class SimpleLabel:
         return bboxes
 
     def _compute_bbox(self, bboxes):
+        # Edge case: No text
+        if not bboxes:
+            return (0, 0, 0, 0)
         # Iterate over right margins of multiple text lines and find the maximum
         # width needed to fit all lines of text
         max_width = max(bbox[0][2] for bbox in bboxes)
