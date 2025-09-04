@@ -22,6 +22,7 @@ function setFontSettingsPerLine() {
         style: $('#fontStyle option:selected').text(),
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
+        todo: $('#fontCheckbox').is(':checked'),
         align: $('input[name=fontAlign]:checked').val(),
         line_spacing: $('input[name=lineSpacing]:checked').val(),
         color: $('input[name=fontColor]:checked').val()
@@ -115,6 +116,8 @@ $(document).ready(function () {
         // Set font color
         $('input[name=fontColor]').prop('checked', false).parent().removeClass('active');
         $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).parent().addClass('active');
+        // Set TODO item
+        $('#fontCheckbox').prop('checked', fs.todo);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
@@ -210,8 +213,7 @@ function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
 
-    if(preview)
-    {
+    if (preview) {
         // Update preview image based on label size
         if ($('#labelSize option:selected').data('round') == 'True') {
             $('img#previewImg').addClass('roundPreviewImage');
@@ -283,7 +285,7 @@ function setStatus(data, what = null) {
             // Status icon green checkmark
             $('#statusIcon').removeClass().addClass('float-right fas fa-check text-success');
         }
-        else {
+        else if (what !== null) {
             // We are currently busy preparing the preview / printing
             const what = data.hasOwnProperty('printing') ? "Printing" : "Generating preview";
             $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>' + what + '...</span></div>');
@@ -297,10 +299,12 @@ function setStatus(data, what = null) {
         $('#statusIcon').removeClass().addClass('float-right fas fa-print text-success');
     } else {
         extra_info = ''
-        if('message' in data) {
+        if ('message' in data) {
             extra_info = ':<br />' + data['message']
         }
-        $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + extra_info + '</span></div>');
+        if (what !== null) {
+            $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + extra_info + '</span></div>');
+        }
         // Status icon red exclamation
         $('#statusIcon').removeClass().addClass('float-right fas fa-exclamation-triangle text-danger');
     }
@@ -409,7 +413,7 @@ function updatePrinterStatus() {
     if ($('#labelSize option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
-            $('#print_color_black').prop('active', true);
+        $('#print_color_black').prop('active', true);
         $(".red-support").hide();
     }
 
@@ -445,7 +449,7 @@ function updatePrinterStatus() {
 
     if (printer_status.errors && printer_status.errors.length > 0) {
         setStatus({ 'success': false })
-        const printerErrors = document.getElementById('statusBox');
+        const printerErrors = document.getElementById('printerStatusBox');
         if (printerErrors) {
             printerErrors.innerHTML = '';
             printer_status.errors.forEach((error) => {
@@ -454,6 +458,14 @@ function updatePrinterStatus() {
                 printerErrors.appendChild(li);
             });
             printerErrors.parentElement.style.display = '';
+        }
+    }
+    else {
+        // Clear printer errors
+        const printerErrors = document.getElementById('printerStatusBox');
+        if (printerErrors) {
+            printerErrors.innerHTML = '';
+            printerErrors.parentElement.style.display = 'none';
         }
     }
 }
@@ -472,7 +484,7 @@ const LS_KEY = 'labeldesigner_settings_v1';
 function saveAllSettingsToLocalStorage() {
     const data = {};
     // Save all input/select/textarea values
-    $('input, select, textarea').each(function() {
+    $('input, select, textarea').each(function () {
         const key = this.id.length > 0 ? this.id : this.name;
         if (key.length == 0) return;
         if (this.type === 'checkbox') {
@@ -498,7 +510,7 @@ function restoreAllSettingsFromLocalStorage() {
     if (!raw) return;
     let data;
     try { data = JSON.parse(raw); } catch { return; }
-    $('input, select, textarea').each(function() {
+    $('input, select, textarea').each(function () {
         const key = this.id || this.name;
         if (!(key in data)) return;
         if (this.type === 'checkbox' || this.type === 'radio') {
@@ -515,7 +527,7 @@ function restoreAllSettingsFromLocalStorage() {
         try {
             window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
             $('#lineSelect').val(0).trigger('change');
-        } catch {}
+        } catch { }
     }
     // Trigger preview after restore
     setTimeout(() => { if (typeof preview === 'function') preview(); }, 100);
@@ -523,7 +535,7 @@ function restoreAllSettingsFromLocalStorage() {
 
 function exportSettings() {
     const data = localStorage.getItem(LS_KEY) || '{}';
-    const blob = new Blob([data], {type: 'application/json'});
+    const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -537,15 +549,15 @@ function importSettings() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'application/json';
-    input.onchange = function(e) {
+    input.onchange = function (e) {
         const file = e.target.files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = function(evt) {
+        reader.onload = function (evt) {
             try {
                 localStorage.setItem(LS_KEY, evt.target.result);
                 restoreAllSettingsFromLocalStorage();
-            } catch {}
+            } catch { }
         };
         reader.readAsText(file);
     };
@@ -564,7 +576,7 @@ function resetSettings() {
 
 function set_all_inputs_default(force = false) {
     // Iterate over those <input> that have a data-default propery and set the value if empty
-    $('input[data-default], select[data-default], textarea[data-default]').each(function() {
+    $('input[data-default], select[data-default], textarea[data-default]').each(function () {
         if (this.type === 'checkbox' || this.type === 'radio') {
             $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') === true);
         }
@@ -589,7 +601,7 @@ window.onload = function () {
     restoreAllSettingsFromLocalStorage();
 
     // Save on change
-    $(document).on('change input', 'input, select, textarea', function() {
+    $(document).on('change input', 'input, select, textarea', function () {
         saveAllSettingsToLocalStorage();
     });
     // Export/Import/Reset buttons

@@ -38,6 +38,10 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ![Template support](./screenshots/image7.png)
 
+### TODO list creation
+
+![TODO list creation](./screenshots/image8.png)
+
 ## New Features
 
 - Automatic printer and label detection
@@ -65,6 +69,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 -   Import and export of labels in an easily editable format (JSON)
 -   Allow text inversion for emphasized text even without color
 -   Auto-fit images best onto the labels to avoid cropping
+-   Support for automatic TODO list creation (tickable checkboxes)
 -   Allow text together with images
 -   Print text as QR Code or barcode
     -   Add text to QR Code

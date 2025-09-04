@@ -105,17 +105,24 @@
                                     </div>
 
                                     <label for="lineSpacing" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Line Spacing:</label>
-                                    <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                    <div class="btn-group btn-group-toggle btn-block mb-3" data-toggle="buttons">
                                         {% for line_spacing in line_spacings %}
                                         <label class="btn btn-secondary {% if default_line_spacing == line_spacing %}active{% endif %}" id="lineSpacing{{line_spacing}}">
                                             <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing == line_spacing %}checked{% endif %}>{{line_spacing}}%
                                         </label>
                                         {% endfor %}
                                     </div>
+                                    <h6>Additional Font Options:</h6>
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" onchange="preview()" id="fontInverted" data-default="0">
                                         <label class="form-check-label" for="fontInverted">
                                             Invert text
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox" onchange="preview()" id="fontCheckbox" data-default="0">
+                                        <label class="form-check-label" for="fontCheckbox">
+                                            TODO item (checkbox)
                                         </label>
                                     </div>
                                     <div class="red-support">
@@ -384,6 +391,9 @@
             <div class="card-header">
                 <span class="fas fa-terminal" aria-hidden="true" style="margin-right: 0.3em"></span> Status
                 <span id="statusIcon" class="float-right fas fa-exclamation-triangle" aria-hidden="true"></span>
+            </div>
+            <div id="printerStatusPanel" class="card-body" style="display: none;">
+                <div id="printerStatusBox" class="alert alert-secondary" role="alert"></div>
             </div>
             <div id="statusPanel" class="card-body">
                 <div id="statusBox" class="alert alert-secondary" role="alert"><span>Idle...</span></div>
