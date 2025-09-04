@@ -22,6 +22,7 @@ function setFontSettingsPerLine() {
         style: $('#fontStyle option:selected').text(),
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
+        todo: $('#fontCheckbox').is(':checked'),
         align: $('input[name=fontAlign]:checked').val(),
         line_spacing: $('input[name=lineSpacing]:checked').val(),
         color: $('input[name=fontColor]:checked').val()
@@ -115,6 +116,8 @@ $(document).ready(function () {
         // Set font color
         $('input[name=fontColor]').prop('checked', false).parent().removeClass('active');
         $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).parent().addClass('active');
+        // Set TODO item
+        $('#fontCheckbox').prop('checked', fs.todo);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls

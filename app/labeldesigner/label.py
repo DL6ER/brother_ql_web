@@ -404,7 +404,7 @@ class SimpleLabel:
 
             # Determine anchors
             anchor = None
-            align = line['align']
+            align = line.get('align', 'center')
 
             # Left aligned text
             if align == "left":
@@ -423,6 +423,9 @@ class SimpleLabel:
 #            if red_font and not self._red_support:
 #                raise ValueError("Red font is not supported on this label")
             color = (255, 0, 0) if red_font else (0, 0, 0)
+
+            # Draw TODO box if needed
+            todo = line.get('todo', False)
 
             if do_draw and 'inverted' in line and line['inverted']:
                 # Draw a filled rectangle
@@ -455,22 +458,28 @@ class SimpleLabel:
                 bboxes.append((bbox, y))
                 y += bbox[3] - bbox[1] + (spacing if i < len(self.text)-1 else 0)
             else:
+                bbox = bboxes[i][0]
+                y = bboxes[i][1] + text_offset[1]
                 # Left aligned text
                 if align == "left":
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = min_bbox_x + text_offset[0]
-                    y = bboxes[i][1] + text_offset[1]
                 # Center aligned text
                 elif align == "center":
                     min_bbox_x = min(bbox[0][0] for bbox in bboxes) if len(bboxes) > 0 else 0
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = (max_bbox_x - min_bbox_x) // 2 + min_bbox_x + text_offset[0]
-                    y = bboxes[i][1] + text_offset[1]
                 # Right aligned text
                 elif align == "right":
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = max_bbox_x + text_offset[0]
-                    y = bboxes[i][1] + text_offset[1]
+
+                # Draw TODO box if needed
+                if todo:
+                    todo_box_dimensions = 8 * int(line['size']) // 10
+                    bbox = draw.textbbox((x - 1.2 * todo_box_dimensions, y), line['text'], font=font, align=align, anchor=anchor)
+                    box_dimensions = bbox[0], y, bbox[0] + todo_box_dimensions, y + todo_box_dimensions
+                    draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, todo_box_dimensions//10), fill=(255,255,255))
 
                 draw.text((x, y), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
 

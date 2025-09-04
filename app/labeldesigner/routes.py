@@ -195,12 +195,10 @@ def create_label_from_request(request):
 
     def get_font_path(line: dict):
         try:
-            family_name = line.get('family')
-            style_name = line.get('style')
+            family_name = line.get('family', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
+            style_name = line.get('style', current_app.config['LABEL_DEFAULT_FONT_STYLE'])
             if family_name not in FONTS.fonts:
                 raise LookupError("Unknown font family: %s" % family_name)
-            if style_name not in FONTS.fonts[family_name]:
-                style_name = current_app.config['LABEL_DEFAULT_FONT_STYLE']
             if style_name not in FONTS.fonts[family_name]:
                 raise LookupError("Unknown font style: %s for font %s" %
                                   (style_name, family_name))
@@ -268,10 +266,6 @@ def create_label_from_request(request):
 
     # For each line in text, we determine and add the font path
     for line in context['text']:
-        if 'family' not in line:
-            line['family'] = current_app.config['LABEL_DEFAULT_FONT_FAMILY']
-        if 'style' not in line:
-            line['style'] = current_app.config['LABEL_DEFAULT_FONT_STYLE']
         if 'size' not in line or not line['size'].isdigit():
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
