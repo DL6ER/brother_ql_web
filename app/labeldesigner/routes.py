@@ -120,13 +120,14 @@ def print_label():
         if print_count < 1:
             raise ValueError("print_count must be greater than 0")
         cut_once = int(request.values.get('cut_once', 0)) == 1
+        high_res = int(request.values.get('high_res', 0)) != 0
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
         # Generate error 400 response
         return make_response(jsonify(return_dict), 400)
 
-    printer.add_label_to_queue(label, print_count, cut_once)
+    printer.add_label_to_queue(label, print_count, cut_once, high_res)
 
     try:
         status = printer.process_queue()
@@ -184,12 +185,16 @@ def create_label_from_request(request):
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': int(d.get('image_fit', 1)) > 0,
         'print_color': d.get('print_color', 'black'),
-        'timestamp': int(d.get('timestamp', 0))
+        'timestamp': int(d.get('timestamp', 0)),
+        'high_res': int(d.get('high_res', 0)) != 0
     }
 
-    def get_label_dimensions(label_size):
+    def get_label_dimensions(label_size, high_res: bool = False):
         try:
-            return [label.dots_printable for label in ALL_LABELS if label.identifier == label_size][0]
+            dimensions = [label.dots_printable for label in ALL_LABELS if label.identifier == label_size][0]
+            if high_res:
+                return [2*dimensions[0], 2*dimensions[1]]
+            return dimensions
         except KeyError:
             raise LookupError("Unknown label_size")
 
@@ -254,7 +259,7 @@ def create_label_from_request(request):
     else:
         label_type = LabelType.ROUND_DIE_CUT_LABEL
 
-    width, height = get_label_dimensions(context['label_size'])
+    width, height = get_label_dimensions(context['label_size'], context['high_res'])
     if height > width:
         width, height = height, width
     if label_orientation == LabelOrientation.ROTATED:

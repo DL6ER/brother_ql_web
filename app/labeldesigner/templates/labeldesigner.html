@@ -38,7 +38,7 @@
                             <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>
 
                             <label for="orientation" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
-                            <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                            <div class="btn-group btn-group-toggle btn-block mb-2" data-toggle="buttons">
                                 <label class="btn btn-secondary {% if default_orientation == 'standard' %}active{% endif %}" id="orientation_standard">
                                     <input type="radio" name="orientation" onchange="preview()" value="standard" aria-label="Standard" {% if
                                         default_orientation=='standard' %}checked data-default="1" {% endif %}>
@@ -48,6 +48,12 @@
                                     <input type="radio" name="orientation" onchange="preview()" value="rotated" aria-label="Rotated" {% if
                                         default_orientation=='rotated' %}checked data-default="1" {% endif %}>
                                     <span class="fas fa-ruler-vertical" aria-hidden="true"> Rotated
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" onchange="preview()" id="highResolutionCheckbox" data-default="0">
+                                <label class="form-check-label" for="highResolutionCheckbox">
+                                    High-resolution printing (600 dpi)
                                 </label>
                             </div>
                         </div>

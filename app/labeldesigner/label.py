@@ -61,6 +61,8 @@ class SimpleLabel:
         except Exception:
             pass
         raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
+
+
     qr_correction_mapping = {
         'M': constants.ERROR_CORRECT_M,
         'L': constants.ERROR_CORRECT_L,
@@ -326,6 +328,7 @@ class SimpleLabel:
         text_offset = horizontal_offset_text, vertical_offset_text
         image_offset = horizontal_offset_image, vertical_offset_image
 
+        logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
         imgResult = Image.new('RGB', (int(width), int(height)), 'white')
 
         if img is not None:
