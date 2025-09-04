@@ -163,6 +163,7 @@ function formData(cut_once = false) {
         border_roundness: $('#borderRoundness').val(),
         border_distance_x: $('#borderDistanceX').val(),
         border_distance_y: $('#borderDistanceY').val(),
+        high_res: $('#highResolutionCheckbox').is(':checked') ? 1 : 0
     }
 
     if (printer_status['red_support']) {
@@ -173,13 +174,17 @@ function formData(cut_once = false) {
     return data;
 }
 
+function get_dpi() {
+    return $('#highResolutionCheckbox').is(':checked') ? 600 : 300;
+}
+
 function updatePreview(data) {
     setStatus({ 'preview': true });
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
     img.onload = function () {
-        $('#labelWidth').html((img.naturalWidth / default_dpi * 2.54).toFixed(1));
-        $('#labelHeight').html((img.naturalHeight / default_dpi * 2.54).toFixed(1));
+        $('#labelWidth').html((img.naturalWidth / get_dpi() * 2.54).toFixed(1));
+        $('#labelHeight').html((img.naturalHeight / get_dpi() * 2.54).toFixed(1));
     };
 }
 

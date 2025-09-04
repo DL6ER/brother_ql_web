@@ -106,6 +106,34 @@ def test_generate_preview(client):
     verify_image(response.data, 'tests/simple.png')
 
 
+def test_generate_preview_high_res(client):
+    data = EXAMPLE_FORMDATA.copy()
+    data['high_res'] = 1
+    data['text'] = json.dumps([
+        {
+            'family': 'DejaVu Sans',
+            'style': 'Book',
+            'text': 'Left',
+            'size': '60',
+            'align': 'left'
+        },
+        {
+            'family': 'Droid Sans Mono',
+            'style': 'Regular',
+            'text': '-- LONG MONO TEXT --',
+            'size': '50',
+            'align': 'center'
+        }
+    ])
+
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.content_type in ['image/png']
+
+    # Check image
+    verify_image(response.data, 'tests/simple_high_res.png')
+
+
 def test_generate_preview_inverted(client):
     data = EXAMPLE_FORMDATA.copy()
     data['text'] = json.dumps([
@@ -260,8 +288,13 @@ def test_generate_qr(client):
     verify_image(response.data, 'tests/qr.png')
 
 
-def image_test(client, image_path: str = "tests/_demo_image.jpg", rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale"):
+def image_test(client, image_path: str|None = None, rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale", high_res: bool = False):
     data = EXAMPLE_FORMDATA.copy()
+    if image_path is None:
+        if high_res:
+            image_path = "tests/_demo_image_highres.jpg"
+        else:
+            image_path = "tests/_demo_image.jpg"
     my_file = FileStorage(
         stream=open(image_path, "rb"),
         filename=os.path.basename(image_path),
@@ -270,6 +303,7 @@ def image_test(client, image_path: str = "tests/_demo_image.jpg", rotated: bool 
     data['print_type'] = 'image'
     data['image'] = my_file
     data['image_mode'] = image_mode
+    data['high_res'] = 1 if high_res else 0
 
     if image_mode == "black":
         data['image_bw_threshold'] = '128'
@@ -287,7 +321,7 @@ def image_test(client, image_path: str = "tests/_demo_image.jpg", rotated: bool 
             }
         ])
 
-    expected_img_path = "tests/image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + "_" + image_mode + ".png"
+    expected_img_path = "tests/image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + ("_highres" if high_res else "") + "_" + image_mode + ".png"
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
@@ -339,6 +373,14 @@ def test_image_red_and_black_fit(client):
 
 def test_image_black_fit(client):
     image_test(client, image_mode="black", fit=True)
+
+
+def test_image_highres(client):
+    image_test(client, high_res=True)
+
+
+def test_image_highres_fit(client):
+    image_test(client, high_res=True, fit=True)
 
 
 def test_generate_template(client):
