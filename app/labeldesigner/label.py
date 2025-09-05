@@ -197,11 +197,13 @@ class SimpleLabel:
 
             # Replace {{uuid}} with a new UUID
             if "{{uuid}}" in line['text']:
-                line['text'] = line['text'].replace("{{uuid}}", str(uuid.uuid4()))
+                ui = uuid.UUID(int=random.getrandbits(128))
+                line['text'] = line['text'].replace("{{uuid}}", str(ui))
 
             # Replace {{short-uuid}} with a shortened UUID
             if "{{short-uuid}}" in line['text']:
-                line['text'] = line['text'].replace("{{short-uuid}}", str(uuid.uuid4())[:8])
+                ui = uuid.UUID(int=random.getrandbits(128))
+                line['text'] = line['text'].replace("{{short-uuid}}", str(ui)[:8])
 
             # Replace {{env:var}} with the value of the environment variable var
             def env_replacer(match):
@@ -215,7 +217,7 @@ class SimpleLabel:
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
             line['text'] = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, line['text'])
 
-    def generate(self, rotate = False):
+    def generate(self, rotate: bool = False):
         # Process possible templates in the text
         self.process_templates()
 
