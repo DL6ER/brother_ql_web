@@ -128,7 +128,7 @@ def print_label():
 
     try:
         for i in range(print_count):
-            label = create_label_from_request(request, i + 1)
+            label = create_label_from_request(request, i)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
@@ -164,7 +164,7 @@ def parse_text_form(input):
         return []
     return json.loads(input)
 
-def create_label_from_request(request, counter: int = 1):
+def create_label_from_request(request, counter: int = 0):
     d=request.values
     label_size = d.get('label_size', "62")
     kind = [label.form_factor for label in ALL_LABELS if label.identifier == label_size][0]

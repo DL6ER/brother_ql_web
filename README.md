@@ -98,7 +98,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 
 ### Supported templates
 
--   `{{counter}}` — Inserts the current counter value (automatically increments when printing multiple labels at the same time).
+-   `{{counter[:start]}}` — Inserts the current counter value (automatically increments when printing multiple labels at the same time).
 -   `{{datetime:<format>}}` — Inserts the current date and time, e.g. `%H:%M:%S %d.%m.%Y` (see [strftime](https://strftime.org/)).
 -   `{{uuid}}` — Inserts a random UUID (Universally Unique Identifier).
 -   `{{short-uuid}}` — Inserts a shortened version of a UUID.

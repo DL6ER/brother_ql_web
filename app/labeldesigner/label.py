@@ -92,7 +92,7 @@ class SimpleLabel:
             border_distance=(0, 0),
             border_color=(0, 0, 0),
             timestamp=0,
-            counter=1,
+            counter=0,
             red_support=False):
         self._width = width
         self._height = height
@@ -128,7 +128,7 @@ class SimpleLabel:
         # We always want to draw text (even when empty) when no image is
         # provided to avoid an error 500 because we created no image at all
         return img is None or self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
-    
+
     @property
     def need_image_text_distance(self):
         return self._label_content in (LabelContent.TEXT_QRCODE,
@@ -173,16 +173,17 @@ class SimpleLabel:
         self._label_type = value
 
     def process_templates(self):
-        # Loop over text lines and replace
-        # {{datetime:x}} by current datetime in specified format x
-        # {{counter}} by an incrementing counter
+        # Loop over text lines and replace templates
         self.text = self.input_text.copy()
         for line in self.text:
             if len(line['text']) > 500:
                 logger.warning("Text line is very long (> 500 characters), this may lead to long processing times.")
 
-            # Replace {{counter}} with current counter value
-            line['text'] = line['text'].replace("{{counter}}", str(self._counter))
+            # Replace {{counter[:offset]}} with current label counter (x is an optional offset defaulting to 1)
+            def counter_replacer(match):
+                offset = int(match.group(1)) if match.group(1) else 1
+                return str(self._counter + offset)
+            line['text'] = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, line['text'])
 
             # Replace {{datetime:x}} with current datetime formatted as x
             def datetime_replacer(match):

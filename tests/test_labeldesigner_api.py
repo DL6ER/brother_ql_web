@@ -392,7 +392,7 @@ def test_generate_template(client):
         {
             'family': 'DejaVu Sans',
             'style': 'Book',
-            'text': '{{datetime:%d.%m.%Y %H:%M:%S}} COUNTER: {{counter}}',
+            'text': '{{datetime:%d.%m.%Y %H:%M:%S}} COUNTER: {{counter}} {{counter:5}}',
             'size': '30',
             'align': 'left'
         },
