@@ -5,12 +5,12 @@ import json
 import sys
 import os
 import pytest
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from app import create_app
-from werkzeug.datastructures import FileStorage
 import io
 import multiprocessing
-from random import choice
+import random
+from werkzeug.datastructures import FileStorage
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from app import create_app
 
 UPDATE_IMAGES = False
 EXAMPLE_FORMDATA = {
@@ -403,9 +403,26 @@ def test_generate_template(client):
             'size': '20',
             'align': 'right',
             'inverted': True
+        },
+        {
+            'family': 'DejaVu Sans',
+            'style': 'Book',
+            'text': '>> {{uuid}} {{short-uuid}} <<',
+            'size': '20',
+            'align': 'center'
+        },
+        {
+            'family': 'DejaVu Sans',
+            'style': 'Book',
+            'text': '>> {{random:77}} <<',
+            'size': '10',
+            'align': 'center'
         }
     ])
 
+    # Set random seed to a fixed value for deterministic results of {{random}},
+    # {{uuid}}, and {{short-uuid}}
+    random.seed(12)
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.content_type in ['image/png']
