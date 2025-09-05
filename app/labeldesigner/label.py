@@ -8,6 +8,8 @@ import barcode
 from barcode.writer import ImageWriter
 import datetime
 import re
+import random
+import string
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +177,9 @@ class SimpleLabel:
         # {{counter}} by an incrementing counter
         self.text = self.input_text.copy()
         for line in self.text:
+            if len(line['text']) > 500:
+                logger.warning("Text line is very long (> 500 characters), this may lead to long processing times.")
+
             # Replace {{counter}} with current counter value
             line['text'] = line['text'].replace("{{counter}}", str(self._counter))
 
@@ -186,9 +191,7 @@ class SimpleLabel:
                 else:
                     now = datetime.datetime.now()
                 return now.strftime(fmt)
-            # Performance issue mitigation
-            if len(line['text']) < 100:
-                line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
+            line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
 
             # Replace {{uuid}} with a new UUID
             if "{{uuid}}" in line['text']:
@@ -202,9 +205,13 @@ class SimpleLabel:
             def env_replacer(match):
                 var_name = match.group(1)
                 return os.getenv(var_name, "")
-            # Performance issue mitigation
-            if len(line['text']) < 100:
-                line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
+            line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
+
+            # Replace {{random[:len]}} with random string of optional length <len>
+            def random_replacer(match):
+                length = int(match.group(1)) if match.group(1) else 64
+                return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
+            line['text'] = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, line['text'])
 
         # Increment counter
         self._counter += 1
