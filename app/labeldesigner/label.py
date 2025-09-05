@@ -92,6 +92,7 @@ class SimpleLabel:
             border_distance=(0, 0),
             border_color=(0, 0, 0),
             timestamp=0,
+            counter=1,
             red_support=False):
         self._width = width
         self._height = height
@@ -111,7 +112,7 @@ class SimpleLabel:
         self._border_roundness = border_roundness
         self._border_distance = border_distance
         self._border_color = border_color
-        self._counter = 1
+        self._counter = counter
         self._timestamp = timestamp
         self._red_support = red_support
 
@@ -212,9 +213,6 @@ class SimpleLabel:
                 length = int(match.group(1)) if match.group(1) else 64
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
             line['text'] = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, line['text'])
-
-        # Increment counter
-        self._counter += 1
 
     def generate(self, rotate = False):
         # Process possible templates in the text

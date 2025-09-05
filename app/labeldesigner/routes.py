@@ -115,7 +115,6 @@ def print_label():
             if isinstance(level, int):
                 current_app.logger.setLevel(level)
         printer = create_printer_from_request(request)
-        label = create_label_from_request(request)
         print_count = int(request.values.get('print_count', 1))
         if print_count < 1:
             raise ValueError("print_count must be greater than 0")
@@ -127,9 +126,15 @@ def print_label():
         # Generate error 400 response
         return make_response(jsonify(return_dict), 400)
 
-    printer.add_label_to_queue(label, print_count, cut_once, high_res)
-
     try:
+        for i in range(print_count):
+            label = create_label_from_request(request, i + 1)
+            # Cut only if we
+            # - always cut, or
+            # - we cut only once and this is the last label to be generated
+            cut = (cut_once == False) or (cut_once and i == print_count-1)
+            printer.add_label_to_queue(label, cut, high_res)
+
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
@@ -159,7 +164,7 @@ def parse_text_form(input):
         return []
     return json.loads(input)
 
-def create_label_from_request(request):
+def create_label_from_request(request, counter: int = 1):
     d=request.values
     label_size = d.get('label_size', "62")
     kind = [label.form_factor for label in ALL_LABELS if label.identifier == label_size][0]
@@ -312,5 +317,6 @@ def create_label_from_request(request):
         border_roundness=context['border_roundness'],
         border_distance=(context['border_distanceX'], context['border_distanceY']),
         border_color=border_color,
-        timestamp=context['timestamp']
+        timestamp=context['timestamp'],
+        counter=counter
     )
