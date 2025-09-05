@@ -45,15 +45,12 @@ class PrinterQueue:
     def label_size(self, value):
         self._label_size = value
 
-    def add_label_to_queue(self, label, count, cut_once=False, high_res: bool = False):
-        for cnt in range(0, count):
-            cut = (cut_once == False) or (cut_once and cnt == count-1)
-
-            self._printQueue.append(
-                {'label': label,
-                 'cut': cut,
-                 'high_res': high_res
-                 })
+    def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False):
+        self._printQueue.append(
+            {'label': label,
+             'cut': cut,
+             'high_res': high_res
+             })
 
     def process_queue(self) -> bool:
         qlr = BrotherQLRaster(self._model)

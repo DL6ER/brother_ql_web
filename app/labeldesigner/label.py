@@ -8,6 +8,8 @@ import barcode
 from barcode.writer import ImageWriter
 import datetime
 import re
+import random
+import string
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,7 @@ class SimpleLabel:
             border_distance=(0, 0),
             border_color=(0, 0, 0),
             timestamp=0,
+            counter=0,
             red_support=False):
         self._width = width
         self._height = height
@@ -109,7 +112,7 @@ class SimpleLabel:
         self._border_roundness = border_roundness
         self._border_distance = border_distance
         self._border_color = border_color
-        self._counter = 1
+        self._counter = counter
         self._timestamp = timestamp
         self._red_support = red_support
 
@@ -125,7 +128,7 @@ class SimpleLabel:
         # We always want to draw text (even when empty) when no image is
         # provided to avoid an error 500 because we created no image at all
         return img is None or self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
-    
+
     @property
     def need_image_text_distance(self):
         return self._label_content in (LabelContent.TEXT_QRCODE,
@@ -170,13 +173,17 @@ class SimpleLabel:
         self._label_type = value
 
     def process_templates(self):
-        # Loop over text lines and replace
-        # {{datetime:x}} by current datetime in specified format x
-        # {{counter}} by an incrementing counter
+        # Loop over text lines and replace templates
         self.text = self.input_text.copy()
         for line in self.text:
-            # Replace {{counter}} with current counter value
-            line['text'] = line['text'].replace("{{counter}}", str(self._counter))
+            if len(line['text']) > 500:
+                logger.warning("Text line is very long (> 500 characters), this may lead to long processing times.")
+
+            # Replace {{counter[:offset]}} with current label counter (x is an optional offset defaulting to 1)
+            def counter_replacer(match):
+                offset = int(match.group(1)) if match.group(1) else 1
+                return str(self._counter + offset)
+            line['text'] = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, line['text'])
 
             # Replace {{datetime:x}} with current datetime formatted as x
             def datetime_replacer(match):
@@ -186,9 +193,7 @@ class SimpleLabel:
                 else:
                     now = datetime.datetime.now()
                 return now.strftime(fmt)
-            # Performance issue mitigation
-            if len(line['text']) < 100:
-                line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
+            line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
 
             # Replace {{uuid}} with a new UUID
             if "{{uuid}}" in line['text']:
@@ -202,12 +207,13 @@ class SimpleLabel:
             def env_replacer(match):
                 var_name = match.group(1)
                 return os.getenv(var_name, "")
-            # Performance issue mitigation
-            if len(line['text']) < 100:
-                line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
+            line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
 
-        # Increment counter
-        self._counter += 1
+            # Replace {{random[:len]}} with random string of optional length <len>
+            def random_replacer(match):
+                length = int(match.group(1)) if match.group(1) else 64
+                return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
+            line['text'] = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, line['text'])
 
     def generate(self, rotate = False):
         # Process possible templates in the text

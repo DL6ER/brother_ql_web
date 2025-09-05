@@ -96,6 +96,15 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 -   Dockerized
 -   Devcontainer for ease of development/contributing
 
+### Supported templates
+
+-   `{{counter[:start]}}` — Inserts the current counter value (automatically increments when printing multiple labels at the same time).
+-   `{{datetime:<format>}}` — Inserts the current date and time, e.g. `%H:%M:%S %d.%m.%Y` (see [strftime](https://strftime.org/)).
+-   `{{uuid}}` — Inserts a random UUID (Universally Unique Identifier).
+-   `{{short-uuid}}` — Inserts a shortened version of a UUID.
+-   `{{env:var}}` — Inserts the value of the environment variable `var`.
+-   `{{random[:<len>]}}` — Inserts a random string of optional length `len` (defaulting to 64).
+
 ## Docker Compose
 
 You may also use the example [`docker-compose.yml`](./docker-compose.yml) file provided in this repository to quickly get started with Docker Compose:

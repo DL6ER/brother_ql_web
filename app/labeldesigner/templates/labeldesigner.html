@@ -356,12 +356,13 @@
                             <li><code>{{'{{datetime:%H:%M:%S %d.%m.%Y'}}}}</code> — Inserts the current date and time when printing.
                                 You can customize the format using <a href="https://strftime.org/" target="_blank"
                                     rel="noopener">strftime</a> options.</li>
-                            <li><code>{{'{{counter'}}}}</code> — Inserts an up-counting number, increasing for every printed label.
+                            <li><code>{{'{{counter[:start]}}'}}</code> — Inserts an up-counting number. You can optionally specify a <code>start</code> value (defaulting to 1) to start counting from a different number.
+                                When printing multiple labels at once, the counter automatically increments for each label.
                             </li>
                             <li><code>{{'{{uuid'}}}}</code> — Inserts a random UUID (Universally Unique Identifier).</li>
                             <li><code>{{'{{short-uuid'}}}}</code> — Inserts a shortened version of a UUID.</li>
-                            <li><code>{{'{{env:var}}'}}</code> — Inserts the value of the environment variable <code>var</code>.
-                            </li>
+                            <li><code>{{'{{env:var}}'}}</code> — Inserts the value of the environment variable <code>var</code>.</li>
+                            <li><code>{{'{{random[:len]}}'}}</code> — Inserts a random string of optional length <code>len</code> (defaulting to 64).</li>
                         </ul>
                         <span class="text-muted">Templates are replaced at print time.</span>
                     </div>
