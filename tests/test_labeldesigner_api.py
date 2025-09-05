@@ -883,7 +883,7 @@ def test_todo_list(client):
     data = EXAMPLE_FORMDATA.copy()
     data['text'] = json.dumps([
         {'family': 'Droid Sans', 'style': 'Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'todo': True},
-        {'family': 'DejaVu', 'style': 'Condensed', 'text': 'Item 2', 'size': '50', 'align': 'left', 'todo': True},
+        {'family': 'Noto Sans', 'style': 'Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'todo': True},
         {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'todo': False, 'color': 'red'},
         {'family': 'DejaVu Serif', 'style': 'Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'todo': True}
     ])

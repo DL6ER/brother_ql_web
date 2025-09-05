@@ -8,64 +8,64 @@ class Fonts:
         self.fonts = defaultdict(dict)
 
     def parse_fonts(self, raw):
-        """ adds the found fonts the the fonts list
-        :param raw: command to be run to get the raw font list from the system
-        :return: true if fonts were added false if not
         """
-
+        Adds the found fonts to the fonts list.
+        :param raw: CompletedProcess from subprocess.run
+        :return: True if fonts were added, False otherwise
+        """
         if raw.returncode != 0:
-            return {'error': 'an error occurred while processing the fonts'}
+            sys.stderr.write('Error occurred while processing fonts\n')
+            return False
 
         for line in raw.stdout.decode('utf-8').split('\n'):
             font = line.split(':')
             if len(font) < 3:
                 continue
-            # ignore non true type fonts
-            if '.ttf' in font[0] or '.otf' in font[0]:
-                fontname = font[1].replace('\\', '')
+            # Only consider TrueType and OpenType fonts
+            if any(ext in font[0].lower() for ext in ('.ttf', '.otf')):
+                fontname = font[1].replace('\\', '').strip()
                 fontpath = font[0].strip()
                 fontstyle = font[2][6:].strip().split(',')[0]
-
                 if ',' in fontname:
-                    fontname = fontname.split()[0]
-                fontname = fontname.strip()
-
+                    fontname = fontname.split(',')[0].strip()
                 self.fonts[fontname][fontstyle] = fontpath
-            else:
-                pass
 
     def scan_global_fonts(self):
-        """ Get a list of all fonts that are available to the user who runs this
-        :return: raw output of the command fc-list
+        """
+        Get a list of all fonts available to the user who runs this.
         """
         command = ['fc-list']
         try:
             raw = subprocess.run(command, stdout=subprocess.PIPE)
         except FileNotFoundError:
-            print('fc-list not found', file=sys.stderr)
+            sys.stderr.write('fc-list not found\n')
             sys.exit(2)
-
         self.parse_fonts(raw)
 
     def scan_fonts_folder(self, folder):
-        """ Get a list of all fonts that are available to the user who runs this
-        :return: raw output of the command fc-list
         """
-        cmd = ['fc-scan', '--format',
-               '%{file}:%{family}:style=%{style}\n', folder]
+        Get a list of all fonts in the specified folder.
+        """
+        cmd = ['fc-scan', '--format', '%{file}:%{family}:style=%{style}\n', folder]
         try:
             raw = subprocess.run(cmd, stdout=subprocess.PIPE)
         except FileNotFoundError:
-            print('fc-list not found', file=sys.stderr)
+            sys.stderr.write('fc-scan not found\n')
             sys.exit(2)
-
         self.parse_fonts(raw)
 
     def fontlist(self):
-        return sorted(self.fonts, key=str.lower)
+        """Return a sorted list of font family names."""
+        return sorted(self.fonts.keys(), key=str.lower)
+
+    def fontstyles(self):
+        """Return a sorted list of font styles for each family."""
+        styles = defaultdict(list)
+        for family, variants in self.fonts.items():
+            styles[family].extend(variants.keys())
+        return {family: sorted(set(variant.lower() for variant in variants), key=str.lower)
+                for family, variants in styles.items()}
 
     def fonts_available(self):
-        if len(self.fonts) == 0:
-            return False
-        else:
-            return len(self.fonts)
+        """Return True if any fonts are available, else False."""
+        return bool(self.fonts)
