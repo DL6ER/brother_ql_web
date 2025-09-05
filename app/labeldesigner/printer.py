@@ -94,6 +94,7 @@ class PrinterQueue:
         logger.warning("Failed to print label")
         return False
 
+
 def get_ptr_status(device_specifier):
     status = {
         "errors": [],
