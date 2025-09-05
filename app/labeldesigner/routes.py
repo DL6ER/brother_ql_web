@@ -4,63 +4,64 @@ import os
 import barcode
 from flask import current_app, json, jsonify, render_template, request, make_response
 
-from brother_ql.labels import ALL_LABELS, FormFactor, Label
+from brother_ql.labels import ALL_LABELS, FormFactor
 
 from . import bp
-from app.utils import convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, pdffile_to_image, imgfile_to_image, image_to_png_bytes
+from app.utils import (
+    convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black,
+    pdffile_to_image, imgfile_to_image, image_to_png_bytes
+)
 from app import FONTS
 
 from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
 from .printer import PrinterQueue, get_ptr_status
 
 LINE_SPACINGS = (100, 150, 200, 250, 300)
-
 DEFAULT_DPI = 300
 HIGH_RES_DPI = 600
 
 @bp.route('/')
 def index():
-    LABEL_SIZES = [ (label.identifier, label.name, label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size) for label in ALL_LABELS ]
-    return render_template('labeldesigner.html',
-                           font_family_names=FONTS.fontlist(),
-                           label_sizes=LABEL_SIZES,
-                           default_label_size=current_app.config['LABEL_DEFAULT_SIZE'],
-                           default_font_size=current_app.config['LABEL_DEFAULT_FONT_SIZE'],
-                           default_orientation=current_app.config['LABEL_DEFAULT_ORIENTATION'],
-                           default_qr_size=current_app.config['LABEL_DEFAULT_QR_SIZE'],
-                           default_image_mode=current_app.config['IMAGE_DEFAULT_MODE'],
-                           default_bw_threshold=current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
-                           default_font_family=current_app.config['LABEL_DEFAULT_FONT_FAMILY'],
-                           line_spacings=LINE_SPACINGS,
-                           default_line_spacing=current_app.config['LABEL_DEFAULT_LINE_SPACING'],
-                           default_dpi=DEFAULT_DPI,
-                           default_margin_top=current_app.config['LABEL_DEFAULT_MARGIN_TOP'],
-                           default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
-                           default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
-                           default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
-                           )
+    label_sizes = [
+        (label.identifier, label.name, label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size)
+        for label in ALL_LABELS
+    ]
+    return render_template(
+        'labeldesigner.html',
+        font_family_names=FONTS.fontlist(),
+        label_sizes=label_sizes,
+        default_label_size=current_app.config['LABEL_DEFAULT_SIZE'],
+        default_font_size=current_app.config['LABEL_DEFAULT_FONT_SIZE'],
+        default_orientation=current_app.config['LABEL_DEFAULT_ORIENTATION'],
+        default_qr_size=current_app.config['LABEL_DEFAULT_QR_SIZE'],
+        default_image_mode=current_app.config['IMAGE_DEFAULT_MODE'],
+        default_bw_threshold=current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
+        default_font_family=current_app.config['LABEL_DEFAULT_FONT_FAMILY'],
+        line_spacings=LINE_SPACINGS,
+        default_line_spacing=current_app.config['LABEL_DEFAULT_LINE_SPACING'],
+        default_dpi=DEFAULT_DPI,
+        default_margin_top=current_app.config['LABEL_DEFAULT_MARGIN_TOP'],
+        default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
+        default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
+        default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
+    )
 
 
 @bp.route('/api/font/styles', methods=['POST', 'GET'])
 def get_font_styles():
-    font = request.values.get(
-        'font', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
-    return FONTS.fonts[font]
+    font = request.values.get('font', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
+    return FONTS.fonts.get(font, {})
 
 
 @bp.route('/api/barcodes', methods=['GET'])
 def get_barcodes():
     barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]
-    # Add QR at the top
-    barcodes.insert(0, 'QR')
-    return {
-        'barcodes': barcodes
-    }
+    barcodes.insert(0, 'QR')  # Add QR at the top
+    return {'barcodes': barcodes}
 
 
 @bp.route('/api/preview', methods=['POST'])
 def preview_from_image():
-    # Set log level if provided
     log_level = request.values.get('log_level')
     if log_level:
         level = getattr(logging, log_level.upper(), None)
@@ -72,20 +73,19 @@ def preview_from_image():
     except Exception as e:
         current_app.logger.exception(e)
         error = 413 if "too long" in str(e) else 400
-        # Generate error response
         return make_response(jsonify({'message': str(e)}), error)
 
     return_format = request.values.get('return_format', 'png')
-
+    response_data = image_to_png_bytes(im)
     if return_format == 'base64':
         import base64
-        response = make_response(base64.b64encode(image_to_png_bytes(im)))
-        response.headers.set('Content-type', 'text/plain')
-        return response
+        response_data = base64.b64encode(response_data)
+        content_type = 'text/plain'
     else:
-        response = make_response(image_to_png_bytes(im))
-        response.headers.set('Content-type', 'image/png')
-        return response
+        content_type = 'image/png'
+    response = make_response(response_data)
+    response.headers.set('Content-type', content_type)
+    return response
 
 
 @bp.route('/api/printer_status', methods=['GET'])
@@ -97,20 +97,12 @@ def get_printer_status():
 def print_label():
     """
     API to print a label
-
     returns: JSON
-
-    Ideas for additional URL parameters:
-    - alignment
     """
-
     return_dict = {'success': False}
-
     try:
-        # Set log level if provided
         log_level = request.values.get('log_level')
         if log_level:
-            import logging
             level = getattr(logging, log_level.upper(), None)
             if isinstance(level, int):
                 current_app.logger.setLevel(level)
@@ -123,7 +115,6 @@ def print_label():
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
-        # Generate error 400 response
         return make_response(jsonify(return_dict), 400)
 
     try:
@@ -132,14 +123,12 @@ def print_label():
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
-            cut = (cut_once == False) or (cut_once and i == print_count-1)
+            cut = not cut_once or (cut_once and i == print_count - 1)
             printer.add_label_to_queue(label, cut, high_res)
-
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
-        # Generate error 400 response
         return make_response(jsonify(return_dict), 400)
 
     return_dict['success'] = status
@@ -147,28 +136,28 @@ def print_label():
 
 
 def create_printer_from_request(request):
-    d = request.values
-    context = {
-        'label_size': d.get('label_size', '62')
-    }
-
+    label_size = request.values.get('label_size', '62')
     return PrinterQueue(
-        model = current_app.config['PRINTER_MODEL'],
-        device_specifier = current_app.config['PRINTER_PRINTER'],
-        label_size = context['label_size']
+        model=current_app.config['PRINTER_MODEL'],
+        device_specifier=current_app.config['PRINTER_PRINTER'],
+        label_size=label_size
     )
 
-# Parse text form data from frontend
+
 def parse_text_form(input):
-    if not input or len(input) == 0:
+    """Parse text form data from frontend."""
+    if not input:
         return []
     return json.loads(input)
 
+
 def create_label_from_request(request, counter: int = 0):
-    d=request.values
+    d = request.values
     label_size = d.get('label_size', "62")
-    kind = [label.form_factor for label in ALL_LABELS if label.identifier == label_size][0]
-    context={
+    kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
+    if kind is None:
+        raise LookupError("Unknown label_size")
+    context = {
         'label_size': label_size,
         'print_type': d.get('print_type', 'text'),
         'label_orientation': d.get('orientation', 'standard'),
@@ -195,30 +184,26 @@ def create_label_from_request(request, counter: int = 0):
     }
 
     def get_label_dimensions(label_size, high_res: bool = False):
-        try:
-            dimensions = [label.dots_printable for label in ALL_LABELS if label.identifier == label_size][0]
-            if high_res:
-                return [2*dimensions[0], 2*dimensions[1]]
-            return dimensions
-        except KeyError:
+        dimensions = next((label.dots_printable for label in ALL_LABELS if label.identifier == label_size), None)
+        if dimensions is None:
             raise LookupError("Unknown label_size")
+        if high_res:
+            return [2 * dimensions[0], 2 * dimensions[1]]
+        return dimensions
 
     def get_font_path(line: dict):
-        try:
-            family_name = line.get('family', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
-            style_name = line.get('style', current_app.config['LABEL_DEFAULT_FONT_STYLE'])
-            if family_name not in FONTS.fonts:
-                raise LookupError("Unknown font family: %s" % family_name)
-            if style_name not in FONTS.fonts[family_name]:
-                raise LookupError("Unknown font style: %s for font %s" %
-                                  (style_name, family_name))
-            return FONTS.fonts[family_name][style_name]
-        except KeyError:
-            raise LookupError("Couldn't find the requested font + style")
+        family_name = line.get('family', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
+        style_name = line.get('style', current_app.config['LABEL_DEFAULT_FONT_STYLE'])
+        if family_name not in FONTS.fonts:
+            raise LookupError(f"Unknown font family: {family_name}")
+        if style_name not in FONTS.fonts[family_name]:
+            raise LookupError(f"Unknown font style: {style_name} for font {family_name}")
+        return FONTS.fonts[family_name][style_name]
 
     def get_uploaded_image(image):
         name, ext = os.path.splitext(image.filename)
-        if ext.lower() in ('.png', '.jpg', '.jpeg'):
+        ext = ext.lower()
+        if ext in ('.png', '.jpg', '.jpeg'):
             image = imgfile_to_image(image)
             if context['image_mode'] == 'grayscale':
                 return convert_image_to_grayscale(image)
@@ -228,7 +213,7 @@ def create_label_from_request(request, counter: int = 0):
                 return image
             else:
                 return convert_image_to_bw(image, context['image_bw_threshold'])
-        elif ext.lower() in ('.pdf'):
+        elif ext == '.pdf':
             image = pdffile_to_image(image, DEFAULT_DPI)
             if context['image_mode'] == 'grayscale':
                 return convert_image_to_grayscale(image)
@@ -237,26 +222,24 @@ def create_label_from_request(request, counter: int = 0):
         else:
             raise ValueError("Unsupported file type")
 
-    if context['print_type'] == 'text':
+    print_type = context['print_type']
+    image_mode = context['image_mode']
+    if print_type == 'text':
         label_content = LabelContent.TEXT_ONLY
-    elif context['print_type'] == 'qrcode':
+    elif print_type == 'qrcode':
         label_content = LabelContent.QRCODE_ONLY
-    elif context['print_type'] == 'qrcode_text':
+    elif print_type == 'qrcode_text':
         label_content = LabelContent.TEXT_QRCODE
-    elif context['image_mode'] == 'grayscale':
+    elif image_mode == 'grayscale':
         label_content = LabelContent.IMAGE_GRAYSCALE
-    elif context['image_mode'] == 'red_black':
+    elif image_mode == 'red_black':
         label_content = LabelContent.IMAGE_RED_BLACK
-    elif context['image_mode'] == 'colored':
+    elif image_mode == 'colored':
         label_content = LabelContent.IMAGE_COLORED
     else:
         label_content = LabelContent.IMAGE_BW
 
-    if context['label_orientation'] == 'rotated':
-        label_orientation = LabelOrientation.ROTATED
-    else:
-        label_orientation = LabelOrientation.STANDARD
-
+    label_orientation = LabelOrientation.ROTATED if context['label_orientation'] == 'rotated' else LabelOrientation.STANDARD
     if context['kind'] == FormFactor.ENDLESS:
         label_type = LabelType.ENDLESS_LABEL
     elif context['kind'] == FormFactor.DIE_CUT:
@@ -271,23 +254,19 @@ def create_label_from_request(request, counter: int = 0):
         height, width = width, height
 
     # Fix for completely empty text
-    if len(context['text']) > 0 and len(context['text'][0]['text']) == 0:
+    if context['text'] and len(context['text'][0].get('text', '')) == 0:
         context['text'][0]['text'] = " "
 
     # For each line in text, we determine and add the font path
     for line in context['text']:
-        if 'size' not in line or not line['size'].isdigit():
+        if 'size' not in line or not str(line['size']).isdigit():
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
         line['path'] = get_font_path(line)
-
-        # Reject extraordinary long texts
-        if len(line['text']) > 10_000:
+        if len(line.get('text', '')) > 10_000:
             raise ValueError("Text is too long")
 
-#    if context['print_color'] == 'red' and not context['red_support']:
-#        raise ValueError("Red font is not supported on this label")
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
