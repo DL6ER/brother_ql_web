@@ -15,6 +15,7 @@ class Config(object):
     SERVER_PORT = 8013
     SERVER_HOST = '0.0.0.0'
 
+    PRINTER_OFFLINE = False
     PRINTER_MODEL = 'QL-500'
     PRINTER_PRINTER = 'file:///dev/usb/lp1'
 

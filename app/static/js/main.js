@@ -179,7 +179,6 @@ function get_dpi() {
 }
 
 function updatePreview(data) {
-    setStatus({ 'preview': true });
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
     img.onload = function () {
@@ -218,6 +217,21 @@ function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
 
+    // Update font settings for each line
+    setFontSettingsPerLine();
+
+    // Return early if any of the font styles are empty
+    if (!fontSettingsPerLine || Object.keys(fontSettingsPerLine).length === 0) {
+        console.warn("No font settings available");
+        setStatus({ type: 'status', status: 'error', message: 'No font settings available' });
+        return;
+    }
+    if (fontSettingsPerLine.some(line => !line.style)) {
+        console.warn("Some font styles are missing");
+        setStatus({ type: 'status', status: 'error', message: 'Some font styles are missing' });
+        return;
+    }
+
     if (preview) {
         // Update preview image based on label size
         if ($('#labelSize option:selected').data('round') == 'True') {
@@ -243,15 +257,13 @@ function gen_label(preview = true, cut_once = false) {
         $('#groupLabelImage').hide();
     }
 
-    // Update font settings for each line
-    setFontSettingsPerLine();
-
     // Update status box
-    setStatus(preview ? { 'preview': false } : { 'printing': false });
+    let type = preview ? 'preview' : 'printing';
+    setStatus({ type: type, 'status': 'pending' });
 
     // Process image upload
     if ($('input[name=printType]:checked').val() == 'image') {
-        dropZoneMode = preview ? 'preview' : 'print';
+        dropZoneMode = preview ? 'preview' : 'printing';
         imageDropZone.processQueue();
         return;
     }
@@ -264,13 +276,19 @@ function gen_label(preview = true, cut_once = false) {
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         data: formData(cut_once),
         success: function (data) {
+            // Check if response is JSON and has a key "success"
+            const status = typeof data === "object" &&
+                data !== null &&
+                "success" in data &&
+                data.success === false ?
+                'error' : 'success';
+            setStatus({ type: type, 'status': status });
             updatePreview(data);
         },
         error: function (xhr, _status, error) {
             message = xhr.responseJSON ? xhr.responseJSON.message : error;
-            data = { 'success': false, 'message': message };
             const text = preview ? 'Preview generation failed' : 'Printing failed';
-            setStatus(data, text);
+            setStatus({ type: type, 'status': 'error', 'message': message }, text);
         }
     });
 }
@@ -284,35 +302,88 @@ function preview() {
 }
 
 function setStatus(data, what = null) {
-    if (data.hasOwnProperty('preview') || data.hasOwnProperty('printing')) {
-        if (data['preview']) {
-            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-eye"></i><span>Preview generated successfully.</span></div>');
-            // Status icon green checkmark
-            $('#statusIcon').removeClass().addClass('float-right fas fa-check text-success');
-        }
-        else if (what !== null) {
-            // We are currently busy preparing the preview / printing
-            const what = data.hasOwnProperty('printing') ? "Printing" : "Generating preview";
-            $('#statusPanel').html('<div id="statusBox" class="alert alert-info" role="alert"><i class="fas fa-hourglass-half"></i><span>' + what + '...</span></div>');
-            // Status icon muted hourglass
-            $('#statusIcon').removeClass().addClass('float-right fas fa-hourglass-half text-muted');
-        }
+    let type = data.type || '';
+    let status = data.status || '';
+    let message = data.message || '';
+    let errors = data?.errors || [];
+    console.log(data);
+    let extra_info = message ? ':<br />' + message : '';
+    if (errors.length > 0) {
+        extra_info += '<br />' + errors.join('<br />');
     }
-    else if (data['success']) {
-        $('#statusPanel').html('<div id="statusBox" class="alert alert-success" role="alert"><i class="fas fa-check"></i><span>Printing was successful.</span></div>');
-        // Status icon green printer
-        $('#statusIcon').removeClass().addClass('float-right fas fa-print text-success');
+    console.log(errors);
+
+    // Default: clear status
+    let html = '';
+    let iconClass = '';
+
+    if (type === 'preview' || type === 'printing') {
+        if (status === 'pending') {
+            // Busy preparing preview or printing
+            let action = type === 'printing' ? "Printing" : "Generating preview";
+            html = `<div id="statusBox" class="alert alert-info" role="alert">
+                        <i class="fas fa-hourglass-half"></i>
+                        <span>${action}...</span>
+                    </div>`;
+            iconClass = 'float-right fas fa-hourglass-half text-muted';
+        } else if (status === 'success') {
+            // Success for preview or printing
+            if (type === 'preview') {
+                html = `<div id="statusBox" class="alert alert-info" role="alert">
+                            <i class="fas fa-eye"></i>
+                            <span>Preview generated successfully.</span>
+                        </div>`;
+                iconClass = 'float-right fas fa-check text-success';
+            } else {
+                html = `<div id="statusBox" class="alert alert-success" role="alert">
+                            <i class="fas fa-check"></i>
+                            <span>Printing was successful.</span>
+                        </div>`;
+                iconClass = 'float-right fas fa-print text-success';
+            }
+        } else if (status === 'error') {
+            // Error for preview or printing
+            let action = type === 'preview' ? "Preview generation failed" : "Printing failed";
+            html = `<div id="statusBox" class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>${action}${extra_info}</span>
+                    </div>`;
+            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+        } else {
+            // Unknown status, clear
+            html = "";
+            iconClass = "";
+        }
+    } else if (type === 'status') {
+        if (status === 'error') {
+            let action = "Error";
+            html = `<div id="statusBox" class="alert alert-warning" role="alert">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span>${action}${extra_info}</span>
+                    </div>`;
+            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+        } else {
+            html = "";
+            iconClass = "";
+        }
     } else {
-        extra_info = ''
-        if ('message' in data) {
-            extra_info = ':<br />' + data['message']
-        }
-        if (what !== null) {
-            $('#statusPanel').html('<div id="statusBox" class="alert alert-warning" role="alert"><i class="fas fa-exclamation-triangle"></i><span>' + what + extra_info + '</span></div>');
-        }
-        // Status icon red exclamation
-        $('#statusIcon').removeClass().addClass('float-right fas fa-exclamation-triangle text-danger');
+        html = "";
+        iconClass = "";
     }
+
+    let elem = null;
+    if (type === 'status') {
+        elem = $('#printerStatusPanel');
+    } else {
+        elem = $('#statusPanel');
+    }
+    elem.html(html);
+    if (html.length > 0)
+        elem.show();
+    else
+        elem.hide();
+
+    $('#statusIcon').removeClass().addClass(iconClass);
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
 }
@@ -352,10 +423,15 @@ Dropzone.options.myAwesomeDropzone = {
 
     success: function (file, response) {
         // If preview or print was successfull update the previewpane or print status
+        // Check if response is JSON and has a key "success"
+        const status = typeof response === "object" &&
+            response !== null &&
+            "success" in response &&
+            response.success === false ?
+            'error' : 'success';
+        setStatus({ type: dropZoneMode, status: status });
         if (dropZoneMode == 'preview') {
             updatePreview(response);
-        } else {
-            setStatus(response);
         }
         file.status = Dropzone.QUEUED;
     },
@@ -407,6 +483,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function updatePrinterStatus() {
+    const printerIcon = document.getElementById('printerIcon');
     const printerModel = document.getElementById('printerModel');
     if (printerModel) {
         printerModel.textContent = printer_status.model || 'Unknown';
@@ -420,6 +497,18 @@ function updatePrinterStatus() {
     } else {
         $('#print_color_black').prop('active', true);
         $(".red-support").hide();
+    }
+
+    if (printer_status.status_type === 'Offline') {
+        printerModel.classList.add('text-muted');
+        printerPath.classList.add('text-muted');
+        printerIcon.classList.add('text-muted');
+        // Append " (offline)" to printer path
+        printerPath.textContent += " (offline)";
+    } else {
+        printerModel.classList.remove('text-muted');
+        printerPath.classList.remove('text-muted');
+        printerIcon.classList.remove('text-muted');
     }
 
     const labelSizeX = document.getElementById('label-width');
@@ -453,25 +542,11 @@ function updatePrinterStatus() {
     }
 
     if (printer_status.errors && printer_status.errors.length > 0) {
-        setStatus({ 'success': false })
-        const printerErrors = document.getElementById('printerStatusBox');
-        if (printerErrors) {
-            printerErrors.innerHTML = '';
-            printer_status.errors.forEach((error) => {
-                const li = document.createElement('li');
-                li.textContent = error;
-                printerErrors.appendChild(li);
-            });
-            printerErrors.parentElement.style.display = '';
-        }
+        setStatus({ type: 'status', status: 'error', errors: printer_status.errors });
     }
     else {
         // Clear printer errors
-        const printerErrors = document.getElementById('printerStatusBox');
-        if (printerErrors) {
-            printerErrors.innerHTML = '';
-            printerErrors.parentElement.style.display = 'none';
-        }
+        setStatus({ type: 'status', status: 'success' });
     }
 }
 

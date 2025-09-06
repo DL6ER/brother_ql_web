@@ -1,24 +1,26 @@
-import logging
 import os
-
+import logging
+from typing import Any
 import barcode
-from flask import current_app, json, jsonify, render_template, request, make_response
-
-from brother_ql.labels import ALL_LABELS, FormFactor
-
 from . import bp
+from app import FONTS
+from werkzeug.datastructures import FileStorage
+from .printer import PrinterQueue, get_ptr_status
+from brother_ql.labels import ALL_LABELS, FormFactor
+from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
+from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black,
     pdffile_to_image, imgfile_to_image, image_to_png_bytes
 )
-from app import FONTS
-
-from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
-from .printer import PrinterQueue, get_ptr_status
 
 LINE_SPACINGS = (100, 150, 200, 250, 300)
 DEFAULT_DPI = 300
 HIGH_RES_DPI = 600
+
+@bp.errorhandler(ValueError)
+def handle_value_error(e):
+    return jsonify({"error": str(e)}), 400
 
 @bp.route('/')
 def index():
@@ -90,7 +92,7 @@ def preview_from_image():
 
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
-    return get_ptr_status(current_app.config['PRINTER_PRINTER'])
+    return get_ptr_status(current_app.config)
 
 
 @bp.route('/api/print', methods=['POST', 'GET'])
@@ -125,7 +127,7 @@ def print_label():
             # - we cut only once and this is the last label to be generated
             cut = not cut_once or (cut_once and i == print_count - 1)
             printer.add_label_to_queue(label, cut, high_res)
-        status = printer.process_queue()
+        status = printer.process_queue(current_app.config['PRINTER_OFFLINE'])
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
@@ -135,7 +137,7 @@ def print_label():
     return return_dict
 
 
-def create_printer_from_request(request):
+def create_printer_from_request(request: Request):
     label_size = request.values.get('label_size', '62')
     return PrinterQueue(
         model=current_app.config['PRINTER_MODEL'],
@@ -144,14 +146,14 @@ def create_printer_from_request(request):
     )
 
 
-def parse_text_form(input):
+def parse_text_form(input: str) -> Any:
     """Parse text form data from frontend."""
     if not input:
         return []
     return json.loads(input)
 
 
-def create_label_from_request(request, counter: int = 0):
+def create_label_from_request(request: Request, counter: int = 0):
     d = request.values
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
@@ -183,7 +185,7 @@ def create_label_from_request(request, counter: int = 0):
         'high_res': int(d.get('high_res', 0)) != 0
     }
 
-    def get_label_dimensions(label_size, high_res: bool = False):
+    def get_label_dimensions(label_size: str, high_res: bool = False):
         dimensions = next((label.dots_printable for label in ALL_LABELS if label.identifier == label_size), None)
         if dimensions is None:
             raise LookupError("Unknown label_size")
@@ -200,7 +202,7 @@ def create_label_from_request(request, counter: int = 0):
             raise LookupError(f"Unknown font style: {style_name} for font {family_name}")
         return FONTS.fonts[family_name][style_name]
 
-    def get_uploaded_image(image):
+    def get_uploaded_image(image: FileStorage):
         name, ext = os.path.splitext(image.filename)
         ext = ext.lower()
         if ext in ('.png', '.jpg', '.jpeg'):
