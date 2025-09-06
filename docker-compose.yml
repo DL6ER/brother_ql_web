@@ -8,11 +8,15 @@ services:
       - "8013:8013"
     environment:
       - TZ=Europe/Berlin
+      - LABEL_DEFAULT_SIZE=62
+      - LABEL_DEFAULT_ORIENTATION=standard
+      - PRINTER_MODEL=QL-800
+      - PRINTER_PRINTER=file:///dev/usb/lp0
 #    devices:
 #      - "/dev/usb/lp0:/dev/usb/lp0"
     volumes:
       - /etc/timezone:/etc/timezone:ro
-    command: >
-      --model QL-800
-      --default-label-size 62
-      file:///dev/usb/lp0
+#    command: >
+#      --model QL-800
+#      --default-label-size 62
+#      file:///dev/usb/lp0

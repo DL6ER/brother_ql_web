@@ -218,6 +218,21 @@ function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
 
+    // Update font settings for each line
+    setFontSettingsPerLine();
+
+    // Return early if any of the font styles are empty
+    if (!fontSettingsPerLine || Object.keys(fontSettingsPerLine).length === 0) {
+        console.warn("No font settings available");
+        setStatus({ 'printing': false });
+        return;
+    }
+    if (fontSettingsPerLine.some(line => !line.style)) {
+        console.warn("Some font styles are missing");
+        setStatus({ 'printing': false });
+        return;
+    }
+
     if (preview) {
         // Update preview image based on label size
         if ($('#labelSize option:selected').data('round') == 'True') {
@@ -242,9 +257,6 @@ function gen_label(preview = true, cut_once = false) {
     } else {
         $('#groupLabelImage').hide();
     }
-
-    // Update font settings for each line
-    setFontSettingsPerLine();
 
     // Update status box
     setStatus(preview ? { 'preview': false } : { 'printing': false });
@@ -407,6 +419,7 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 function updatePrinterStatus() {
+    const printerIcon = document.getElementById('printerIcon');
     const printerModel = document.getElementById('printerModel');
     if (printerModel) {
         printerModel.textContent = printer_status.model || 'Unknown';
@@ -420,6 +433,16 @@ function updatePrinterStatus() {
     } else {
         $('#print_color_black').prop('active', true);
         $(".red-support").hide();
+    }
+
+    if (printer_status.status_type === 'Offline') {
+        printerModel.classList.add('text-muted');
+        printerPath.classList.add('text-muted');
+        printerIcon.classList.add('text-muted');
+    } else {
+        printerModel.classList.remove('text-muted');
+        printerPath.classList.remove('text-muted');
+        printerIcon.classList.remove('text-muted');
     }
 
     const labelSizeX = document.getElementById('label-width');

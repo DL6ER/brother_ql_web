@@ -2,6 +2,7 @@ import logging
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from brother_ql.backends.helpers import get_printer, get_status
+from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
 
@@ -62,7 +63,10 @@ class PrinterQueue:
             return False
 
 
-def get_ptr_status(device_specifier):
+def get_status(config: Config):
+    device_specifier = config['PRINTER_PRINTER']
+    default_model = config['PRINTER_MODEL']
+    printer_offline = config['PRINTER_OFFLINE']
     status = {
         "errors": [],
         "path": device_specifier,
@@ -82,12 +86,15 @@ def get_ptr_status(device_specifier):
         "red_support": False
     }
     try:
-        printer = get_printer(device_specifier)
-        printer_state = get_status(printer)
-        for key, value in printer_state.items():
-            status[key] = value
-            if key == 'model':
-                status['red_support'] = value in [model.identifier for model in ALL_MODELS if model.two_color]
+        if printer_offline:
+            status['model'] = default_model
+            status['status_type'] = 'Offline'
+        else:
+            printer = get_printer(device_specifier)
+            printer_state = get_status(printer)
+            for key, value in printer_state.items():
+                status[key] = value
+        status['red_support'] = status['model'] in [model.identifier for model in ALL_MODELS if model.two_color]
         return status
     except Exception as e:
         logger.exception("Printer status error: %s", e)

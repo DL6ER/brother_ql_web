@@ -120,9 +120,11 @@ services:
       - "8013:8013"
     devices:
       - "/dev/usb/lp0:/dev/usb/lp0"
-    command: >
-      --default-label-size 62
-      file:///dev/usb/lp0
+    environment:
+      - LABEL_DEFAULT_SIZE=62
+      - LABEL_DEFAULT_ORIENTATION=standard
+      - PRINTER_MODEL=QL-800
+      - PRINTER_PRINTER=file:///dev/usb/lp0
 ```
 
 To build the image locally:
