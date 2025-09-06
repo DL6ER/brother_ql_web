@@ -52,7 +52,7 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
-tests/_FAILED*
+tests/FAILED*
 
 # Translations
 *.mo

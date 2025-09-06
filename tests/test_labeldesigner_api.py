@@ -4,6 +4,7 @@ from datetime import datetime
 import json
 import sys
 import os
+from typing import Union
 import pytest
 import io
 import multiprocessing
@@ -24,19 +25,20 @@ EXAMPLE_FORMDATA = {
 
 def verify_image(response_data, expected_image_path):
     # Compare generated preview with the image in file (if it exists)
-    if not UPDATE_IMAGES and os.path.isfile(expected_image_path):
-        with open(expected_image_path, 'rb') as f:
+    if not UPDATE_IMAGES and os.path.isfile('tests/images/' + expected_image_path):
+        with open('tests/images/' + expected_image_path, 'rb') as f:
             expected_data = f.read()
         if response_data != expected_data:
             # Save image for debugging purposes
-            failed_image_path = 'tests/_FAILED_' + expected_image_path.rsplit("/")[1]
+            failed_image_path = 'tests/' + 'FAILED_' + expected_image_path
             with open(failed_image_path, 'wb') as f:
                 f.write(response_data)
             raise AssertionError("Generated image does not match expected image")
 
     # Write image into file
-    with open(expected_image_path, 'wb') as f:
+    with open('tests/images/' + expected_image_path, 'wb') as f:
         f.write(response_data)
+
 
 @pytest.fixture
 def client():
@@ -103,7 +105,7 @@ def test_generate_preview(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/simple.png')
+    verify_image(response.data, 'simple.png')
 
 
 def test_generate_preview_high_res(client):
@@ -131,7 +133,7 @@ def test_generate_preview_high_res(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/simple_high_res.png')
+    verify_image(response.data, 'simple_high_res.png')
 
 
 def test_generate_preview_inverted(client):
@@ -175,7 +177,7 @@ def test_generate_preview_inverted(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/inverted_text.png')
+    verify_image(response.data, 'inverted_text.png')
 
 
 def test_generate_preview_rotated(client):
@@ -202,7 +204,7 @@ def test_generate_preview_rotated(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/rotated.png')
+    verify_image(response.data, 'rotated.png')
 
 
 def test_generate_ean13(client):
@@ -230,7 +232,7 @@ def test_generate_ean13(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/barcode_ean13.png')
+    verify_image(response.data, 'barcode_ean13.png')
 
 
 def test_invalid_ean13(client):
@@ -285,16 +287,16 @@ def test_generate_qr(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/qr.png')
+    verify_image(response.data, 'qr.png')
 
 
-def image_test(client, image_path: str|None = None, rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale", high_res: bool = False):
+def image_test(client, image_path: Union[str, None] = None, rotated: bool = False, fit: bool = False, text: bool = False, image_mode: str = "grayscale", high_res: bool = False):
     data = EXAMPLE_FORMDATA.copy()
     if image_path is None:
         if high_res:
-            image_path = "tests/_demo_image_highres.jpg"
+            image_path = "tests/fixtures/_demo_image_highres.jpg"
         else:
-            image_path = "tests/_demo_image.jpg"
+            image_path = "tests/fixtures/_demo_image.jpg"
     my_file = FileStorage(
         stream=open(image_path, "rb"),
         filename=os.path.basename(image_path),
@@ -321,7 +323,7 @@ def image_test(client, image_path: str|None = None, rotated: bool = False, fit: 
             }
         ])
 
-    expected_img_path = "tests/image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + ("_highres" if high_res else "") + "_" + image_mode + ".png"
+    expected_img_path = "image" + ("_rotated" if rotated else "") + ("_fit" if fit else "") + ("_text" if text else "") + ("_highres" if high_res else "") + "_" + image_mode + ".png"
 
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
@@ -428,7 +430,7 @@ def test_generate_template(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/template.png')
+    verify_image(response.data, 'template.png')
 
 
 def test_invalid_data_types(client):
@@ -503,7 +505,7 @@ def test_template_edge_cases(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/template_incomplete.png')
+    verify_image(response.data, 'template_incomplete.png')
 
     # Unknown template variable
     data['text'] = json.dumps([
@@ -514,7 +516,7 @@ def test_template_edge_cases(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/template_unknown.png')
+    verify_image(response.data, 'template_unknown.png')
 
 
 def test_concurrent_preview_requests(client):
@@ -578,7 +580,7 @@ def test_empty_label(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/empty_label.png')
+    verify_image(response.data, 'empty_label.png')
 
 
 def test_minimal_label(client):
@@ -592,7 +594,7 @@ def test_minimal_label(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/minimal_label.png')
+    verify_image(response.data, 'minimal_label.png')
 
 
 def test_unicode_and_special_characters(client):
@@ -606,7 +608,7 @@ def test_unicode_and_special_characters(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/unicode.png')
+    verify_image(response.data, 'unicode.png')
 
 
 def test_security_xss(client):
@@ -620,7 +622,7 @@ def test_security_xss(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/security_xss.png')
+    verify_image(response.data, 'security_xss.png')
 
 
 @pytest.mark.parametrize('method', ['put', 'delete', 'patch'])
@@ -641,7 +643,7 @@ def test_print_red_text(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/red_text.png')
+    verify_image(response.data, 'red_text.png')
 
 
 def test_large_number_of_text_blocks(client):
@@ -662,7 +664,7 @@ def test_large_number_of_text_blocks(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/large_label.png')
+    verify_image(response.data, 'large_label.png')
 
 
 def test_file_size_limits(client):
@@ -693,7 +695,7 @@ def test_extra_fields_ignored(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/extra_fields.png')
+    verify_image(response.data, 'extra_fields.png')
 
 
 def test_multiple_images_failure(client):
@@ -745,7 +747,7 @@ def test_html_in_text(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/html_in_text_plain.png')
+    verify_image(response.data, 'html_in_text_plain.png')
 
 
 def test_missing_optional_fields(client):
@@ -764,7 +766,7 @@ def test_missing_optional_fields(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/missing_optional_fields.png')
+    verify_image(response.data, 'missing_optional_fields.png')
 
 
 # Further advanced test cases
@@ -843,7 +845,7 @@ def test_unicode_normalization(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/unicode_normalization.png')
+    verify_image(response.data, 'unicode_normalization.png')
 
 
 def test_head_request(client):
@@ -892,7 +894,7 @@ def test_todo_list(client):
     assert response.content_type in ['image/png']
 
     # Check image
-    verify_image(response.data, 'tests/todo_list.png')
+    verify_image(response.data, 'todo_list.png')
 
 
 # We cannot test the print functionality without a physical printer
