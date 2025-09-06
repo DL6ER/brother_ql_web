@@ -7,92 +7,60 @@ from brother_ql.models import ALL_MODELS
 
 logger = logging.getLogger(__name__)
 
+
 class PrinterQueue:
-
-    _printQueue = []
-    _cutQueue = []
-
-    def __init__(
-            self,
-            model,
-            device_specifier,
-            label_size):
+    def __init__(self, model, device_specifier, label_size):
         self.model = model
         self.device_specifier = device_specifier
         self.label_size = label_size
-
-    @property
-    def model(self):
-        return self._model
-
-    @model.setter
-    def model(self, value):
-        self._model = value
-
-    @property
-    def device_specifier(self):
-        return self._device_specifier
-
-    @device_specifier.setter
-    def device_specifier(self, value):
-        self._device_specifier = value
-
-    @property
-    def label_size(self):
-        return self._label_size
-
-    @label_size.setter
-    def label_size(self, value):
-        self._label_size = value
+        self._print_queue = []
 
     def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False):
-        self._printQueue.append(
-            {'label': label,
-             'cut': cut,
-             'high_res': high_res
-             })
+        self._print_queue.append({
+            'label': label,
+            'cut': cut,
+            'high_res': high_res
+        })
 
     def process_queue(self) -> bool:
-        qlr = BrotherQLRaster(self._model)
-
-        for queue_entry in self._printQueue:
-            if queue_entry['label'].label_type == LabelType.ENDLESS_LABEL:
-                if queue_entry['label'].label_orientation == LabelOrientation.STANDARD:
-                    rotate = 0
-                else:
-                    rotate = 90
+        if not self._print_queue:
+            logger.warning("Print queue is empty.")
+            return False
+        qlr = BrotherQLRaster(self.model)
+        for entry in self._print_queue:
+            label = entry['label']
+            cut = entry['cut']
+            high_res = entry['high_res']
+            if label.label_type == LabelType.ENDLESS_LABEL:
+                rotate = 0 if label.label_orientation == LabelOrientation.STANDARD else 90
             else:
                 rotate = 'auto'
-
-            img = queue_entry['label'].generate(rotate=False)
-
-            if queue_entry['label'].label_content == LabelContent.IMAGE_BW:
-                dither = False
-            else:
-                dither = True
-
+            img = label.generate(rotate=False)
+            dither = label.label_content != LabelContent.IMAGE_BW
             create_label(
                 qlr,
                 img,
                 self.label_size,
-                red='red' in self.label_size,
+                red='red' in str(self.label_size),
                 dither=dither,
-                cut=queue_entry['cut'],
-                dpi_600=queue_entry['high_res'],
-                rotate=rotate)
+                cut=cut,
+                dpi_600=high_res,
+                rotate=rotate
+            )
+        self._print_queue.clear()
+        try:
+            info = send(qlr.data, self.device_specifier)
+            logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
+            logger.info('Printer response: %s', str(info))
+            if info.get('did_print') and info.get('ready_for_next_job'):
+                logger.info('Label printed successfully and printer is ready for next job')
+                return True
+            logger.warning("Failed to print label")
+            return False
+        except Exception as e:
+            logger.exception("Exception during sending to printer: %s", e)
+            return False
 
-        self._printQueue.clear()
-
-        info = send(qlr.data, self._device_specifier)
-        logger.info('Sent %d bytes to printer %s', len(qlr.data), self._device_specifier)
-        logger.info('Printer response: %s', str(info))
-        
-        if info['did_print'] and info['ready_for_next_job']:
-            logger.info('Label printed successfully and printer is ready for next job')
-            return True
-
-        logger.warning("Failed to print label")
-        return False
 
 def get_ptr_status(device_specifier):
     status = {
@@ -113,16 +81,15 @@ def get_ptr_status(device_specifier):
         "text_color": "",
         "red_support": False
     }
-
     try:
         printer = get_printer(device_specifier)
         printer_state = get_status(printer)
-        for key in printer_state:
-            status[key] = printer_state.get(key, status[key])
+        for key, value in printer_state.items():
+            status[key] = value
             if key == 'model':
-                status['red_support'] = printer_state['model'] in [model.identifier for model in ALL_MODELS if model.two_color]
+                status['red_support'] = value in [model.identifier for model in ALL_MODELS if model.two_color]
         return status
     except Exception as e:
-        logger.exception(e)
+        logger.exception("Printer status error: %s", e)
         status['errors'] = [str(e)]
         return status

@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from .enums import LabelContent, LabelOrientation, LabelType
 import os
 import uuid
 from qrcode import QRCode, constants
@@ -10,62 +10,45 @@ import datetime
 import re
 import random
 import string
+import copy
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
-class LabelContent(Enum):
-    TEXT_ONLY = auto()
-    QRCODE_ONLY = auto()
-    TEXT_QRCODE = auto()
-    IMAGE_BW = auto()
-    IMAGE_GRAYSCALE = auto()
-    IMAGE_RED_BLACK = auto()
-    IMAGE_COLORED = auto()
-
-
-class LabelOrientation(Enum):
-    STANDARD = auto()
-    ROTATED = auto()
-
-
-class LabelType(Enum):
-    ENDLESS_LABEL = auto()
-    DIE_CUT_LABEL = auto()
-    ROUND_DIE_CUT_LABEL = auto()
-
-
-class TextAlign(Enum):
-    LEFT = 'left'
-    CENTER = 'center'
-    RIGHT = 'right'
+# Constants
+WARNING_TEXT_LENGTH = 500
+DEFAULT_RANDOM_LENGTH = 64
+DEFAULT_FONT_SIZE = 12
+FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
 
 
 class SimpleLabel:
-    def _ensure_pil_image(self, img) -> Image.Image:
+    """
+    Represents a label with text, image, barcode, and QR code support.
+    Handles rendering, template processing, and layout.
+    """
+    def _ensure_pil_image(self, img: Any) -> Image.Image:
         """Ensure the image is a PIL.Image.Image instance."""
         if isinstance(img, Image.Image):
             return img
-        # Try to convert PyPNGImage or other types to PIL.Image
+        import io
         try:
-            # Try to get bytes and open as PIL
-            import io
             if hasattr(img, 'tobytes') and hasattr(img, 'size') and hasattr(img, 'mode'):
                 return Image.frombytes(img.mode, img.size, img.tobytes())
-            elif hasattr(img, 'to_pil_image'):
+            if hasattr(img, 'to_pil_image'):
                 return img.to_pil_image()
-            elif hasattr(img, 'as_pil_image'):
+            if hasattr(img, 'as_pil_image'):
                 return img.as_pil_image()
-            elif hasattr(img, 'save'):
+            if hasattr(img, 'save'):
                 buf = io.BytesIO()
                 img.save(buf, format='PNG')
                 buf.seek(0)
                 return Image.open(buf)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Failed to convert image to PIL.Image: {e}")
         raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
 
-
-    qr_correction_mapping = {
+    QR_CORRECTION_MAPPING = {
         'M': constants.ERROR_CORRECT_M,
         'L': constants.ERROR_CORRECT_L,
         'H': constants.ERROR_CORRECT_H,
@@ -73,27 +56,36 @@ class SimpleLabel:
     }
 
     def __init__(
-            self,
-            width=0,
-            height=0,
-            label_content=LabelContent.TEXT_ONLY,
-            label_orientation=LabelOrientation.STANDARD,
-            label_type=LabelType.ENDLESS_LABEL,
-            barcode_type="QR",
-            label_margin=(0, 0, 0, 0),  # Left, Right, Top, Bottom
-            fore_color=(0, 0, 0),  # Red, Green, Blue
-            text={},
-            qr_size=10,
-            qr_correction='L',
-            image_fit=False,
-            image=None,
-            border_thickness=1,
-            border_roundness=0,
-            border_distance=(0, 0),
-            border_color=(0, 0, 0),
-            timestamp=0,
-            counter=0,
-            red_support=False):
+        self,
+        width: int = 0,
+        height: int = 0,
+        label_content: LabelContent = LabelContent.TEXT_ONLY,
+        label_orientation: LabelOrientation = LabelOrientation.STANDARD,
+        label_type: LabelType = LabelType.ENDLESS_LABEL,
+        barcode_type: str = "QR",
+        label_margin: Tuple[int, int, int, int] = (0, 0, 0, 0),
+        fore_color: Tuple[int, int, int] = (0, 0, 0),
+        text: Optional[List[Dict[str, Any]]] = None,
+        qr_size: int = 10,
+        qr_correction: str = 'L',
+        image_fit: bool = False,
+        image: Optional[Any] = None,
+        border_thickness: int = 1,
+        border_roundness: int = 0,
+        border_distance: Tuple[int, int] = (0, 0),
+        border_color: Tuple[int, int, int] = (0, 0, 0),
+        timestamp: int = 0,
+        counter: int = 0,
+        red_support: bool = False
+    ):
+        """Initialize a SimpleLabel object."""
+        # Input validation
+        if width < 0 or height < 0:
+            raise ValueError("Width and height must be non-negative.")
+        if border_thickness < 0:
+            raise ValueError("Border thickness must be non-negative.")
+        if qr_size < 1:
+            raise ValueError("QR size must be positive.")
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -124,10 +116,13 @@ class SimpleLabel:
     def label_content(self, value):
         self._label_content = value
 
-    def want_text(self, img):
-        # We always want to draw text (even when empty) when no image is
-        # provided to avoid an error 500 because we created no image at all
-        return img is None or self._label_content not in (LabelContent.QRCODE_ONLY,) and len(self.text) > 0 and len(self.text[0]['text']) > 0
+    def want_text(self, img: Optional[Image.Image]) -> bool:
+        """Determine if text should be drawn on the label."""
+        if img is None:
+            return True
+        if self._label_content not in (LabelContent.QRCODE_ONLY,) and self.text and self.text[0].get('text', ''):
+            return True
+        return False
 
     @property
     def need_image_text_distance(self):
@@ -147,14 +142,14 @@ class SimpleLabel:
 
     @property
     def qr_correction(self):
-        for key, val in self.qr_correction_mapping:
+        for key, val in self.QR_CORRECTION_MAPPING.items():
             if val == self._qr_correction:
                 return key
+        return 'L'
 
     @qr_correction.setter
     def qr_correction(self, value):
-        self._qr_correction = self.qr_correction_mapping.get(
-            value, constants.ERROR_CORRECT_L)
+        self._qr_correction = self.QR_CORRECTION_MAPPING.get(value, constants.ERROR_CORRECT_L)
 
     @property
     def label_orientation(self):
@@ -172,50 +167,53 @@ class SimpleLabel:
     def label_type(self, value):
         self._label_type = value
 
-    def process_templates(self):
-        # Loop over text lines and replace templates
-        self.text = self.input_text.copy()
+    def process_templates(self) -> None:
+        """Process and replace templates in the text lines."""
+        self.text = copy.deepcopy(self.input_text)
         for line in self.text:
-            if len(line['text']) > 500:
-                logger.warning("Text line is very long (> 500 characters), this may lead to long processing times.")
+            text_val = line.get('text', '')
+            if len(text_val) > WARNING_TEXT_LENGTH:
+                logger.warning(
+                    f"Text line is very long (> {WARNING_TEXT_LENGTH} characters), "
+                    "this may lead to long processing times.")
 
-            # Replace {{counter[:offset]}} with current label counter (x is an optional offset defaulting to 1)
+            # Replace {{counter[:start]}} with current label counter (start is
+            # an optional offset defaulting to 1)
             def counter_replacer(match):
                 offset = int(match.group(1)) if match.group(1) else 1
                 return str(self._counter + offset)
-            line['text'] = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, line['text'])
+            text_val = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, text_val)
 
             # Replace {{datetime:x}} with current datetime formatted as x
             def datetime_replacer(match):
                 fmt = match.group(1)
-                if self._timestamp > 0:
-                    now = datetime.datetime.fromtimestamp(self._timestamp)
-                else:
-                    now = datetime.datetime.now()
+                now = datetime.datetime.fromtimestamp(self._timestamp) if self._timestamp > 0 else datetime.datetime.now()
                 return now.strftime(fmt)
-            line['text'] = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, line['text'])
+            text_val = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, text_val)
 
             # Replace {{uuid}} with a new UUID
-            if "{{uuid}}" in line['text']:
+            if "{{uuid}}" in text_val:
                 ui = uuid.UUID(int=random.getrandbits(128))
-                line['text'] = line['text'].replace("{{uuid}}", str(ui))
+                text_val = text_val.replace("{{uuid}}", str(ui))
 
             # Replace {{short-uuid}} with a shortened UUID
-            if "{{short-uuid}}" in line['text']:
+            if "{{short-uuid}}" in text_val:
                 ui = uuid.UUID(int=random.getrandbits(128))
-                line['text'] = line['text'].replace("{{short-uuid}}", str(ui)[:8])
+                text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
 
             # Replace {{env:var}} with the value of the environment variable var
             def env_replacer(match):
                 var_name = match.group(1)
                 return os.getenv(var_name, "")
-            line['text'] = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, line['text'])
+            text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
 
             # Replace {{random[:len]}} with random string of optional length <len>
             def random_replacer(match):
-                length = int(match.group(1)) if match.group(1) else 64
+                length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
-            line['text'] = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, line['text'])
+            text_val = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, text_val)
+
+            line['text'] = text_val
 
     def generate(self, rotate: bool = False):
         # Process possible templates in the text
@@ -227,7 +225,8 @@ class SimpleLabel:
                 img = self._generate_qr()
             else:
                 img = self._generate_barcode()
-                # Remove the first line of text as the barcode already contains it
+                # Remove the first line of text as the barcode already contains
+                # it
                 self.text = self.text[1:]
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
             img = self._image
@@ -374,7 +373,8 @@ class SimpleLabel:
 
     def _generate_barcode(self):
         barcode_generator = barcode.get_barcode_class(self.barcode_type)
-        my_barcode = barcode_generator(self.text[0]['text'], writer=ImageWriter())
+        value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
+        my_barcode = barcode_generator(value, writer=ImageWriter())
         return my_barcode.render()
 
     def _generate_qr(self):
@@ -385,14 +385,11 @@ class SimpleLabel:
             border=0,
         )
         # Combine texts
-        text = ""
-        for line in self.text:
-            text += line['text'] + "\n"
+        text = "\n".join(line.get('text', '') for line in self.text)
         qr.add_data(text.encode("utf-8-sig"))
         qr.make(fit=True)
-        qr_img = qr.make_image(
-            fill_color='red' if (255, 0, 0) == self._fore_color else 'black',
-            back_color="white")
+        fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'
+        qr_img = qr.make_image(fill_color=fill_color, back_color="white")
         return qr_img
 
     def _draw_text(self, img = None, bboxes = [], text_offset = (0, 0)):
@@ -507,5 +504,15 @@ class SimpleLabel:
         max_width = max(bbox[0][2] for bbox in bboxes)
         return (bboxes[0][0][0], bboxes[0][0][1], max_width, bboxes[-1][0][3])
 
-    def _get_font(self, font_path, size):
-        return ImageFont.truetype(font_path, int(size))
+    def _get_font(self, font_path: str, size: int) -> ImageFont.FreeTypeFont:
+        """Get a font object, using cache for performance."""
+        key = (font_path, size)
+        if key in FONT_CACHE:
+            return FONT_CACHE[key]
+        try:
+            font = ImageFont.truetype(font_path, int(size))
+            FONT_CACHE[key] = font
+            return font
+        except Exception as e:
+            logger.error(f"Failed to load font '{font_path}' with size {size}: {e}")
+            return ImageFont.load_default()

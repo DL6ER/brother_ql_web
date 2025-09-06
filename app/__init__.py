@@ -24,7 +24,7 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     app.config.from_pyfile('application.py', silent=True)
 
-    app.logger.setLevel(app.config['LOG_LEVEL'])
+    app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 
     init_fonts_and_args(app)
 
@@ -45,7 +45,6 @@ def create_app(config_class=Config):
 
 def init_fonts_and_args(app):
     global FONTS
-
     FONTS = fonts.Fonts()
     FONTS.scan_global_fonts()
 
@@ -53,58 +52,45 @@ def init_fonts_and_args(app):
     if not any('pytest' in arg for arg in sys.argv[0:1]):
         parse_args(app)
 
-    if app.config['FONT_FOLDER']:
-        FONTS.scan_fonts_folder(app.config['FONT_FOLDER'])
+    font_folder = app.config.get('FONT_FOLDER')
+    if font_folder:
+        FONTS.scan_fonts_folder(font_folder)
 
     if not FONTS.fonts_available():
-        app.logger.error(
-            "Not a single font was found on your system. Please install some.\n")
+        app.logger.error("No fonts found on your system. Please install some.")
         sys.exit(2)
 
-    if app.config['LABEL_DEFAULT_FONT_FAMILY'] in FONTS.fonts.keys() and app.config['LABEL_DEFAULT_FONT_STYLE'] in FONTS.fonts[app.config['LABEL_DEFAULT_FONT_FAMILY']].keys():
-        app.logger.debug(
-            "Selected the following default font: {}".format(app.config['LABEL_DEFAULT_FONT_FAMILY']))
-
+    default_family = app.config.get('LABEL_DEFAULT_FONT_FAMILY')
+    default_style = app.config.get('LABEL_DEFAULT_FONT_STYLE')
+    if default_family in FONTS.fonts and default_style in FONTS.fonts[default_family]:
+        app.logger.debug(f"Selected the following default font: {default_family}")
     else:
-        app.logger.warn(
-            'Could not find any of the default fonts. Choosing a random one.\n')
+        app.logger.warning('Could not find any of the default fonts. Choosing a random one.')
         family = random.choice(list(FONTS.fonts.keys()))
         style = random.choice(list(FONTS.fonts[family].keys()))
         app.config['LABEL_DEFAULT_FONT_FAMILY'] = family
         app.config['LABEL_DEFAULT_FONT_STYLE'] = style
-        app.logger.warn(
-            'The default font is now set to: {} ({})\n'.format(family, style))
+        app.logger.warning(f'The default font is now set to: {family} ({style})')
 
 
 def parse_args(app):
     models = [model.identifier for model in ALL_MODELS]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--default-label-size', default=False,
+    parser.add_argument('--default-label-size', default=None,
                         help='Label size inserted in your printer. Defaults to 62.')
-    parser.add_argument('--default-orientation', default=False, choices=('standard', 'rotated'),
+    parser.add_argument('--default-orientation', default=None, choices=('standard', 'rotated'),
                         help='Label orientation, defaults to "standard". To turn your text by 90°, state "rotated".')
-    parser.add_argument('--model', default=False, choices=models,
+    parser.add_argument('--model', default=None, choices=models,
                         help='The model of your printer (default: QL-500)')
-    parser.add_argument('printer',  nargs='?', default=False,
+    parser.add_argument('printer', nargs='?', default=None,
                         help='String descriptor for the printer to use (like tcp://192.168.0.23:9100 or file:///dev/usb/lp0)')
     args = parser.parse_args()
 
     if args.printer:
-        app.config.update(
-            PRINTER_PRINTER=args.printer
-        )
-
+        app.config['PRINTER_PRINTER'] = args.printer
     if args.model:
-        app.config.update(
-            PRINTER_MODEL=args.model
-        )
-
+        app.config['PRINTER_MODEL'] = args.model
     if args.default_label_size:
-        app.config.update(
-            LABEL_DEFAULT_SIZE=args.default_label_size
-        )
-
+        app.config['LABEL_DEFAULT_SIZE'] = args.default_label_size
     if args.default_orientation:
-        app.config.update(
-            LABEL_DEFAULT_ORIENTATION=args.default_orientation
-        )
+        app.config['LABEL_DEFAULT_ORIENTATION'] = args.default_orientation
