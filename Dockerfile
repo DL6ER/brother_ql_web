@@ -34,7 +34,6 @@ RUN if [ $TARGETARCH == "arm" ]; then \
 
 RUN apk update --no-cache && \
     apk add --no-cache \
-    fontconfig \
     git \
     ttf-dejavu \
     ttf-liberation \
@@ -46,7 +45,6 @@ RUN apk update --no-cache && \
     font-noto \
     poppler-utils \
     bash && \
-    fc-cache -f && \
     pip3 install -r requirements.txt
 
 RUN if [ $TARGETARCH == "arm" ]; then \

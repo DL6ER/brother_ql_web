@@ -90,8 +90,8 @@ def test_generate_preview(client):
             'align': 'left'
         },
         {
-            'family': 'Droid Sans Mono',
-            'style': 'Regular',
+            'family': 'Droid Sans',
+            'style': 'Mono',
             'text': '-- LONG MONO TEXT --',
             'size': '50',
             'align': 'center'
@@ -118,8 +118,8 @@ def test_generate_preview_high_res(client):
             'align': 'left'
         },
         {
-            'family': 'Droid Sans Mono',
-            'style': 'Regular',
+            'family': 'Droid Sans',
+            'style': 'Mono',
             'text': '-- LONG MONO TEXT --',
             'size': '50',
             'align': 'center'
@@ -162,8 +162,8 @@ def test_generate_preview_inverted(client):
             'inverted': 'true'
         },
         {
-            'family': 'Droid Sans Mono',
-            'style': 'Regular',
+            'family': 'Droid Sans',
+            'style': 'Mono',
             'text': '-- LONG MONO TEXT --',
             'size': '50',
             'align': 'center'
@@ -190,8 +190,8 @@ def test_generate_preview_rotated(client):
             'align': 'left'
         },
         {
-            'family': 'Droid Sans Mono',
-            'style': 'Regular',
+            'family': 'Droid Sans',
+            'style': 'Mono',
             'text': '-- LONG MONO TEXT --',
             'size': '50',
             'align': 'center'
