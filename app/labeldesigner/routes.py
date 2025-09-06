@@ -5,7 +5,7 @@ import barcode
 from . import bp
 from app import FONTS
 from werkzeug.datastructures import FileStorage
-from .printer import PrinterQueue, get_status
+from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
@@ -92,7 +92,7 @@ def preview_from_image():
 
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
-    return get_status(current_app.config)
+    return get_ptr_status(current_app.config)
 
 
 @bp.route('/api/print', methods=['POST', 'GET'])
@@ -127,7 +127,7 @@ def print_label():
             # - we cut only once and this is the last label to be generated
             cut = not cut_once or (cut_once and i == print_count - 1)
             printer.add_label_to_queue(label, cut, high_res)
-        status = printer.process_queue()
+        status = printer.process_queue(current_app.config['PRINTER_OFFLINE'])
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)

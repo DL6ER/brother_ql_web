@@ -103,13 +103,13 @@ class TestLabelDesignerAPI:
     def image_updating_is_disabled(self):
         assert not UPDATE_IMAGES
 
-    def test_render_frontend(self, client):
+    def test_render_frontend(self, client: FlaskClient):
         response = client.get('/labeldesigner/')
         assert response.status_code == 200
         assert b'labeldesigner' in response.data
         assert response.content_type == 'text/html; charset=utf-8'
 
-    def test_get_styles(self, client):
+    def test_get_styles(self, client: FlaskClient):
         response = client.get('/labeldesigner/api/font/styles')
         assert response.status_code == 200
         assert response.is_json
@@ -119,7 +119,7 @@ class TestLabelDesignerAPI:
         assert 'Italic' in data
         assert 'Book' in data
 
-    def test_get_barcodes(self, client):
+    def test_get_barcodes(self, client: FlaskClient):
         response = client.get('/labeldesigner/api/barcodes')
         assert response.status_code == 200
         assert response.is_json
@@ -128,7 +128,7 @@ class TestLabelDesignerAPI:
         assert 'QR' in offered_barcodes
         assert 'EAN13' in offered_barcodes
 
-    def test_generate_preview(self, client):
+    def test_generate_preview(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {
@@ -154,7 +154,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'simple.png')
 
-    def test_generate_preview_high_res(self, client):
+    def test_generate_preview_high_res(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['high_res'] = 1
         data['text'] = json.dumps([
@@ -181,7 +181,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'simple_high_res.png')
 
-    def test_generate_preview_inverted(self, client):
+    def test_generate_preview_inverted(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {
@@ -224,7 +224,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'inverted_text.png')
 
-    def test_generate_preview_rotated(self, client):
+    def test_generate_preview_rotated(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['orientation'] = 'rotated'
         data['text'] = json.dumps([
@@ -250,7 +250,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'rotated.png')
 
-    def test_generate_ean13(self, client):
+    def test_generate_ean13(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'ean13'
@@ -277,7 +277,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'barcode_ean13.png')
 
-    def test_invalid_ean13(self, client):
+    def test_invalid_ean13(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'ean13'
@@ -303,7 +303,7 @@ class TestLabelDesignerAPI:
         data = response.get_json()
         assert data['message'] == 'EAN must have 12 digits, received 10.'
 
-    def test_generate_qr(self, client):
+    def test_generate_qr(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'QR'
@@ -330,46 +330,46 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'qr.png')
 
-    def test_image(self, client):
+    def test_image(self, client: FlaskClient):
         self.run_image_test(client)
 
-    def test_image_fit(self, client):
+    def test_image_fit(self, client: FlaskClient):
         self.run_image_test(client, fit=True)
 
-    def test_image_rotated(self, client):
+    def test_image_rotated(self, client: FlaskClient):
         self.run_image_test(client, rotated=True)
 
-    def test_image_rotated_fit(self, client):
+    def test_image_rotated_fit(self, client: FlaskClient):
         self.run_image_test(client, rotated=True, fit=True)
 
-    def test_image_with_text(self, client):
+    def test_image_with_text(self, client: FlaskClient):
         self.run_image_test(client, text=True)
 
-    def test_image_with_text_fit(self, client):
+    def test_image_with_text_fit(self, client: FlaskClient):
         self.run_image_test(client, text=True, fit=True)
 
-    def test_image_with_text_rotated(self, client):
+    def test_image_with_text_rotated(self, client: FlaskClient):
         self.run_image_test(client, text=True, rotated=True)
 
-    def test_image_with_text_fit_rotated(self, client):
+    def test_image_with_text_fit_rotated(self, client: FlaskClient):
         self.run_image_test(client, text=True, rotated=True, fit=True)
 
-    def test_image_color_fit(self, client):
+    def test_image_color_fit(self, client: FlaskClient):
         self.run_image_test(client, image_mode="colored", fit=True)
 
-    def test_image_red_and_black_fit(self, client):
+    def test_image_red_and_black_fit(self, client: FlaskClient):
         self.run_image_test(client, image_mode="red_and_black", fit=True)
 
-    def test_image_black_fit(self, client):
+    def test_image_black_fit(self, client: FlaskClient):
         self.run_image_test(client, image_mode="black", fit=True)
 
-    def test_image_highres(self, client):
+    def test_image_highres(self, client: FlaskClient):
         self.run_image_test(client, high_res=True)
 
-    def test_image_highres_fit(self, client):
+    def test_image_highres_fit(self, client: FlaskClient):
         self.run_image_test(client, high_res=True, fit=True)
 
-    def test_generate_template(self, client):
+    def test_generate_template(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         # Mock current datetime.now
         data['timestamp'] = int(datetime(2023, 3, 18, 12, 15, 30).timestamp())
@@ -416,7 +416,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'template.png')
 
-    def test_invalid_data_types(self, client):
+    def test_invalid_data_types(self, client: FlaskClient):
         # Non-integer label_size
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = 'sixty-two'
@@ -434,7 +434,7 @@ class TestLabelDesignerAPI:
         assert response.is_json
         assert 'message' in response.get_json()
 
-    def test_large_input_handling(self, client):
+    def test_large_input_handling(self, client: FlaskClient):
         # Very large text
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
@@ -444,7 +444,7 @@ class TestLabelDesignerAPI:
         # 413 = Content Too Large
         assert response.status_code == 413
 
-    def test_unsupported_barcode_type(self, client):
+    def test_unsupported_barcode_type(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'UNSUPPORTED'
@@ -456,7 +456,7 @@ class TestLabelDesignerAPI:
         assert response.is_json
         assert 'message' in response.get_json()
 
-    def test_font_not_found(self, client):
+    def test_font_not_found(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'NonExistentFont', 'style': 'Book', 'text': 'Test', 'size': '12', 'align': 'center'}
@@ -466,13 +466,13 @@ class TestLabelDesignerAPI:
         assert response.is_json
         assert 'message' in response.get_json()
 
-    def test_method_enforcement(self, client):
+    def test_method_enforcement(self, client: FlaskClient):
         # POST required for preview
         response = client.get('/labeldesigner/api/preview')
         # 405 = Method Not Allowed
         assert response.status_code == 405
 
-    def test_template_edge_cases(self, client):
+    def test_template_edge_cases(self, client: FlaskClient):
         # Incomplete template
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
@@ -496,7 +496,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'template_unknown.png')
 
-    def test_concurrent_preview_requests(self, client):
+    def test_concurrent_preview_requests(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         results = []
         def make_request(i: int):
@@ -512,7 +512,7 @@ class TestLabelDesignerAPI:
             t.join()
         assert all(code == 200 for code in results)
 
-    def test_invalid_image_upload(self, client):
+    def test_invalid_image_upload(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         fake_file = FileStorage(
             stream=io.BytesIO(b'not an image'),
@@ -529,7 +529,7 @@ class TestLabelDesignerAPI:
         assert 'message' in data
         assert data['message'] == 'Unsupported file type'
 
-    def test_corrupted_image_upload(self, client):
+    def test_corrupted_image_upload(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         corrupted = FileStorage(
             stream=io.BytesIO(b'\x89PNG\r\n\x1a\nBADBADBAD'),
@@ -546,7 +546,7 @@ class TestLabelDesignerAPI:
         assert 'message' in data
         assert data['message'] == 'Truncated File Read'
 
-    def test_empty_label(self, client):
+    def test_empty_label(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([])
         response = client.post('/labeldesigner/api/preview', data=data)
@@ -556,7 +556,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'empty_label.png')
 
-    def test_minimal_label(self, client):
+    def test_minimal_label(self, client: FlaskClient):
         # Minimum label_size
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
@@ -569,7 +569,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'minimal_label.png')
 
-    def test_unicode_and_special_characters(self, client):
+    def test_unicode_and_special_characters(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Emoji: 😃', 'size': '32', 'align': 'center'},
@@ -582,7 +582,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'unicode.png')
 
-    def test_security_xss(self, client):
+    def test_security_xss(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}
@@ -597,12 +597,12 @@ class TestLabelDesignerAPI:
 
 
     @pytest.mark.parametrize('method', ['put', 'delete', 'patch'])
-    def test_invalid_http_methods(self, client, method):
+    def test_invalid_http_methods(self, client: FlaskClient, method):
         func = getattr(client, method)
         response = func('/labeldesigner/api/preview')
         assert response.status_code == 405
 
-    def test_print_red_text(self, client):
+    def test_print_red_text(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
@@ -615,7 +615,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'red_text.png')
 
-    def test_large_number_of_text_blocks(self, client):
+    def test_large_number_of_text_blocks(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         ALIGNS = ['center', 'left', 'right']
         data['text'] = json.dumps([
@@ -635,7 +635,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'large_label.png')
 
-    def test_file_size_limits(self, client):
+    def test_file_size_limits(self, client: FlaskClient):
         # Just below the limit
         data = EXAMPLE_FORMDATA.copy()
         big_content = b'\xff' * (16 * 1024 * 1024 - 100)
@@ -651,7 +651,7 @@ class TestLabelDesignerAPI:
         # File size limit exceeded
         assert response.status_code == 413
 
-    def test_extra_fields_ignored(self, client):
+    def test_extra_fields_ignored(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Extra', 'size': '12', 'align': 'center'}
@@ -664,7 +664,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'extra_fields.png')
 
-    def test_multiple_images_failure(self, client):
+    def test_multiple_images_failure(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         file1 = FileStorage(stream=io.BytesIO(b'img1'), filename='img1.jpg', content_type='image/jpeg')
         file2 = FileStorage(stream=io.BytesIO(b'img2'), filename='img2.jpg', content_type='image/jpeg')
@@ -674,7 +674,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_image_mode_edge_case(self, client):
+    def test_image_mode_edge_case(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'image'
         data['image'] = FileStorage(stream=io.BytesIO(b'img'), filename='img.jpg', content_type='image/jpeg')
@@ -682,7 +682,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_non_existing_label_size(self, client):
+    def test_non_existing_label_size(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = 62.5
         data['text'] = json.dumps([
@@ -691,7 +691,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_non_utf8_encoded_text(self, client):
+    def test_non_utf8_encoded_text(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         # Latin-1 encoded string
         text = 'Café'.encode('latin-1')
@@ -699,7 +699,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_html_in_text(self, client):
+    def test_html_in_text(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': '<b>Bold</b>', 'size': '12', 'align': 'center'}
@@ -711,7 +711,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'html_in_text_plain.png')
 
-    def test_missing_optional_fields(self, client):
+    def test_missing_optional_fields(self, client: FlaskClient):
         data = {
             'print_type': 'text',
             'label_size': 62,
@@ -729,7 +729,7 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'missing_optional_fields.png')
 
-    def test_invalid_json_structure(self, client):
+    def test_invalid_json_structure(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         # JSON string, but not a list
         data['text'] = json.dumps({'foo': 'bar'})
@@ -737,7 +737,7 @@ class TestLabelDesignerAPI:
         assert response.status_code == 400
 
     @pytest.mark.parametrize('size', [0, -1, -100])
-    def test_negative_zero_size(self, client, size):
+    def test_negative_zero_size(self, client: FlaskClient, size):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Bad size', 'size': str(size), 'align': 'center'}
@@ -746,7 +746,7 @@ class TestLabelDesignerAPI:
         assert response.status_code == 400
 
     @pytest.mark.parametrize('size', [0, -1, -100])
-    def test_negative_zero_label_size(self, client, size):
+    def test_negative_zero_label_size(self, client: FlaskClient, size):
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = size
         data['text'] = json.dumps([
@@ -755,7 +755,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_invalid_alignment(self, client):
+    def test_invalid_alignment(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Bad align', 'size': '12', 'align': 'diagonal'}
@@ -763,7 +763,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_non_string_text_value(self, client):
+    def test_non_string_text_value(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'DejaVu Sans', 'style': 'Book', 'text': 12345, 'size': '12', 'align': 'center'}
@@ -771,7 +771,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_conflicting_fields(self, client):
+    def test_conflicting_fields(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'QR'
@@ -783,7 +783,7 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    def test_unicode_normalization(self, client):
+    def test_unicode_normalization(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         s1 = 'Café'
         s2 = unicodedata.normalize('NFD', s1)
@@ -798,17 +798,17 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'unicode_normalization.png')
 
-    def test_head_request(self, client):
+    def test_head_request(self, client: FlaskClient):
         response = client.head('/labeldesigner/api/preview')
         assert response.status_code == 405
 
-    def test_malformed_multipart(self, client):
+    def test_malformed_multipart(self, client: FlaskClient):
         # Simulate a malformed multipart by sending a bad content-type
         data = '--bad-boundary\r\nContent-Disposition: form-data; name="text"\r\n\r\nfoo\r\n--bad-boundary--\r\n'
         response = client.post('/labeldesigner/api/preview', data=data, headers={'Content-Type': 'multipart/form-data; boundary=bad-boundary'})
         assert response.status_code == 400
 
-    def test_unknown_font(self, client):
+    def test_unknown_font(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'Droid Sand', 'style': 'Book', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
@@ -828,7 +828,7 @@ class TestLabelDesignerAPI:
         data = response.get_json()
         assert data['message'] == 'Unknown font style: Non-exist for font Droid Sans'
 
-    def test_todo_list(self, client):
+    def test_todo_list(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'family': 'Droid Sans', 'style': 'Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'todo': True},
@@ -843,22 +843,12 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'todo_list.png')
 
-
     # We cannot test the print functionality without a physical printer
-    # def test_print_label(self, client):
-    #    data = {
-    #        'print_type': 'text',
-    #        'label_size': '62',
-    #        'orientation': 'standard',
-    #        'text[0][family]': 'DejaVu Sans',
-    #        'text[0][style]': 'Book',
-    #        'text[0][text]': 'Test',
-    #        'text[0][size]': '12',
-    #        'text[0][align]': 'center',
-    #        'print_count': '1',
-    #        'cut_once': '0',
-    #    }
-    #    response = client.post('/labeldesigner/api/print', data=data)
-    #    assert response.status_code == 200
-    #    assert response.is_json
-    #    assert 'success' in response.get_json()
+    def test_print_label(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        # Set config for printer
+        client.application.config['PRINTER_OFFLINE'] = True
+        response = client.post('/labeldesigner/api/print', data=data)
+        assert response.status_code == 200
+        assert response.is_json
+        assert 'success' in response.get_json()

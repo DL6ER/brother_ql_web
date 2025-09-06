@@ -23,7 +23,7 @@ class PrinterQueue:
             'high_res': high_res
         })
 
-    def process_queue(self) -> bool:
+    def process_queue(self, offline: bool = False) -> bool:
         if not self._print_queue:
             logger.warning("Print queue is empty.")
             return False
@@ -50,20 +50,24 @@ class PrinterQueue:
             )
         self._print_queue.clear()
         try:
-            info = send(qlr.data, self.device_specifier)
-            logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
-            logger.info('Printer response: %s', str(info))
-            if info.get('did_print') and info.get('ready_for_next_job'):
-                logger.info('Label printed successfully and printer is ready for next job')
+            if offline:
+                logger.warning("Printer is offline. Skipping actual printing.")
                 return True
-            logger.warning("Failed to print label")
+            else:
+                info = send(qlr.data, self.device_specifier)
+                logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
+                logger.info('Printer response: %s', str(info))
+                if info.get('did_print') and info.get('ready_for_next_job'):
+                    logger.info('Label printed successfully and printer is ready for next job')
+                    return True
+                logger.warning("Failed to print label")
             return False
         except Exception as e:
             logger.exception("Exception during sending to printer: %s", e)
             return False
 
 
-def get_status(config: Config):
+def get_ptr_status(config: Config):
     device_specifier = config['PRINTER_PRINTER']
     default_model = config['PRINTER_MODEL']
     printer_offline = config['PRINTER_OFFLINE']
