@@ -46,15 +46,11 @@ def create_app(config_class=Config):
 def init_fonts_and_args(app):
     global FONTS
     FONTS = fonts.Fonts()
-    FONTS.scan_global_fonts()
+    FONTS.scan_global_fonts(app.config.get('FONT_FOLDER'))
 
     # Only parse command-line arguments if not running under pytest
     if not any('pytest' in arg for arg in sys.argv[0:1]):
         parse_args(app)
-
-    font_folder = app.config.get('FONT_FOLDER')
-    if font_folder:
-        FONTS.scan_fonts_folder(font_folder)
 
     if not FONTS.fonts_available():
         app.logger.error("No fonts found on your system. Please install some.")

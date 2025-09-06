@@ -1,5 +1,5 @@
-import subprocess
-import sys
+import os
+from fontTools.ttLib import TTFont
 from collections import defaultdict
 
 
@@ -7,65 +7,71 @@ class Fonts:
     def __init__(self):
         self.fonts = defaultdict(dict)
 
-    def parse_fonts(self, raw):
-        """ adds the found fonts the the fonts list
-        :param raw: command to be run to get the raw font list from the system
-        :return: true if fonts were added false if not
+    def scan_global_fonts(self, additional_path=''):
         """
+        Scan for TTF/OTF fonts using pure Python (fontTools).
+        :param additional_path: Directory to search in addition to
+            common system font paths.
+        """
+        search_paths = [
+            '/usr/share/fonts', '/usr/local/share/fonts', os.path.expanduser('~/.fonts'),
+            os.path.expanduser('~/.local/share/fonts'), '/Library/Fonts', '/System/Library/Fonts',
+            'C:\\Windows\\Fonts'
+        ]
+        if len(additional_path) > 0:
+            search_paths.extend(additional_path)
 
-        if raw.returncode != 0:
-            return {'error': 'an error occurred while processing the fonts'}
-
-        for line in raw.stdout.decode('utf-8').split('\n'):
-            font = line.split(':')
-            if len(font) < 3:
+        font_exts = ('.ttf', '.otf')
+        for base_path in search_paths:
+            if not os.path.isdir(base_path):
                 continue
-            # ignore non true type fonts
-            if '.ttf' in font[0] or '.otf' in font[0]:
-                fontname = font[1].replace('\\', '')
-                fontpath = font[0].strip()
-                fontstyle = font[2][6:].strip().split(',')[0]
+            for root, _, files in os.walk(base_path):
+                for file in files:
+                    if file.lower().endswith(font_exts):
+                        font_path = os.path.join(root, file)
+                        try:
+                            font = TTFont(font_path)
+                            # Get family and style from name table
+                            family = None
+                            style = None
+                            for record in font['name'].names:
+                                if record.nameID == 1 and not family:
+                                    family = record.toStr()
+                                if record.nameID == 2 and not style:
+                                    style = record.toStr()
+                                if family and style:
+                                    break
+                            if family and style:
+                                self.fonts[family][style] = font_path
+                        except Exception:
+                            continue
 
-                if ',' in fontname:
-                    fontname = fontname.split()[0]
-                fontname = fontname.strip()
+        # Consolidate fonts: Search for fonts that have children, e.g.
+        # "DejaVu Sans" and "DejaVu Sans Condensed" and move children
+        # under the parent font, adding them as a style instead
+        for family, styles in list(self.fonts.items()):
+            for other_family in list(self.fonts.keys()):
+                if family != other_family and family in other_family:
+                    extra_style = other_family.replace(family + ' ', '')
+                    for style in self.fonts[other_family].keys():
+                        new_style = extra_style + ((' / ' + style) if style != 'Regular' else '')
+                        self.fonts[family][new_style] = self.fonts[other_family][style]
 
-                self.fonts[fontname][fontstyle] = fontpath
-            else:
-                pass
-
-    def scan_global_fonts(self):
-        """ Get a list of all fonts that are available to the user who runs this
-        :return: raw output of the command fc-list
-        """
-        command = ['fc-list']
-        try:
-            raw = subprocess.run(command, stdout=subprocess.PIPE)
-        except FileNotFoundError:
-            print('fc-list not found', file=sys.stderr)
-            sys.exit(2)
-
-        self.parse_fonts(raw)
-
-    def scan_fonts_folder(self, folder):
-        """ Get a list of all fonts that are available to the user who runs this
-        :return: raw output of the command fc-list
-        """
-        cmd = ['fc-scan', '--format',
-               '%{file}:%{family}:style=%{style}\n', folder]
-        try:
-            raw = subprocess.run(cmd, stdout=subprocess.PIPE)
-        except FileNotFoundError:
-            print('fc-list not found', file=sys.stderr)
-            sys.exit(2)
-
-        self.parse_fonts(raw)
+                    # Remove the child
+                    del self.fonts[other_family]
 
     def fontlist(self):
-        return sorted(self.fonts, key=str.lower)
+        """Return a sorted list of font family names."""
+        return sorted(self.fonts.keys(), key=str.lower)
+
+    def fontstyles(self):
+        """Return a sorted list of font styles for each family."""
+        styles = defaultdict(list)
+        for family, variants in self.fonts.items():
+            styles[family].extend(variants.keys())
+        return {family: sorted(set(variant.lower() for variant in variants), key=str.lower)
+                for family, variants in styles.items()}
 
     def fonts_available(self):
-        if len(self.fonts) == 0:
-            return False
-        else:
-            return len(self.fonts)
+        """Return True if any fonts are available, else False."""
+        return bool(self.fonts)
