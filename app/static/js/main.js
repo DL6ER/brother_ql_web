@@ -8,6 +8,8 @@ var printer_status = {
     'red_support': false
 };
 
+const DEFAULT_FONT = 'Droid Serif,Regular';
+
 // Returns an array of font settings for each line of label text.
 // Each new line inherits the font settings of the previous line.
 var fontSettingsPerLine = [];
@@ -18,8 +20,7 @@ function setFontSettingsPerLine() {
 
     // Default font settings from the current UI controls
     var currentFont = {
-        family: $('#fontFamily option:selected').text(),
-        style: $('#fontStyle option:selected').text(),
+        font: $('#font option:selected').val() || DEFAULT_FONT,
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
         todo: $('#fontCheckbox').is(':checked'),
@@ -92,17 +93,8 @@ $(document).ready(function () {
         var idx = parseInt($(this).val(), 10);
         if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
         var fs = fontSettingsPerLine[idx];
-        // Only set font family and get styles if font family is changed
-        if (fs.family !== $('#fontFamily option:selected').text()) {
-            // Set font family
-            $('#fontFamily').val(fs.family);
-            // Set font style
-            updateStyles(fs.style);
-        }
-        else {
-            // Only set font style
-            $('#fontStyle').val(fs.style);
-        }
+        // Set font
+        $('#font').val(fs.font || DEFAULT_FONT);
         // Set font size
         $('#fontSize').val(fs.size);
         // Set alignment
@@ -187,58 +179,12 @@ function updatePreview(data) {
     };
 }
 
-function updateStyles(style = null) {
-    font_familiy = $('#fontFamily option:selected').text()
-
-    $.ajax({
-        type: 'POST',
-        url: url_for_get_font_styles,
-        contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-        data: { font: font_familiy },
-        success: function (data) {
-            var styleSelect = $('#fontStyle');
-            styleSelect.empty();
-            $.each(data, function (key, value) {
-                styleSelect.append($("<option></option>")
-                    .attr("value", key).text(key));
-
-                // When no style is set, use any of 'Book,Regular' as default
-                if (!style && 'Book,Regular'.includes(key)) {
-                    styleSelect.val(key);
-                }
-            });
-
-            // Set requested style (if any)
-            if (style) {
-                styleSelect.val(style);
-            }
-
-            // Set data-default="1" for first element
-            styleSelect.find("option:first").attr("data-default", "1");
-            styleSelect.trigger("change");
-            $('#lineSelect').trigger('change');
-        }
-    });
-}
-
 function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
 
     // Update font settings for each line
     setFontSettingsPerLine();
-
-    // Return early if any of the font styles are empty
-    if (!fontSettingsPerLine || Object.keys(fontSettingsPerLine).length === 0) {
-        console.warn("No font settings available");
-        setStatus({ type: 'status', status: 'error', message: 'No font settings available' });
-        return;
-    }
-    if (fontSettingsPerLine.some(line => !line.style)) {
-        console.warn("Some font styles are missing");
-        setStatus({ type: 'status', status: 'error', message: 'Some font styles are missing' });
-        return;
-    }
 
     if (preview) {
         // Update preview image based on label size
@@ -579,6 +525,8 @@ function saveAllSettingsToLocalStorage() {
     const data = {};
     // Save all input/select/textarea values
     $('input, select, textarea').each(function () {
+        // Skip the value of #lineSelect
+        if (this.id === 'lineSelect') return;
         const key = this.id.length > 0 ? this.id : this.name;
         if (key.length == 0) return;
         if (this.type === 'checkbox') {
@@ -644,11 +592,7 @@ function updateUndoButton() {
 
 function restoreAllSettingsFromLocalStorage() {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) {
-        // Nothing to restore, initialize styles
-        updateStyles();
-        return;
-    }
+    if (!raw) return;
 
     let data;
     try { data = JSON.parse(raw); } catch { return; }
@@ -678,7 +622,6 @@ function restoreAllSettingsFromLocalStorage() {
         try {
             window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
             $('#lineSelect').val(0);
-            updateStyles(window.fontSettingsPerLine[0].style);
         } catch { }
     }
     // Trigger preview after restore

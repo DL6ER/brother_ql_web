@@ -75,8 +75,7 @@ class TestLabelDesignerAPI:
         if text:
             data['text'] = json.dumps([
                 {
-                    'family': 'DejaVu Sans',
-                    'style': 'Book',
+                    'font': 'DejaVu Sans,Book',
                     'text': 'Test',
                     'size': '40',
                     'align': 'center'
@@ -109,16 +108,6 @@ class TestLabelDesignerAPI:
         assert b'labeldesigner' in response.data
         assert response.content_type == 'text/html; charset=utf-8'
 
-    def test_get_styles(self, client: FlaskClient):
-        response = client.get('/labeldesigner/api/font/styles')
-        assert response.status_code == 200
-        assert response.is_json
-        data = response.get_json()
-        assert 'Bold' in data
-        assert 'Bold Italic' in data
-        assert 'Italic' in data
-        assert 'Book' in data
-
     def test_get_barcodes(self, client: FlaskClient):
         response = client.get('/labeldesigner/api/barcodes')
         assert response.status_code == 200
@@ -132,15 +121,13 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': 'Left',
                 'size': '60',
                 'align': 'left'
             },
             {
-                'family': 'Droid Sans',
-                'style': 'Mono',
+                'font': 'Droid Sans,Mono',
                 'text': '-- LONG MONO TEXT --',
                 'size': '50',
                 'align': 'center'
@@ -159,15 +146,13 @@ class TestLabelDesignerAPI:
         data['high_res'] = 1
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': 'Left',
                 'size': '60',
                 'align': 'left'
             },
             {
-                'family': 'Droid Sans',
-                'style': 'Mono',
+                'font': 'Droid Sans,Mono',
                 'text': '-- LONG MONO TEXT --',
                 'size': '50',
                 'align': 'center'
@@ -185,32 +170,28 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '!!! LEFT !!!',
                 'size': '50',
                 'align': 'left',
                 'inverted': 'true'
             },
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '!!! CENTER !!!',
                 'size': '50',
                 'align': 'center',
                 'inverted': 'true'
             },
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '!!! RIGHT !!!',
                 'size': '50',
                 'align': 'right',
                 'inverted': 'true'
             },
             {
-                'family': 'Droid Sans',
-                'style': 'Mono',
+                'font': 'Droid Sans,Mono',
                 'text': '-- LONG MONO TEXT --',
                 'size': '50',
                 'align': 'center'
@@ -229,15 +210,13 @@ class TestLabelDesignerAPI:
         data['orientation'] = 'rotated'
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': 'Left',
                 'size': '60',
                 'align': 'left'
             },
             {
-                'family': 'Droid Sans',
-                'style': 'Mono',
+                'font': 'Droid Sans,Mono',
                 'text': '-- LONG MONO TEXT --',
                 'size': '50',
                 'align': 'center'
@@ -256,15 +235,13 @@ class TestLabelDesignerAPI:
         data['barcode_type'] = 'ean13'
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '123456789012',
                 'size': '60',
                 'align': 'left'
             },
             {
-                'family': 'Droid Serif',
-                'style': 'Bold',
+                'font': 'Droid Serif,Bold',
                 'text': 'Some example product',
                 'size': '50',
                 'align': 'center'
@@ -283,15 +260,13 @@ class TestLabelDesignerAPI:
         data['barcode_type'] = 'ean13'
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '1234567890',
                 'size': '60',
                 'align': 'left'
             },
             {
-                'family': 'Droid Serif',
-                'style': 'Bold',
+                'font': 'Droid Serif,Bold',
                 'text': 'Some example product',
                 'size': '50',
                 'align': 'center'
@@ -309,15 +284,13 @@ class TestLabelDesignerAPI:
         data['barcode_type'] = 'QR'
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '123456789012',
                 'size': '40',
                 'align': 'center'
             },
             {
-                'family': 'Droid Serif',
-                'style': 'Bold',
+                'font': 'Droid Serif,Bold',
                 'text': 'Some example product',
                 'size': '50',
                 'align': 'center'
@@ -376,30 +349,26 @@ class TestLabelDesignerAPI:
 
         data['text'] = json.dumps([
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '{{datetime:%d.%m.%Y %H:%M:%S}} COUNTER: {{counter}} {{counter:5}}',
                 'size': '30',
                 'align': 'left'
             },
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '>> {{datetime:Label created at %H:%M on %m/%d/%y}} <<',
                 'size': '20',
                 'align': 'right',
                 'inverted': True
             },
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '>> {{uuid}} {{short-uuid}} <<',
                 'size': '20',
                 'align': 'center'
             },
             {
-                'family': 'DejaVu Sans',
-                'style': 'Book',
+                'font': 'DejaVu Sans,Book',
                 'text': '>> {{random:77}} <<',
                 'size': '10',
                 'align': 'center'
@@ -420,7 +389,7 @@ class TestLabelDesignerAPI:
         # Non-integer label_size
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = 'sixty-two'
-        data['text'] = json.dumps([{'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Test', 'size': '12', 'align': 'center'}])
+        data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Test', 'size': '12', 'align': 'center'}])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
         assert response.is_json
@@ -438,7 +407,7 @@ class TestLabelDesignerAPI:
         # Very large text
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'A' * 20000, 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'A' * 20000, 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         # 413 = Content Too Large
@@ -449,7 +418,7 @@ class TestLabelDesignerAPI:
         data['print_type'] = 'qrcode_text'
         data['barcode_type'] = 'UNSUPPORTED'
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': '123456789012', 'size': '40', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': '123456789012', 'size': '40', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -459,7 +428,7 @@ class TestLabelDesignerAPI:
     def test_font_not_found(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'NonExistentFont', 'style': 'Book', 'text': 'Test', 'size': '12', 'align': 'center'}
+            {'font': 'NonExistentFont,Book', 'text': 'Test', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -476,7 +445,7 @@ class TestLabelDesignerAPI:
         # Incomplete template
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': '{{datetime:}}', 'size': '32', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': '{{datetime:}}', 'size': '32', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -487,7 +456,7 @@ class TestLabelDesignerAPI:
 
         # Unknown template variable
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': '{{unknownvar}}', 'size': '32', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': '{{unknownvar}}', 'size': '32', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -501,7 +470,7 @@ class TestLabelDesignerAPI:
         results = []
         def make_request(i: int):
             data['text'] = json.dumps([
-                {'family': 'DejaVu Sans', 'style': 'Book', 'text': str(i), 'size': '32', 'align': 'center'}
+                {'font': 'DejaVu Sans,Book', 'text': str(i), 'size': '32', 'align': 'center'}
             ])
             resp = client.post('/labeldesigner/api/preview', data=data)
             results.append(resp.status_code)
@@ -560,7 +529,7 @@ class TestLabelDesignerAPI:
         # Minimum label_size
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Min', 'size': '1', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Min', 'size': '1', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -572,8 +541,8 @@ class TestLabelDesignerAPI:
     def test_unicode_and_special_characters(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Emoji: 😃', 'size': '32', 'align': 'center'},
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'RTL: שלום', 'size': '32', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Emoji: 😃', 'size': '32', 'align': 'center'},
+            {'font': 'DejaVu Sans,Book', 'text': 'RTL: שלום', 'size': '32', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -585,7 +554,7 @@ class TestLabelDesignerAPI:
     def test_security_xss(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -605,8 +574,8 @@ class TestLabelDesignerAPI:
     def test_print_red_text(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Red Text INVERTED', 'size': '24', 'align': 'center', 'inverted': True, 'color': 'red'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
+            {'font': 'DejaVu Sans,Book', 'text': 'Red Text INVERTED', 'size': '24', 'align': 'center', 'inverted': True, 'color': 'red'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -619,14 +588,14 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         ALIGNS = ['center', 'left', 'right']
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans',
-            'style': 'Book',
-            'text': f'--- {i} ---',
-            'size': str(i + 1),
-            'align': ALIGNS[i % 3],
-            'inverted': bool(i % 2),
-            'color': 'red' if i % 5 == 0 else 'black'
-            } for i in range(100)
+            {
+                'font': 'DejaVu Sans,Book',
+                'text': f'--- {i} ---',
+                'size': str(i + 1),
+                'align': ALIGNS[i % 3],
+                'inverted': bool(i % 2),
+                'color': 'red' if i % 5 == 0 else 'black'
+                } for i in range(100)
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -654,7 +623,7 @@ class TestLabelDesignerAPI:
     def test_extra_fields_ignored(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Extra', 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Extra', 'size': '12', 'align': 'center'}
         ])
         data['unexpected_field'] = 'should be ignored'
         response = client.post('/labeldesigner/api/preview', data=data)
@@ -686,7 +655,7 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = 62.5
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Float', 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Float', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -702,7 +671,7 @@ class TestLabelDesignerAPI:
     def test_html_in_text(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': '<b>Bold</b>', 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': '<b>Bold</b>', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -719,7 +688,7 @@ class TestLabelDesignerAPI:
             'print_count': '1',
             'cut_once': '0',
             'text': json.dumps([
-                {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'No style', 'size': '12', 'align': 'center'}
+                {'font': 'DejaVu Sans,Book', 'text': 'No style', 'size': '12', 'align': 'center'}
             ])
         }
         response = client.post('/labeldesigner/api/preview', data=data)
@@ -740,7 +709,7 @@ class TestLabelDesignerAPI:
     def test_negative_zero_size(self, client: FlaskClient, size):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Bad size', 'size': str(size), 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Bad size', 'size': str(size), 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -750,7 +719,7 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = size
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Bad label', 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Bad label', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -758,7 +727,7 @@ class TestLabelDesignerAPI:
     def test_invalid_alignment(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Bad align', 'size': '12', 'align': 'diagonal'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Bad align', 'size': '12', 'align': 'diagonal'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -766,7 +735,7 @@ class TestLabelDesignerAPI:
     def test_non_string_text_value(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 12345, 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 12345, 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -778,7 +747,7 @@ class TestLabelDesignerAPI:
         data['image'] = FileStorage(stream=io.BytesIO(b'img'), filename='img.jpg', content_type='image/jpeg')
         data['image_mode'] = 'grayscale'
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Conflict', 'size': '12', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': 'Conflict', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -788,8 +757,8 @@ class TestLabelDesignerAPI:
         s1 = 'Café'
         s2 = unicodedata.normalize('NFD', s1)
         data['text'] = json.dumps([
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': s1, 'size': '24', 'align': 'center'},
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': s2, 'size': '24', 'align': 'center'}
+            {'font': 'DejaVu Sans,Book', 'text': s1, 'size': '24', 'align': 'center'},
+            {'font': 'DejaVu Sans,Book', 'text': s2, 'size': '24', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
@@ -811,7 +780,7 @@ class TestLabelDesignerAPI:
     def test_unknown_font(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'Droid Sand', 'style': 'Book', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
+            {'font': 'Droid Sand,Book', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -820,7 +789,7 @@ class TestLabelDesignerAPI:
         assert data['message'] == 'Unknown font family: Droid Sand'
 
         data['text'] = json.dumps([
-            {'family': 'Droid Sans', 'style': 'Non-exist', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
+            {'font': 'Droid Sans,Non-exist', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
@@ -831,10 +800,10 @@ class TestLabelDesignerAPI:
     def test_todo_list(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'family': 'Droid Sans', 'style': 'Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'todo': True},
-            {'family': 'Noto Sans', 'style': 'Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'todo': True},
-            {'family': 'DejaVu Sans', 'style': 'Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'todo': False, 'color': 'red'},
-            {'family': 'DejaVu Serif', 'style': 'Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'todo': True}
+            {'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'todo': True},
+            {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'todo': True},
+            {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'todo': False, 'color': 'red'},
+            {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'todo': True}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200

@@ -30,7 +30,7 @@ def index():
     ]
     return render_template(
         'labeldesigner.html',
-        font_family_names=FONTS.fontlist(),
+        fonts=FONTS.fontlist(),
         label_sizes=label_sizes,
         default_label_size=current_app.config['LABEL_DEFAULT_SIZE'],
         default_font_size=current_app.config['LABEL_DEFAULT_FONT_SIZE'],
@@ -47,12 +47,6 @@ def index():
         default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
         default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
     )
-
-
-@bp.route('/api/font/styles', methods=['POST', 'GET'])
-def get_font_styles():
-    font = request.values.get('font', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
-    return FONTS.fonts.get(font, {})
 
 
 @bp.route('/api/barcodes', methods=['GET'])
@@ -194,8 +188,8 @@ def create_label_from_request(request: Request, counter: int = 0):
         return dimensions
 
     def get_font_path(line: dict):
-        family_name = line.get('family', current_app.config['LABEL_DEFAULT_FONT_FAMILY'])
-        style_name = line.get('style', current_app.config['LABEL_DEFAULT_FONT_STYLE'])
+        font = line.get('font', current_app.config['LABEL_DEFAULT_FONT_FAMILY'] + "," + current_app.config['LABEL_DEFAULT_FONT_STYLE'])
+        family_name, style_name = font.split(",", 1)
         if family_name not in FONTS.fonts:
             raise LookupError(f"Unknown font family: {family_name}")
         if style_name not in FONTS.fonts[family_name]:
