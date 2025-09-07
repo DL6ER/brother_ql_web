@@ -23,9 +23,9 @@ function setFontSettingsPerLine() {
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
         todo: $('#fontCheckbox').is(':checked'),
-        align: $('input[name=fontAlign]:checked').val(),
-        line_spacing: $('input[name=lineSpacing]:checked').val(),
-        color: $('input[name=fontColor]:checked').val()
+        align: $('input[name=fontAlign]').parent('.active').find('input').val() || 'center',
+        line_spacing: $('input[name=lineSpacing]').parent('.active').find('input').val() || '100',
+        color: $('input[name=fontColor]').parent('.active').find('input').val() || 'black'
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -201,14 +201,22 @@ function updateStyles(style = null) {
             $.each(data, function (key, value) {
                 styleSelect.append($("<option></option>")
                     .attr("value", key).text(key));
-                if (style) {
-                    styleSelect.val(style);
-                } else if ('Book,Regular'.includes(key)) {
+
+                // When no style is set, use any of 'Book,Regular' as default
+                if (!style && 'Book,Regular'.includes(key)) {
                     styleSelect.val(key);
                 }
             });
+
+            // Set requested style (if any)
+            if (style) {
+                styleSelect.val(style);
+            }
+
+            // Set data-default="1" for first element
+            styleSelect.find("option:first").attr("data-default", "1");
             styleSelect.trigger("change");
-            preview();
+            $('#lineSelect').trigger('change');
         }
     });
 }
@@ -306,12 +314,10 @@ function setStatus(data, what = null) {
     let status = data.status || '';
     let message = data.message || '';
     let errors = data?.errors || [];
-    console.log(data);
     let extra_info = message ? ':<br />' + message : '';
     if (errors.length > 0) {
         extra_info += '<br />' + errors.join('<br />');
     }
-    console.log(errors);
 
     // Default: clear status
     let html = '';
@@ -461,7 +467,7 @@ function toggleQrSettings() {
     }
 }
 
-document.addEventListener('DOMContentLoaded', function () {
+function get_barcode_types() {
     // Populate barcode select menu from /api/barcodes
     fetch(url_for_get_barcodes)
         .then(response => response.json())
@@ -473,14 +479,21 @@ document.addEventListener('DOMContentLoaded', function () {
                     const opt = document.createElement('option');
                     opt.value = barcode;
                     opt.textContent = barcode;
-                    if (idx === 0) opt.selected = true;
+                    if (idx === 0) {
+                        opt.selected = true;
+                        // Set data-default="1" for first element
+                        opt.setAttribute("data-default", "1");
+                    }
                     select.appendChild(opt);
                 });
                 toggleQrSettings();
                 select.addEventListener('change', toggleQrSettings);
+
+                // Continue initializing page...
+                init2();
             }
         });
-});
+}
 
 function updatePrinterStatus() {
     const printerIcon = document.getElementById('printerIcon');
@@ -550,17 +563,18 @@ function updatePrinterStatus() {
     }
 }
 
-function getPrinterStatus() {
-    fetch(url_for_get_printer_status)
-        .then(response => response.json())
-        .then(data => {
-            printer_status = data;
-            updatePrinterStatus();
-        });
+async function getPrinterStatus() {
+    const response = await fetch(url_for_get_printer_status);
+    const data = await response.json();
+    printer_status = data;
+    updatePrinterStatus();
 }
 
 // --- Local Storage Save/Restore/Export/Import/Reset ---
+const MAX_HISTORY = 40;
 const LS_KEY = 'labeldesigner_settings_v1';
+const LS_HISTORY_KEY = 'labeldesigner_settings_history_v1';
+var current_restoring = false;
 function saveAllSettingsToLocalStorage() {
     const data = {};
     // Save all input/select/textarea values
@@ -571,7 +585,7 @@ function saveAllSettingsToLocalStorage() {
             data[key] = $(this).is(':checked');
         }
         else if (this.type === 'radio') {
-            if ($(this).is(':checked')) {
+            if ($(this).is(':checked') || $(this).parent().hasClass('active')) {
                 data[key] = $(this).val();
             }
         } else {
@@ -582,35 +596,93 @@ function saveAllSettingsToLocalStorage() {
     if (window.fontSettingsPerLine) {
         data['fontSettingsPerLine'] = JSON.stringify(window.fontSettingsPerLine);
     }
-    localStorage.setItem(LS_KEY, JSON.stringify(data));
+    const this_settings = JSON.stringify(data);
+    localStorage.setItem(LS_KEY, this_settings);
+
+    // --- History logic ---
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
+    } catch { history = []; }
+    // Only push if different from last
+    if (history.length === 0 || JSON.stringify(history[history.length - 1]) !== this_settings) {
+        // Log difference between the current and the previous state when saving history
+        console.debug(compareObjects(history[history.length - 1], data));
+        history.push(data);
+        if (history.length > MAX_HISTORY) history = history.slice(history.length - MAX_HISTORY);
+        localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(history));
+    }
+    updateUndoButton();
+}
+
+function undoSettings() {
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
+    } catch { history = []; }
+    if (history.length < 2) return; // nothing to undo
+    // Log difference between the current and the previous state when undoing
+    console.debug(compareObjects(history[history.length - 1], history[history.length - 2]));
+    // Remove current state
+    history.pop();
+    const prev = history[history.length - 1];
+    localStorage.setItem(LS_HISTORY_KEY, JSON.stringify(history));
+    localStorage.setItem(LS_KEY, JSON.stringify(prev));
+    restoreAllSettingsFromLocalStorage();
+    updateUndoButton();
+}
+
+function updateUndoButton() {
+    let history = [];
+    try {
+        history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
+    } catch { history = []; }
+    const steps = Math.max(0, history.length - 1);
+    $('#undoSettingsBtn').find('.undo-counter').text(steps);
+    $('#undoSettingsBtn').prop('disabled', steps === 0);
 }
 
 function restoreAllSettingsFromLocalStorage() {
     const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
+    if (!raw) {
+        // Nothing to restore, initialize styles
+        updateStyles();
+        return;
+    }
+
     let data;
     try { data = JSON.parse(raw); } catch { return; }
+    current_restoring = true;
     $('input, select, textarea').each(function () {
         const key = this.id || this.name;
         if (!(key in data)) return;
         if (this.type === 'checkbox' || this.type === 'radio') {
             $(this).prop('checked', !!data[key]);
             if (this.type === 'radio') {
-                $(this).prop('checked', $(this).val() == data[key]);
+                if ($(this).val() == data[key]) {
+                    $(this).prop('checked', true);
+                    $(this).parent().addClass('active');
+                } else {
+                    $(this).prop('checked', false);
+                    $(this).parent().removeClass('active');
+                }
             }
         } else {
-            $(this).val(data[key]);
+            if (data[key] !== undefined) {
+                $(this).val(data[key]);
+            }
         }
     });
     // Restore fontSettingsPerLine if available
     if (data['fontSettingsPerLine'] && window.fontSettingsPerLine) {
         try {
             window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
-            $('#lineSelect').val(0).trigger('change');
+            $('#lineSelect').val(0);
+            updateStyles(window.fontSettingsPerLine[0].style);
         } catch { }
     }
     // Trigger preview after restore
-    setTimeout(() => { if (typeof preview === 'function') preview(); }, 100);
+    setTimeout(() => { preview(); current_restoring = false; }, 100);
 }
 
 function exportSettings() {
@@ -645,7 +717,7 @@ function importSettings() {
 }
 
 function resetSettings() {
-    if (confirm('Reset all settings to default?')) {
+    if (confirm('Really reset all label settings to default?')) {
         localStorage.removeItem(LS_KEY);
         // Reset font settings
         window.fontSettingsPerLine = {};
@@ -658,7 +730,7 @@ function set_all_inputs_default(force = false) {
     // Iterate over those <input> that have a data-default propery and set the value if empty
     $('input[data-default], select[data-default], textarea[data-default]').each(function () {
         if (this.type === 'checkbox' || this.type === 'radio') {
-            $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') === true);
+            $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') == true);
         }
         else if (this.type === 'select-one' || this.type === 'number') {
             $(this).val($(this).data('default'));
@@ -670,22 +742,34 @@ function set_all_inputs_default(force = false) {
     });
 }
 
-window.onload = function () {
-    set_all_inputs_default();
-    getPrinterStatus();
-    // Update printer status every 5 seconds
-    setInterval(getPrinterStatus, 5000);
-    updateStyles(); // this also triggers preview()
+window.onload = async function () {
+    // Get supported barcodes
+    get_barcode_types();
 
+// Get printer status once ...
+    getPrinterStatus();
+    // ... and update it every 5 seconds
+    setInterval(getPrinterStatus, 5000);
+}
+
+function init2() {
     // Restore settings on load
+    set_all_inputs_default();
     restoreAllSettingsFromLocalStorage();
 
     // Save on change
     $(document).on('change input', 'input, select, textarea', function () {
+        // Skip when this was caused by the #lineSelect <select>
+        if ($(this).is('#lineSelect')) return;
+        setFontSettingsPerLine();
         saveAllSettingsToLocalStorage();
     });
     // Export/Import/Reset buttons
     $('#exportSettings').on('click', exportSettings);
     $('#importSettings').on('click', importSettings);
     $('#resetSettings').on('click', resetSettings);
+
+    // Undo button
+    $('#undoSettingsBtn').on('click', undoSettings);
+    updateUndoButton();
 };

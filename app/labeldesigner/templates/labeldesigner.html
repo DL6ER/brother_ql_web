@@ -8,9 +8,6 @@
             <span id="darkModeIcon" title="Toggle dark mode" style="transition: color 0.2s;"></span>
         </div>
         <div class="btn-group btn-group-sm" role="group" aria-label="Settings">
-            <button type="button" id="exportSettings" class="btn btn-secondary" title="Export settings"><span class="fas fa-download"></span> Export</button>
-            <button type="button" id="importSettings" class="btn btn-secondary" title="Import settings"><span class="fas fa-upload"></span> Import</button>
-            <button type="button" id="resetSettings" class="btn btn-danger" title="Reset settings"><span class="fas fa-undo"></span> Reset</button>
         </div>
     </div>
     <div class="col-md-4">
@@ -103,7 +100,7 @@
                                             <input type="radio" name="fontAlign" onchange="preview()" value="left" aria-label="Left Align"><span class="fas fa-align-left" aria-hidden="true"></span>
                                         </label>
                                         <label class="btn btn-secondary active">
-                                            <input type="radio" name="fontAlign" onchange="preview()" value="center" aria-label="Center Align" checked><span class="fas fa-align-center" aria-hidden="true"></span>
+                                            <input type="radio" name="fontAlign" onchange="preview()" value="center" aria-label="Center Align" data-default="1" checked="true"><span class="fas fa-align-center" aria-hidden="true"></span>
                                         </label>
                                         <label class="btn btn-secondary">
                                             <input type="radio" name="fontAlign" onchange="preview()" value="right" aria-label="Right Align"><span class="fas fa-align-right" aria-hidden="true"></span>
@@ -114,7 +111,7 @@
                                     <div class="btn-group btn-group-toggle btn-block mb-3" data-toggle="buttons">
                                         {% for line_spacing in line_spacings %}
                                         <label class="btn btn-secondary {% if default_line_spacing == line_spacing %}active{% endif %}" id="lineSpacing{{line_spacing}}">
-                                            <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing == line_spacing %}checked{% endif %}>{{line_spacing}}%
+                                            <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing==line_spacing %}checked="true" data-default="1"{% endif %}>{{line_spacing}}%
                                         </label>
                                         {% endfor %}
                                     </div>
@@ -196,7 +193,7 @@
                                 <span class="fas fa-ruler-horizontal" aria-hidden="true"> Black & White
                             </label>
                             <label class="btn btn-secondary {% if default_image_mode == 'grayscale' %}active{% endif %}" id="image_mode_grayscale">
-                                <input type="radio" name="imageMode" onchange="preview()" value="grayscale" aria-label="Grayscale" {% if default_image_mode == 'grayscale' %}checked{% endif %}>
+                                <input type="radio" name="imageMode" onchange="preview()" value="grayscale" aria-label="Grayscale" {% if default_image_mode=='grayscale' %}checked{% endif %} data-default="1">
                                 <span class="fas fa-ruler-vertical" aria-hidden="true"> Grayscale
                             </label>
                             <div class="red-support">
@@ -275,7 +272,7 @@
                                     Color:</label>
                                 <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
                                     <label class="btn btn-dark" id="border_color_black">
-                                        <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black">Black
+                                        <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black" data-default="1">Black
                                     </label>
                                     <label class="btn btn-danger" id="border_color_red">
                                         <input type="radio" name="borderColor" onchange="preview()" value="red" aria-label="Red">Red

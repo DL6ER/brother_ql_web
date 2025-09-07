@@ -65,6 +65,20 @@ Label Designer | Brother QL
 {% block content %}
     <div class="container">
         {# application content needs to be provided in the app_content block #}
+        <div class="mb-3">
+            <button id="undoSettingsBtn" class="btn btn-warning" type="button" disabled>
+                <i class="fas fa-undo"></i>
+                Undo
+                <span class="badge badge-light undo-counter" style="margin-left:4px;">0</span>
+            </button>
+            <button type="button" id="exportSettings" class="btn btn-secondary" title="Export label"><span
+                    class="fas fa-download"></span> Export</button>
+            <button type="button" id="importSettings" class="btn btn-secondary" title="Import label"><span
+                    class="fas fa-upload"></span> Import</button>
+            <button type="button" id="resetSettings" class="btn btn-danger" title="Reset label"><span
+                    class="fas fa-trash"></span>
+                Reset</button>
+        </div>
         {% block app_content %}{% endblock %}
     </div>
 {% endblock %}
@@ -76,5 +90,6 @@ Label Designer | Brother QL
     <script type="text/javascript">
         {% block javascript %} {% endblock %}
     </script>
+    <script src="{{url_for('static', filename='js/utils.js')}}"></script>
     <script src="{{url_for('static', filename='js/main.js')}}"></script>
 {% endblock %}
