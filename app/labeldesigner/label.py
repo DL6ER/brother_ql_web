@@ -208,13 +208,14 @@ class SimpleLabel:
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
 
             # Replace {{random[:<len>][:shift]}} with random string of optional
-            # length <len> and shifting instruction
+            # length <len> and shifting instruction. ":s" is accepted as
+            # shorthand for ":shift"
             def random_replacer(match):
                 length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
                 if match.group(2):
                     line['shift'] = True
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
-            text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(shift))?\}\}", random_replacer, text_val)
+            text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(s(hift)?))?\}\}", random_replacer, text_val)
 
             line['text'] = text_val
 
