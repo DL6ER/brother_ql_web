@@ -177,14 +177,14 @@ class SimpleLabel:
                     f"Text line is very long (> {WARNING_TEXT_LENGTH} characters), "
                     "this may lead to long processing times.")
 
-            # Replace {{counter[:start]}} with current label counter (start is
+            # Replace {{counter[:<start>]}} with current label counter (<start> is
             # an optional offset defaulting to 1)
             def counter_replacer(match):
                 offset = int(match.group(1)) if match.group(1) else 1
                 return str(self._counter + offset)
             text_val = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, text_val)
 
-            # Replace {{datetime:x}} with current datetime formatted as x
+            # Replace {{datetime:<format>}} with current datetime formatted as <format>
             def datetime_replacer(match):
                 fmt = match.group(1)
                 now = datetime.datetime.fromtimestamp(self._timestamp) if self._timestamp > 0 else datetime.datetime.now()
@@ -201,17 +201,20 @@ class SimpleLabel:
                 ui = uuid.UUID(int=random.getrandbits(128))
                 text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
 
-            # Replace {{env:var}} with the value of the environment variable var
+            # Replace {{env:<var>}} with the value of the environment variable var
             def env_replacer(match):
                 var_name = match.group(1)
                 return os.getenv(var_name, "")
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
 
-            # Replace {{random[:len]}} with random string of optional length <len>
+            # Replace {{random[:<len>][:shift]}} with random string of optional
+            # length <len> and shifting instruction
             def random_replacer(match):
                 length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
+                if match.group(2):
+                    line['shift'] = True
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
-            text_val = re.sub(r"\{\{random(?:\:(\d+))?\}\}", random_replacer, text_val)
+            text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(shift))?\}\}", random_replacer, text_val)
 
             line['text'] = text_val
 
@@ -490,6 +493,13 @@ class SimpleLabel:
                     draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, todo_box_dimensions//10), fill=(255,255,255))
 
                 draw.text((x, y), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
+
+                # Shift text around if requested
+                if "shift" in line:
+                    SHIFT_FACTOR = 0.333
+                    for x_shift in [-SHIFT_FACTOR * int(line['size']), SHIFT_FACTOR * int(line['size'])]:
+                        for y_shift in [-SHIFT_FACTOR * int(line['size']), SHIFT_FACTOR * int(line['size'])]:
+                            draw.text((x + x_shift, y + y_shift), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
 
         # Return total bbox
         # each in form (x0, y0, x1, y1)

@@ -385,6 +385,33 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'template.png')
 
+    def test_generate_shifted_randomness(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['text'] = json.dumps([
+            {
+                'font': 'DejaVu Sans,Book',
+                'text': '>> {{random:shift}} <<',
+                'size': '15',
+                'align': 'center',
+                'line_spacing': '150'
+            },
+            {
+                'font': 'DejaVu Sans,Bold',
+                'text': '>> {{random:77:shift}} <<',
+                'size': '10',
+                'align': 'center'
+            }
+        ])
+
+        # Set random seed to a fixed value for deterministic results of {{random}}
+        random.seed(12)
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'shifted_random.png')
+
     def test_invalid_data_types(self, client: FlaskClient):
         # Non-integer label_size
         data = EXAMPLE_FORMDATA.copy()
