@@ -80,15 +80,13 @@
 
                             <div id="fontSettingsContainer">
                                 <div id="fontSetting">
-                                    <label for="fontFamily" style="margin-bottom: 0">Font Family:</label>
-                                    <select class="form-control" id="fontFamily" onChange="updateStyles()">
-                                        {% for font_family_name in font_family_names %}
-                                            <option {% if default_font_family == font_family_name %}selected{% endif %}>{{font_family_name}}</option>
+                                    <label for="font" style="margin-bottom: 0">Font:</label>
+                                    <select class="form-control" id="font" onChange="preview()">
+                                        {% for font in fonts %}
+                                        {% for style in font.styles %}
+                                        <option value="{{font.family}},{{style}}">{{font.family}} ({{style}})</option>
                                         {% endfor %}
-                                    </select>
-
-                                    <label for="fontStyle" style="margin-top: 10px; margin-bottom: 0">Font Style:</label>
-                                    <select class="form-control" id="fontStyle" onChange="preview()">
+                                        {% endfor %}
                                     </select>
 
                                     <label for="fontSize" style="margin-top: 10px; margin-bottom: 0">Font Size:</label>
@@ -410,7 +408,6 @@
 {% block javascript %}
 const url_for_print = '{{ url_for('.print_label') }}';
 const url_for_preview = '{{ url_for('.preview_from_image') }}';
-const url_for_get_font_styles = '{{url_for('.get_font_styles')}}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
 const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};

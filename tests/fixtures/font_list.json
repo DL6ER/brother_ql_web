@@ -1,17 +1,233 @@
 [
-    "DejaVu Math TeX Gyre",
-    "DejaVu Sans",
-    "DejaVu Serif",
-    "Droid Sans",
-    "Droid Serif",
-    "FreeMono",
-    "FreeSans",
-    "FreeSerif",
-    "Inconsolata",
-    "Liberation Mono",
-    "Liberation Sans",
-    "Liberation Serif",
-    "Ligconsolata",
-    "Noto Sans",
-    "Noto Serif"
+    {
+        "family": "Droid Serif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "Droid Sans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Mono"
+        ]
+    },
+    {
+        "family": "Ligconsolata",
+        "styles": [
+            "Regular",
+            "Bold"
+        ]
+    },
+    {
+        "family": "Inconsolata",
+        "styles": [
+            "Regular",
+            "Black",
+            "Bold",
+            "Condensed",
+            "Condensed Black",
+            "Condensed Bold",
+            "Condensed ExtraBold",
+            "Condensed ExtraLight",
+            "Condensed Light",
+            "Condensed Medium",
+            "Condensed SemiBold",
+            "Expanded",
+            "Expanded / Black",
+            "Expanded / Bold",
+            "Expanded / ExtraBold",
+            "Expanded / ExtraLight",
+            "Expanded / Light",
+            "Expanded / Medium",
+            "Expanded / SemiBold",
+            "Extra Condensed",
+            "Extra Condensed / Black",
+            "Extra Condensed / Bold",
+            "Extra Condensed / ExtraBold",
+            "Extra Condensed / ExtraLight",
+            "Extra Condensed / Light",
+            "Extra Condensed / Medium",
+            "Extra Condensed / SemiBold",
+            "Extra Expanded",
+            "Extra Expanded / Black",
+            "Extra Expanded / Bold",
+            "Extra Expanded / ExtraBold",
+            "Extra Expanded / ExtraLight",
+            "Extra Expanded / Light",
+            "Extra Expanded / Medium",
+            "Extra Expanded / SemiBold",
+            "ExtraBold",
+            "ExtraLight",
+            "Light",
+            "Medium",
+            "Semi Condensed",
+            "Semi Condensed / Black",
+            "Semi Condensed / Bold",
+            "Semi Condensed / ExtraBold",
+            "Semi Condensed / ExtraLight",
+            "Semi Condensed / Light",
+            "Semi Condensed / Medium",
+            "Semi Condensed / SemiBold",
+            "Semi Expanded",
+            "Semi Expanded Black",
+            "Semi Expanded Bold",
+            "Semi Expanded ExtraBold",
+            "Semi Expanded ExtraLight",
+            "Semi Expanded Light",
+            "Semi Expanded Medium",
+            "Semi Expanded SemiBold",
+            "SemiBold",
+            "Ultra Condensed",
+            "Ultra Condensed Black",
+            "Ultra Condensed Bold",
+            "Ultra Condensed ExtraBold",
+            "Ultra Condensed ExtraLight",
+            "Ultra Condensed Light",
+            "Ultra Condensed Medium",
+            "Ultra Condensed SemiBold",
+            "Ultra Expanded",
+            "Ultra Expanded / Black",
+            "Ultra Expanded / Bold",
+            "Ultra Expanded / ExtraBold",
+            "Ultra Expanded / ExtraLight",
+            "Ultra Expanded / Light",
+            "Ultra Expanded / Medium",
+            "Ultra Expanded / SemiBold"
+        ]
+    },
+    {
+        "family": "FreeMono",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "FreeSans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "FreeSerif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "Noto Sans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic",
+            "Math",
+            "Mono",
+            "Mono / Bold",
+            "Symbols",
+            "Symbols / Bold",
+            "Symbols 2",
+            "Symbols Black",
+            "Symbols ExtraBold",
+            "Symbols ExtraLight",
+            "Symbols Light",
+            "Symbols Medium",
+            "Symbols SemiBold",
+            "Symbols Thin"
+        ]
+    },
+    {
+        "family": "Noto Serif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Display",
+            "Display / Bold",
+            "Display / Bold Italic",
+            "Display / Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "Liberation Serif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "Liberation Sans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic",
+            "Narrow",
+            "Narrow / Bold",
+            "Narrow / Bold Italic",
+            "Narrow / Italic"
+        ]
+    },
+    {
+        "family": "Liberation Mono",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "DejaVu Serif",
+        "styles": [
+            "Book",
+            "Bold",
+            "Bold Italic",
+            "Condensed / Bold",
+            "Condensed / Bold Italic",
+            "Condensed / Book",
+            "Condensed / Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "DejaVu Sans",
+        "styles": [
+            "Book",
+            "Bold",
+            "Bold Oblique",
+            "Condensed / Bold",
+            "Condensed / Bold Oblique",
+            "Condensed / Book",
+            "Condensed / Oblique",
+            "Light / ExtraLight",
+            "Mono / Bold",
+            "Mono / Bold Oblique",
+            "Mono / Book",
+            "Mono / Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "DejaVu Math TeX Gyre",
+        "styles": [
+            "Regular"
+        ]
+    }
 ]

@@ -28,16 +28,16 @@ class TestFonts(unittest.TestCase):
         self.fonts.fonts['TestFont']['Regular'] = '/path/to/font.ttf'
         self.assertTrue(self.fonts.fonts_available())
 
+    def test_fontfamilies(self):
+        self.fonts.scan_global_fonts()
+        font_families = self.fonts.fontfamilies()
+        expected_font_families = read_testfile('font_families', font_families)
+        self.assertEqual(font_families, expected_font_families)
+
     def test_fontlist(self):
         self.fonts.scan_global_fonts()
-        font_list = self.fonts.fontlist()
-        expected_font_list = read_testfile('font_list', font_list)
-        self.assertEqual(font_list, expected_font_list)
-
-    def test_fontstyles(self):
-        self.fonts.scan_global_fonts()
-        font_styles = self.fonts.fontstyles()
-        expected_font_styles = read_testfile('font_styles', font_styles)
+        font_styles = self.fonts.fontlist()
+        expected_font_styles = read_testfile('font_list', font_styles)
         self.assertEqual(font_styles, expected_font_styles)
 
 

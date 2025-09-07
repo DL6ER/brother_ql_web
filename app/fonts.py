@@ -60,17 +60,24 @@ class Fonts:
                     # Remove the child
                     del self.fonts[other_family]
 
-    def fontlist(self):
+    def fontfamilies(self):
         """Return a sorted list of font family names."""
         return sorted(self.fonts.keys(), key=str.lower)
 
-    def fontstyles(self):
+    def fontlist(self):
         """Return a sorted list of font styles for each family."""
-        styles = defaultdict(list)
+        fontlist = []
         for family, variants in self.fonts.items():
-            styles[family].extend(variants.keys())
-        return {family: sorted(set(variant.lower() for variant in variants), key=str.lower)
-                for family, variants in styles.items()}
+            style_keys = list(variants.keys())
+            # Prioritize 'Book' or 'Regular' in sorting if present
+            prioritized = [s for s in style_keys if s.lower() in ('book', 'regular')]
+            others = sorted([s for s in style_keys if s.lower() not in ('book', 'regular')], key=str.lower)
+            sorted_styles = prioritized + others
+            fontlist.append({
+                'family': family,
+                'styles': sorted_styles
+            })
+        return fontlist
 
     def fonts_available(self):
         """Return True if any fonts are available, else False."""
