@@ -24,9 +24,9 @@ function setFontSettingsPerLine() {
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
         todo: $('#fontCheckbox').is(':checked'),
-        align: $('input[name=fontAlign]').parent('.active').find('input').val() || 'center',
-        line_spacing: $('input[name=lineSpacing]').parent('.active').find('input').val() || '100',
-        color: $('input[name=fontColor]').parent('.active').find('input').val() || 'black'
+        align: $('input[name=fontAlign]:checked').val() || 'center',
+        line_spacing: $('input[name=lineSpacing]:checked').val() || '100',
+        color: $('input[name=fontColor]:checked').val() || 'black'
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -277,7 +277,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-hourglass-half"></i>
                         <span>${action}...</span>
                     </div>`;
-            iconClass = 'float-right fas fa-hourglass-half text-muted';
+            iconClass = 'float-end fas fa-hourglass-half text-muted';
         } else if (status === 'success') {
             // Success for preview or printing
             if (type === 'preview') {
@@ -285,13 +285,13 @@ function setStatus(data, what = null) {
                             <i class="fas fa-eye"></i>
                             <span>Preview generated successfully.</span>
                         </div>`;
-                iconClass = 'float-right fas fa-check text-success';
+                iconClass = 'float-end fas fa-check text-success';
             } else {
                 html = `<div id="statusBox" class="alert alert-success" role="alert">
                             <i class="fas fa-check"></i>
                             <span>Printing was successful.</span>
                         </div>`;
-                iconClass = 'float-right fas fa-print text-success';
+                iconClass = 'float-end fas fa-print text-success';
             }
         } else if (status === 'error') {
             // Error for preview or printing
@@ -300,7 +300,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>${action}${extra_info}</span>
                     </div>`;
-            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
         } else {
             // Unknown status, clear
             html = "";
@@ -313,7 +313,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>${action}${extra_info}</span>
                     </div>`;
-            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
         } else {
             html = "";
             iconClass = "";
@@ -458,16 +458,17 @@ function updatePrinterStatus() {
         $(".red-support").hide();
     }
 
+    const offlineColor = getPreferredMode() === 'dark' ? 'text-light' : 'text-muted';
     if (printer_status.status_type === 'Offline') {
-        printerModel.classList.add('text-muted');
-        printerPath.classList.add('text-muted');
-        printerIcon.classList.add('text-muted');
+        printerModel.classList.add(offlineColor);
+        printerPath.classList.add(offlineColor);
+        printerIcon.classList.add(offlineColor);
         // Append " (offline)" to printer path
         printerPath.textContent += " (offline)";
     } else {
-        printerModel.classList.remove('text-muted');
-        printerPath.classList.remove('text-muted');
-        printerIcon.classList.remove('text-muted');
+        printerModel.classList.remove(offlineColor);
+        printerPath.classList.remove(offlineColor);
+        printerIcon.classList.remove(offlineColor);
     }
 
     const labelSizeX = document.getElementById('label-width');

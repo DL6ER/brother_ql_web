@@ -90,7 +90,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
   - gray = busy
   - green = printing successful
   - red = error needing your attention
-- Migrated GUI to Bootstrap 4
+- Migrated GUI to Bootstrap 5
 - Make preview for round labels... round
 - Print images on red/black paper
 - Dockerized

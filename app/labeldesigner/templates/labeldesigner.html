@@ -2,29 +2,25 @@
 
 {% block app_content %}
 <div class="row">
-    <!-- Dark mode toggle button and settings buttons -->
+    <!-- Settings buttons only (dark mode toggle moved to navbar) -->
     <div style="position: absolute; top: 10px; right: 20px; z-index: 1000; display: flex; gap: 10px; align-items: center;">
-        <div id="darkModeToggle" style="cursor: pointer; font-size: 1.6em;">
-            <span id="darkModeIcon" title="Toggle dark mode" style="transition: color 0.2s;"></span>
-        </div>
         <div class="btn-group btn-group-sm" role="group" aria-label="Settings">
         </div>
     </div>
     <div class="col-md-4">
-    <fieldset class="form-group">
+    <fieldset>
             <div class="accordion" id="accordion" style="max-height: 90vh; overflow-y: auto;">
-
-                <div class="card">
-                    <div class="card-header" id="heading1">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse1" aria-expanded="true" aria-controls="collapse1">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingLabelSize">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionLabelSize" aria-expanded="false" aria-controls="accordionLabelSize">
                             <span class="fas fa-file" aria-hidden="true"></span> Label Size
                         </button>
-                        <span id="labelMismatchIcon" class="float-right text-danger" style="display: none;">
+                        <span id="labelMismatchIcon" class="float-end text-danger" style="display: none;">
                             <span class="fas fa-exclamation-triangle" aria-hidden="true"></span>
                         </span>
-                    </div>
-                    <div id="collapse1" class="collapse" aria-labelledby="heading1" data-parent="#accordion">
-                        <div class="card-body">
+                    </h2>
+                    <div id="accordionLabelSize" class="accordion-collapse collapse" aria-labelledby="headingLabelSize" data-bs-parent="#accordion">
+                        <div class="accordion-body">
                             <label for="labelSize" style="margin-bottom: 0">Label Size:</label>
                             <select class="form-control" id="labelSize" onChange="preview()" data-default="{{default_label_size}}">
                                 {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}"
@@ -34,17 +30,15 @@
                             <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
                             <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>
 
-                            <label for="orientation" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
-                            <div class="btn-group btn-group-toggle btn-block mb-2" data-toggle="buttons">
-                                <label class="btn btn-secondary {% if default_orientation == 'standard' %}active{% endif %}" id="orientation_standard">
-                                    <input type="radio" name="orientation" onchange="preview()" value="standard" aria-label="Standard" {% if
-                                        default_orientation=='standard' %}checked data-default="1" {% endif %}>
-                                    <span class="fas fa-ruler-horizontal" aria-hidden="true"> Standard
+                            <label for="orientation" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Label Orientation:</label>
+                            <div class="btn-group mb-2" role="radiogroup" aria-label="Label Orientation">
+                                <input type="radio" class="btn-check" name="orientation" id="orientation_standard" autocomplete="off" value="standard" onchange="preview()" {% if default_orientation=='standard' %}checked data-default="1"{% endif %}>
+                                <label class="btn btn-secondary" for="orientation_standard">
+                                    <span class="fas fa-ruler-horizontal" aria-hidden="true"></span> Standard
                                 </label>
-                                <label class="btn btn-secondary {% if default_orientation == 'rotated' %}active{% endif %}" id="orientation_rotated">
-                                    <input type="radio" name="orientation" onchange="preview()" value="rotated" aria-label="Rotated" {% if
-                                        default_orientation=='rotated' %}checked data-default="1" {% endif %}>
-                                    <span class="fas fa-ruler-vertical" aria-hidden="true"> Rotated
+                                <input type="radio" class="btn-check" name="orientation" id="orientation_rotated" autocomplete="off" value="rotated" onchange="preview()" {% if default_orientation=='rotated' %}checked data-default="1"{% endif %}>
+                                <label class="btn btn-secondary" for="orientation_rotated">
+                                    <span class="fas fa-ruler-vertical" aria-hidden="true"></span> Rotated
                                 </label>
                             </div>
                             <div class="form-check mb-2">
@@ -54,18 +48,18 @@
                                 </label>
                             </div>
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" id="heading2">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse2" aria-expanded="true" aria-controls="collapse2">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingFontSettings">
+                        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#accordionFontSettings" aria-expanded="true" aria-controls="accordionFontSettings">
                             <span class="fas fa-font" aria-hidden="true"></span> Font Settings
                         </button>
-                    </div>
-                    <div id="collapse2" class="collapse show" aria-labelledby="heading2" data-parent="#accordion">
-                        <div class="card-body">
+                    </h2>
+                    <div id="accordionFontSettings" class="accordion-collapse collapse show" aria-labelledby="headingFontSettings" data-bs-parent="#accordion">
+                        <div class="accordion-body">
                             <div id="fontSettingsLineSelector">
                                 <label for="lineSelect" style="margin-bottom: 0">Select Line:</label>
                                 <select class="form-control" id="lineSelect">
@@ -92,25 +86,21 @@
                                     <label for="fontSize" style="margin-top: 10px; margin-bottom: 0">Font Size:</label>
                                     <input id="fontSize" class="form-control" type="number" min="1" data-default="{{default_font_size}}" onChange="preview()" required>
 
-                                    <label for="fontAlign" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
-                                    <div class="btn-group btn-group-toggle" data-toggle="buttons">
-                                        <label class="btn btn-secondary ">
-                                            <input type="radio" name="fontAlign" onchange="preview()" value="left" aria-label="Left Align"><span class="fas fa-align-left" aria-hidden="true"></span>
-                                        </label>
-                                        <label class="btn btn-secondary active">
-                                            <input type="radio" name="fontAlign" onchange="preview()" value="center" aria-label="Center Align" data-default="1" checked="true"><span class="fas fa-align-center" aria-hidden="true"></span>
-                                        </label>
-                                        <label class="btn btn-secondary">
-                                            <input type="radio" name="fontAlign" onchange="preview()" value="right" aria-label="Right Align"><span class="fas fa-align-right" aria-hidden="true"></span>
-                                        </label>
+                                    <label for="fontAlign" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
+                                    <div class="btn-group" role="radiogroup" aria-label="Font Alignment">
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignLeft" autocomplete="off" value="left" onchange="preview()" aria-label="Left Align" {% if default_font_align=='left' %}checked data-default="1"{% endif %}>
+                                        <label class="btn btn-secondary" for="fontAlignLeft"><span class="fas fa-align-left" aria-hidden="true"></span></label>
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignCenter" autocomplete="off" value="center" onchange="preview()" aria-label="Center Align" {% if default_font_align=='center' %}checked data-default="1"{% endif %}>
+                                        <label class="btn btn-secondary" for="fontAlignCenter"><span class="fas fa-align-center" aria-hidden="true"></span></label>
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignRight" autocomplete="off" value="right" onchange="preview()" aria-label="Right Align" {% if default_font_align=='right' %}checked data-default="1"{% endif %}>
+                                        <label class="btn btn-secondary" for="fontAlignRight"><span class="fas fa-align-right" aria-hidden="true"></span></label>
                                     </div>
 
-                                    <label for="lineSpacing" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Line Spacing:</label>
-                                    <div class="btn-group btn-group-toggle btn-block mb-3" data-toggle="buttons">
+                                    <label for="lineSpacing" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Line Spacing:</label>
+                                    <div class="btn-group mb-3" role="radiogroup" aria-label="Line Spacing">
                                         {% for line_spacing in line_spacings %}
-                                        <label class="btn btn-secondary {% if default_line_spacing == line_spacing %}active{% endif %}" id="lineSpacing{{line_spacing}}">
-                                            <input type="radio" name="lineSpacing" onchange="preview()" value="{{line_spacing}}" aria-label="{{line_spacing}}%" {% if default_line_spacing==line_spacing %}checked="true" data-default="1"{% endif %}>{{line_spacing}}%
-                                        </label>
+                                        <input type="radio" class="btn-check" name="lineSpacing" id="lineSpacing{{line_spacing}}" autocomplete="off" value="{{line_spacing}}" onchange="preview()" aria-label="{{line_spacing}}%" {% if default_line_spacing==line_spacing %}checked data-default="1"{% endif %}>
+                                        <label class="btn btn-secondary" for="lineSpacing{{line_spacing}}">{{line_spacing}}%</label>
                                         {% endfor %}
                                     </div>
                                     <h6>Additional Font Options:</h6>
@@ -127,9 +117,9 @@
                                         </label>
                                     </div>
                                     <div class="red-support">
-                                        <label for="printColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
+                                        <label for="printColor" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
                                             Color:</label>
-                                        <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                        <div class="btn-group">
                                             <label class="btn btn-dark" id="print_color_black">
                                                 <input type="radio" name="fontColor" onchange="preview()" value="black" aria-label="Black" data-default="1">Black
                                             </label>
@@ -142,18 +132,18 @@
                             </div>
 
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" id="heading4">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse4" aria-expanded="true" aria-controls="collapse4">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingCodeSettings">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionCodeSettings" aria-expanded="false" aria-controls="accordionCodeSettings">
                             <span class="fas fa-qrcode" aria-hidden="true"></span> Code Settings
                         </button>
-                    </div>
-                    <div id="collapse4" class="collapse" aria-labelledby="heading4" data-parent="#accordion">
-                        <div class="card-body">
+                    </h2>
+                    <div id="accordionCodeSettings" class="accordion-collapse collapse" aria-labelledby="headingCodeSettings" data-bs-parent="#accordion">
+                        <div class="accordion-body">
                             <label for="barcodeType" style="margin-bottom: 0">Barcode Type:</label>
                             <select class="form-control" id="barcodeType" onChange="preview()"></select>
 
@@ -172,36 +162,39 @@
                                 <option value="H">About 30% can be corrected.</option>
                             </select>
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" id="heading5">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse5" aria-expanded="true" aria-controls="collapse5">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingImageSettings">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionImageSettings" aria-expanded="false" aria-controls="accordionImageSettings">
                             <span class="fas fa-image" aria-hidden="true"></span> Image Settings
                         </button>
-                    </div>
-                    <div id="collapse5" class="collapse" aria-labelledby="heading5" data-parent="#accordion">
-                        <div class="card-body">
-                            <label for="imageMode" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Image mode:</label>
-
-                            <label class="btn btn-secondary {% if default_image_mode == 'black_and_white' %}active{% endif %}" id="image_mode_bw">
-                                <input type="radio" name="imageMode" onchange="preview()" value="black_and_white" aria-label="Black & White" {% if default_image_mode == 'black_and_white' %}checked{% endif %}>
-                                <span class="fas fa-ruler-horizontal" aria-hidden="true"> Black & White
-                            </label>
-                            <label class="btn btn-secondary {% if default_image_mode == 'grayscale' %}active{% endif %}" id="image_mode_grayscale">
-                                <input type="radio" name="imageMode" onchange="preview()" value="grayscale" aria-label="Grayscale" {% if default_image_mode=='grayscale' %}checked{% endif %} data-default="1">
-                                <span class="fas fa-ruler-vertical" aria-hidden="true"> Grayscale
-                            </label>
-                            <div class="red-support">
-                                <label class="btn btn-secondary {% if default_image_mode == 'colored' %}active{% endif %}" id="image_mode_colored">
-                                    <input type="radio" name="imageMode" onchange="preview()" value="colored" aria-label="Colored" {% if default_image_mode == 'colored' %}checked{% endif %}>
-                                    <span class="fas fa-ruler-horizontal" aria-hidden="true"> Colored
+                    </h2>
+                    <div id="accordionImageSettings" class="accordion-collapse collapse" aria-labelledby="headingImageSettings" data-bs-parent="#accordion">
+                        <div class="accordion-body">
+                            <label for="imageMode" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Image mode:</label>
+                            <div class="btn-group mb-2" role="radiogroup" aria-label="Image Mode">
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_bw" autocomplete="off" value="black_and_white" onchange="preview()" aria-label="Black & White" {% if default_image_mode == 'black_and_white' %}checked{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_bw">
+                                    <span class="fa-solid fa-circle-half-stroke" aria-hidden="true"></span> Black & White
                                 </label>
-                                <label class="btn btn-secondary {% if default_image_mode == 'red_and_black' %}active{% endif %}" id="image_mode_red_and_black">
-                                    <input type="radio" name="imageMode" onchange="preview()" value="red_and_black" aria-label="Red & Black" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
-                                    <span class="fas fa-ruler-vertical" aria-hidden="true"> Red & Black
+
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_grayscale" autocomplete="off" value="grayscale" onchange="preview()" aria-label="Grayscale" {% if default_image_mode=='grayscale' %}checked data-default="1"{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_grayscale">
+                                    <span class="fa-solid fa-grip-lines-vertical" aria-hidden="true"></span> Grayscale
+                                </label>
+
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_colored" autocomplete="off" value="colored" onchange="preview()" aria-label="Colored" {% if default_image_mode == 'colored' %}checked{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_colored">
+                                    <span class="fa-solid fa-palette" aria-hidden="true"></span> Colored
+                                </label>
+
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_red_and_black" autocomplete="off" value="red_and_black" onchange="preview()" aria-label="Red & Black" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_red_and_black">
+                                    <span class="fa-solid fa-droplet" style="color: #d32f2f;" aria-hidden="true"></span>
+                                    <span class="fa-solid fa-droplet" style="color: #222;" aria-hidden="true"></span> Red & Black
                                 </label>
                             </div>
 
@@ -215,60 +208,66 @@
                             <label for="imageBwThreshold" style="margin-top: 10px; margin-bottom: 0">Black & White threshold:</label>
                             <input id="imageBwThreshold" class="form-control" type="number" min="1" max="255" data-default="{{default_bw_threshold}}" onChange="preview()">
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" id="heading3">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse3" aria-expanded="true" aria-controls="collapse3">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingMarginsBorders">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionMarginsBorders" aria-expanded="false" aria-controls="accordionMarginsBorders">
                             <span class="fas fa-arrows-alt" aria-hidden="true"></span> Margins and Borders
                         </button>
-                    </div>
-                    <div id="collapse3" class="collapse" aria-labelledby="heading3" data-parent="#accordion">
-                        <div class="card-body">
+                    </h2>
+                    <div id="accordionMarginsBorders" class="accordion-collapse collapse" aria-labelledby="headingMarginsBorders" data-bs-parent="#accordion">
+                        <div class="accordion-body">
                             <label for="marginTop" style="margin-bottom: 0">Margin Top:</label>
                             <div class="input-group marginsTopBottom">
                                 <input id="marginTop" class="form-control marginsTopBottom" type="number" min="0" max="200" data-default="{{default_margin_top}}" onChange="preview()" aria-describedby="marginTop-addon" required>
-                                <div class="input-group-append">
-                                    <span class="input-group-text" id="marginTop-addon">px</span>
-                                </div>
+                                <span class="input-group-text" id="marginTop-addon">px</span>
                             </div>
                             <label for="marginBottom" style="margin-top: 10px; margin-bottom: 0">Margin Bottom:</label>
                             <div class="input-group marginsTopBottom">
                                 <input id="marginBottom" class="form-control marginsTopBottom" type="number" min="0" max="200" data-default="{{default_margin_bottom}}" onChange="preview()" aria-describedby="marginBottom-addon" required>
-                                <div class="input-group-append">
-                                    <span class="input-group-text" id="marginBottom-addon">px</span>
-                                </div>
+                                <span class="input-group-text" id="marginBottom-addon">px</span>
                             </div>
                             <label for="marginLeft" style="margin-top: 10px; margin-bottom: 0">Margin Left:</label>
                             <div class="input-group marginsLeftRight">
                                 <input id="marginLeft" class="form-control marginsLeftRight" type="number" min="0" max="200" data-default="{{default_margin_left}}" onChange="preview()" aria-describedby="marginLeft-addon" required>
-                                <div class="input-group-append">
-                                    <span class="input-group-text" id="marginLeft-addon">px</span>
-                                </div>
+                                <span class="input-group-text" id="marginLeft-addon">px</span>
                             </div>
                             <label for="marginRight" style="margin-top: 10px; margin-bottom: 0">Margin Right:</label>
                             <div class="input-group marginsLeftRight">
                                 <input id="marginRight" class="form-control marginsLeftRight" type="number" min="0" max="200" data-default="{{default_margin_right}}" onChange="preview()" aria-describedby="marginRight-addon" required>
-                                <div class="input-group-append">
-                                    <span class="input-group-text" id="marginRight-addon">px</span>
-                                </div>
+                                <span class="input-group-text" id="marginRight-addon">px</span>
                             </div>
+
                             <hr style="margin: 1.2em 0;" />
+
                             <label for="borderThickness" style="margin-bottom: 0">Border Thickness (0 = disabled):</label>
-                            <input id="borderThickness" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
+                            <div class="input-group">
+                                <input id="borderThickness" class="form-control" type="number" min="0" data-default="0" onChange="preview()" />
+                                <span class="input-group-text" id="marginBottom-addon">px</span>
+                            </div>
                             <label for="borderRoundness" style="margin-bottom: 0">Border Roundness:</label>
-                            <input id="borderRoundness" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
+                            <div class="input-group">
+                                <input id="borderRoundness" class="form-control" type="number" min="0" data-default="0" onChange="preview()" />
+                                <span class="input-group-text" id="marginBottom-addon">px</span>
+                            </div>
                             <label for="borderDistanceX" style="margin-bottom: 0">Border Distance (left/right):</label>
-                            <input id="borderDistanceX" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
+                            <div class="input-group">
+                                <input id="borderDistanceX" class="form-control" type="number" min="0" data-default="0" onChange="preview()" />
+                                <span class="input-group-text" id="marginBottom-addon">px</span>
+                            </div>
                             <label for="borderDistanceY" style="margin-bottom: 0">Border Distance (top/bottom):</label>
-                            <input id="borderDistanceY" class="form-control mb-2" type="number" min="0" data-default="0" onChange="preview()" />
+                            <div class="input-group">
+                                <input id="borderDistanceY" class="form-control" type="number" min="0" data-default="0" onChange="preview()" />
+                                <span class="input-group-text" id="marginBottom-addon">px</span>
+                            </div>
 
                             <div class="red-support">
-                                <label for="borderColor" class="control-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
+                                <label for="borderColor" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Print
                                     Color:</label>
-                                <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
+                                <div class="btn-group">
                                     <label class="btn btn-dark" id="border_color_black">
                                         <input type="radio" name="borderColor" onchange="preview()" value="black" aria-label="Black" data-default="1">Black
                                     </label>
@@ -278,18 +277,18 @@
                                 </div>
                             </div>
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header" id="heading6">
-                        <button class="btn btn-link" type="button" data-toggle="collapse" data-target="#collapse6" aria-expanded="true" aria-controls="collapse6">
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingAdvancedSettings">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionAdvancedSettings" aria-expanded="false" aria-controls="accordionAdvancedSettings">
                             <span class="fas fa-wrench" aria-hidden="true"></span> Advanced Settings
                         </button>
-                    </div>
-                    <div id="collapse6" class="collapse" aria-labelledby="heading6" data-parent="#accordion">
-                        <div class="card-body">
+                    </h2>
+                    <div id="accordionAdvancedSettings" class="accordion-collapse collapse" aria-labelledby="headingAdvancedSettings" data-bs-parent="#accordion">
+                        <div class="accordion-body">
                             <label for="logLevel" style="margin-bottom: 0">Log Level:</label>
                             <select class="form-control mb-3" id="logLevel" onChange="preview()">
                                 <option value="CRITICAL">CRITICAL</option>
@@ -299,49 +298,40 @@
                                 <option value="DEBUG">DEBUG</option>
                             </select>
                         </div>
-                        <!-- class="card-body" -->
+                        <!-- class="accordion-body" -->
                     </div>
                 </div>
             </div>
         </fieldset>
     </div>
     <div class="col-md-4">
-        <label for="printType" class="control-label input-group" style="margin-bottom: 0">Print Type:</label>
-        <div class="btn-group btn-group-toggle btn-block" data-toggle="buttons">
-            <label class="btn btn-secondary active" id="printTypeText">
-                <input type="radio" name="printType" onchange="preview()" value="text" aria-label="Text" data-default="1" checked>
-                <span class="fas fa-font" aria-hidden="true"></span><br>Text
-            </label>
-            <label class="btn btn-secondary" id="printTypeQrCode">
-                <input type="radio" name="printType" onchange="preview()" value="qrcode" aria-label="Text">
-                <span class="fas fa-qrcode" aria-hidden="true"></span><br>Code
-            </label>
-            <label class="btn btn-secondary" id="printTypeQrCodeText">
-                <input type="radio" name="printType" onchange="preview()" value="qrcode_text" aria-label="QR Code + Text">
-                <span class="fas fa-barcode" aria-hidden="true"></span> <span class="fas fa-font"
-                    aria-hidden="true"></span><br>Code+Text
-            </label>
-            <label class="btn btn-secondary" id="printTypeImage">
-                <input type="radio" name="printType" onchange="preview()" value="image" aria-label="Image">
-                <span class="fas fa-image" aria-hidden="true"></span><br>Image
-            </label>
+        <label for="printType" class="form-label input-group" style="margin-bottom: 0">Print Type:</label>
+        <div class="btn-group" role="radiogroup" aria-label="Print Type">
+            <input type="radio" class="btn-check" name="printType" id="printTypeText" autocomplete="off" value="text" onchange="preview()" aria-label="Text" data-default="1" {% if default_print_type=='text' %}checked{% endif %}>
+            <label class="btn btn-secondary" for="printTypeText"><span class="fas fa-font" aria-hidden="true"></span><br>Text</label>
+            <input type="radio" class="btn-check" name="printType" id="printTypeQrCode" autocomplete="off" value="qrcode" onchange="preview()" aria-label="Code" {% if default_print_type=='qrcode' %}checked{% endif %}>
+            <label class="btn btn-secondary" for="printTypeQrCode"><span class="fas fa-qrcode" aria-hidden="true"></span><br>Code</label>
+            <input type="radio" class="btn-check" name="printType" id="printTypeQrCodeText" autocomplete="off" value="qrcode_text" onchange="preview()" aria-label="QR Code + Text" {% if default_print_type=='qrcode_text' %}checked{% endif %}>
+            <label class="btn btn-secondary" for="printTypeQrCodeText"><span class="fas fa-barcode" aria-hidden="true"></span> <span class="fas fa-font" aria-hidden="true"></span><br>Code+Text</label>
+            <input type="radio" class="btn-check" name="printType" id="printTypeImage" autocomplete="off" value="image" onchange="preview()" aria-label="Image" {% if default_print_type=='image' %}checked{% endif %}>
+            <label class="btn btn-secondary" for="printTypeImage"><span class="fas fa-image" aria-hidden="true"></span><br>Image</label>
         </div>
 
-        <fieldset class="form-group" id="groupLabelImage">
+        <fieldset id="groupLabelImage">
             <label style="margin-top: 10px; margin-bottom: 0">Label Image:</label>
             <form class="dropzone" id="my-awesome-dropzone">
             </form>
         </fieldset>
-        <fieldset class="form-group" id="groupLabelText">
+        <fieldset id="groupLabelText">
             <label for="labelText" style="margin-top: 10px; margin-bottom: 0">Label Text:</label>
             <textarea rows="7" id="labelText" class="form-control" onChange="preview()" onInput="preview()" data-default=""></textarea>
             <!-- Template info box -->
             <div class="card mt-2" style="font-size: 0.95em;">
-                <div class="card-header p-2" style="cursor: pointer; user-select: none;" data-toggle="collapse"
-                    data-target="#templateInfoBox" aria-expanded="false" aria-controls="templateInfoBox">
+                <div class="card-header p-2" style="cursor: pointer; user-select: none;" data-bs-toggle="collapse"
+                    data-bs-target="#templateInfoBox" aria-expanded="false" aria-controls="templateInfoBox">
                     <span class="fas fa-info-circle" aria-hidden="true"></span>
                     <span style="margin-left: 0.5em;">About label templates <span
-                            class="fas fa-chevron-down float-right"></span></span>
+                            class="fas fa-chevron-down float-end"></span></span>
                 </div>
                 <div id="templateInfoBox" class="collapse">
                     <div class="card-body pt-2 pb-2">
@@ -358,8 +348,7 @@
                             <li><code>{{'{{short-uuid'}}}}</code> — Inserts a shortened version of a UUID.</li>
                             <li><code>{{'{{env:<var>}}'}}</code> — Inserts the value of the environment variable <code><var></code>.</li>
                             <li><code>{{'{{random[:<len>][:shift]}}'}}</code> — Inserts a random string of optional length <code><len></code>
-                                (defaulting to
-                                64). The optional <code>shift</code> parameter can be used to shift the random string around to fill gaps.</li>
+                                (defaulting to 64). The optional <code>shift</code> parameter can be used to shift the random string around to fill gaps.</li>
                         </ul>
                         <span class="text-muted">Templates are replaced at print time.</span>
                     </div>
@@ -368,40 +357,40 @@
         </fieldset>
     </div>
     <div class="col-md-4">
-    <fieldset class="form-group">
-            <label for="previewImg" style="margin-bottom: 0">Label Preview:</label><br />
-            <img id="previewImg" style="max-height: 350px; width: auto; max-width: 100%; display: block; margin-bottom: 1em;" />
-            <p>Printed size: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
+    <fieldset>
+        <label for="previewImg" style="margin-bottom: 0">Label Preview:</label><br />
+        <img id="previewImg" style="max-height: 350px; width: auto; max-width: 100%; display: block; margin-bottom: 1em;" />
+        <p>Printed size: <span id="labelWidth">?</span> cm x <span id="labelHeight">?</span> cm</p>
 
-            <div class="form-group">
-                <label for="printCount" style="margin-top: 10px; margin-bottom: 0">Print Count:</label>
-                <input id="printCount" class="form-control" type="number" min="1" max="100" data-default="1" required>
-            </div>
+        <div>
+            <label for="printCount" style="margin-top: 10px; margin-bottom: 0">Print Count:</label>
+            <input id="printCount" class="form-control" type="number" min="1" max="100" data-default="1" required>
+        </div>
 
-            <div class="btn-group btn-block">
-                <button type="button" id="printButton" class="btn btn-block btn-primary btn-lg" onClick="print()">
+        <div class="input-group my-3 d-flex justify-content-center w-100">
+            <div class="btn-group w-100">
+                <button type="button" id="printButton" class="btn btn-primary btn-lg w-75" onClick="print()">
                     <span class="fas fa-print" aria-hidden="true"></span> Print
                 </button>
-                <button type="button" class="btn btn-primary dropdown-toggle dropdown-toggle-split" id="dropdownPrintButton" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" data-reference="parent">
-                    <span class="sr-only">Toggle Dropdown</span>
+                <button type="button" class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split w-25" id="dropdownPrintButton" data-bs-toggle="dropdown" aria-expanded="false">
+                    <span class="visually-hidden">Toggle Dropdown</span>
                 </button>
-                <div class="dropdown-menu" aria-labelledby="dropdownPrintButton">
-                    <a class="dropdown-item" href="#" onClick="print(true)">Cut only once</a>
-                </div>
+                <ul class="dropdown-menu" aria-labelledby="dropdownPrintButton">
+                    <li><a class="dropdown-item" href="#" onClick="print(true)">Cut only once</a></li>
+                </ul>
             </div>
-
-        </fieldset>
-        <div class="card">
-            <div class="card-header">
-                <span class="fas fa-terminal" aria-hidden="true" style="margin-right: 0.3em"></span> Status
-                <span id="statusIcon" class="float-right fas fa-exclamation-triangle" aria-hidden="true"></span>
-            </div>
-            <div id="printerStatusPanel" class="card-body" style="display: none;">
-                <div id="printerStatusBox" class="alert alert-secondary" role="alert"></div>
-            </div>
-            <div id="statusPanel" class="card-body">
-                <div id="statusBox" class="alert alert-secondary" role="alert"><span>Idle...</span></div>
-            </div>
+        </div>
+    </fieldset>
+    <div class="card">
+        <div class="card-header">
+            <span class="fas fa-terminal" aria-hidden="true" style="margin-right: 0.3em"></span> Status
+            <span id="statusIcon" class="float-end fas fa-exclamation-triangle" aria-hidden="true"></span>
+        </div>
+        <div id="printerStatusPanel" class="card-body" style="display: none;">
+            <div id="printerStatusBox" class="alert alert-secondary" role="alert"></div>
+        </div>
+        <div id="statusPanel" class="card-body">
+            <div id="statusBox" class="alert alert-secondary" role="alert"><span>Idle...</span></div>
         </div>
     </div>
 </div>

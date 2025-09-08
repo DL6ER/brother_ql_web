@@ -11,13 +11,10 @@ import random
 import argparse
 
 from flask import Flask
-from flask_bootstrap import Bootstrap
 from brother_ql.models import ALL_MODELS
 
 from . import fonts
 from config import Config
-
-bootstrap = Bootstrap()
 
 
 def create_app(config_class=Config):
@@ -28,9 +25,6 @@ def create_app(config_class=Config):
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 
     init_fonts_and_args(app)
-
-    app.config['BOOTSTRAP_SERVE_LOCAL'] = True
-    bootstrap.init_app(app)
 
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
