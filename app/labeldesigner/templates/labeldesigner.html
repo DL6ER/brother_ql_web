@@ -372,10 +372,10 @@
                 <button type="button" id="printButton" class="btn btn-primary btn-lg w-75" onClick="print()">
                     <span class="fas fa-print" aria-hidden="true"></span> Print
                 </button>
-                <button type="button" class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split w-25" id="dropdownPrintButton" data-bs-toggle="dropdown" aria-expanded="false">
+                <button type="button" class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split" style="width: 25px; min-width: 0;" id="dropdownPrintButton" data-bs-toggle="dropdown" aria-expanded="false">
                     <span class="visually-hidden">Toggle Dropdown</span>
                 </button>
-                <ul class="dropdown-menu" aria-labelledby="dropdownPrintButton">
+                <ul class="dropdown-menu" aria-labelledby="dropdownPrintButton" style="min-width: 100px; width: max-content;">
                     <li><a class="dropdown-item" href="#" onClick="print(true)">Cut only once</a></li>
                 </ul>
             </div>
