@@ -253,17 +253,17 @@ class SimpleLabel:
                 if self._label_orientation == LabelOrientation.STANDARD:
                     if self._label_type in (LabelType.ENDLESS_LABEL,):
                         # Only width is considered for endless label without rotation
-                        scale = min(max_width / img_width, 1.0)
+                        scale = max_width / img_width
                     else:
                         # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                        scale = max_width / img_width, max_height / img_height
                 else:
                     if self._label_type in (LabelType.ENDLESS_LABEL,):
                         # Only height is considered for endless label without rotation
-                        scale = min(max_height / img_height, 1.0)
+                        scale = max_height / img_height
                     else:
                         # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                        scale = max_width / img_width, max_height / img_height
                 logger.debug(f"Scaling image by factor: {scale}")
 
                 # Resize the image
