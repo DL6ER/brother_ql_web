@@ -1,5 +1,3 @@
-
-
 import io
 import os
 import sys
@@ -228,6 +226,54 @@ class TestLabelDesignerAPI:
 
         # Check image
         self.verify_image(response.data, 'rotated.png')
+
+    def test_generate_preview_no_margins(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['margin_top'] = 0
+        data['margin_bottom'] = 0
+        data['text'] = json.dumps([
+            {
+                'font': 'Droid Serif,Regular',
+                'text': '!!! URGENT !!!',
+                'size': '60',
+                'align': 'center',
+                'inverted': True
+            },
+            {
+                'font': 'Droid Serif,Regular',
+                'text': 'Ship as soon as possible',
+                'size': '60',
+                'align': 'center'
+            }
+        ])
+
+    def test_generate_preview_no_margins_rotated(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['orientation'] = 'rotated'
+        data['margin_left'] = 0
+        data['margin_right'] = 0
+        data['text'] = json.dumps([
+            {
+                'font': 'Droid Serif,Regular',
+                'text': '!!! URGENT !!!',
+                'size': '60',
+                'align': 'center',
+                'inverted': True
+            },
+            {
+                'font': 'Droid Serif,Regular',
+                'text': 'Ship as soon as possible',
+                'size': '60',
+                'align': 'center'
+            }
+        ])
+
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'simple_no_margins_rotated.png')
 
     def test_generate_ean13(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -838,6 +884,26 @@ class TestLabelDesignerAPI:
 
         # Check image
         self.verify_image(response.data, 'todo_list.png')
+
+    def test_large_font_not_cropped(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['border_thickness'] = 1
+        data['border_color'] = 'red'
+        data['text'] = json.dumps([
+            {
+                'font': 'DejaVu Math TeX Gyre,Regular',
+                'text': 'Mehrwegbecher',
+                'size': '70',
+                'align': 'left'
+            }
+        ])
+
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'large_text.png')
 
     # We cannot test the print functionality without a physical printer
     def test_print_label(self, client: FlaskClient):

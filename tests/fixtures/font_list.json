@@ -1,10 +1,38 @@
 [
     {
-        "family": "Droid Serif",
+        "family": "DejaVu Math TeX Gyre",
         "styles": [
-            "Regular",
+            "Regular"
+        ]
+    },
+    {
+        "family": "DejaVu Sans",
+        "styles": [
+            "Book",
+            "Bold",
+            "Bold Oblique",
+            "Condensed / Bold",
+            "Condensed / Bold Oblique",
+            "Condensed / Book",
+            "Condensed / Oblique",
+            "Light / ExtraLight",
+            "Mono / Bold",
+            "Mono / Bold Oblique",
+            "Mono / Book",
+            "Mono / Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "DejaVu Serif",
+        "styles": [
+            "Book",
             "Bold",
             "Bold Italic",
+            "Condensed / Bold",
+            "Condensed / Bold Italic",
+            "Condensed / Book",
+            "Condensed / Italic",
             "Italic"
         ]
     },
@@ -17,10 +45,39 @@
         ]
     },
     {
-        "family": "Ligconsolata",
+        "family": "Droid Serif",
         "styles": [
             "Regular",
-            "Bold"
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "FreeMono",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "FreeSans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Oblique",
+            "Oblique"
+        ]
+    },
+    {
+        "family": "FreeSerif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
         ]
     },
     {
@@ -101,30 +158,41 @@
         ]
     },
     {
-        "family": "FreeMono",
-        "styles": [
-            "Regular",
-            "Bold",
-            "Bold Oblique",
-            "Oblique"
-        ]
-    },
-    {
-        "family": "FreeSans",
-        "styles": [
-            "Regular",
-            "Bold",
-            "Bold Oblique",
-            "Oblique"
-        ]
-    },
-    {
-        "family": "FreeSerif",
+        "family": "Liberation Mono",
         "styles": [
             "Regular",
             "Bold",
             "Bold Italic",
             "Italic"
+        ]
+    },
+    {
+        "family": "Liberation Sans",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic",
+            "Narrow",
+            "Narrow / Bold",
+            "Narrow / Bold Italic",
+            "Narrow / Italic"
+        ]
+    },
+    {
+        "family": "Liberation Serif",
+        "styles": [
+            "Regular",
+            "Bold",
+            "Bold Italic",
+            "Italic"
+        ]
+    },
+    {
+        "family": "Ligconsolata",
+        "styles": [
+            "Regular",
+            "Bold"
         ]
     },
     {
@@ -160,74 +228,6 @@
             "Display / Bold Italic",
             "Display / Italic",
             "Italic"
-        ]
-    },
-    {
-        "family": "Liberation Serif",
-        "styles": [
-            "Regular",
-            "Bold",
-            "Bold Italic",
-            "Italic"
-        ]
-    },
-    {
-        "family": "Liberation Sans",
-        "styles": [
-            "Regular",
-            "Bold",
-            "Bold Italic",
-            "Italic",
-            "Narrow",
-            "Narrow / Bold",
-            "Narrow / Bold Italic",
-            "Narrow / Italic"
-        ]
-    },
-    {
-        "family": "Liberation Mono",
-        "styles": [
-            "Regular",
-            "Bold",
-            "Bold Italic",
-            "Italic"
-        ]
-    },
-    {
-        "family": "DejaVu Serif",
-        "styles": [
-            "Book",
-            "Bold",
-            "Bold Italic",
-            "Condensed / Bold",
-            "Condensed / Bold Italic",
-            "Condensed / Book",
-            "Condensed / Italic",
-            "Italic"
-        ]
-    },
-    {
-        "family": "DejaVu Sans",
-        "styles": [
-            "Book",
-            "Bold",
-            "Bold Oblique",
-            "Condensed / Bold",
-            "Condensed / Bold Oblique",
-            "Condensed / Book",
-            "Condensed / Oblique",
-            "Light / ExtraLight",
-            "Mono / Bold",
-            "Mono / Bold Oblique",
-            "Mono / Book",
-            "Mono / Oblique",
-            "Oblique"
-        ]
-    },
-    {
-        "family": "DejaVu Math TeX Gyre",
-        "styles": [
-            "Regular"
         ]
     }
 ]

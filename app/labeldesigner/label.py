@@ -11,7 +11,7 @@ import re
 import random
 import string
 import copy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -27,27 +27,6 @@ class SimpleLabel:
     Represents a label with text, image, barcode, and QR code support.
     Handles rendering, template processing, and layout.
     """
-    def _ensure_pil_image(self, img: Any) -> Image.Image:
-        """Ensure the image is a PIL.Image.Image instance."""
-        if isinstance(img, Image.Image):
-            return img
-        import io
-        try:
-            if hasattr(img, 'tobytes') and hasattr(img, 'size') and hasattr(img, 'mode'):
-                return Image.frombytes(img.mode, img.size, img.tobytes())
-            if hasattr(img, 'to_pil_image'):
-                return img.to_pil_image()
-            if hasattr(img, 'as_pil_image'):
-                return img.as_pil_image()
-            if hasattr(img, 'save'):
-                buf = io.BytesIO()
-                img.save(buf, format='PNG')
-                buf.seek(0)
-                return Image.open(buf)
-        except Exception as e:
-            logger.error(f"Failed to convert image to PIL.Image: {e}")
-        raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
-
     QR_CORRECTION_MAPPING = {
         'M': constants.ERROR_CORRECT_M,
         'L': constants.ERROR_CORRECT_L,
@@ -69,8 +48,8 @@ class SimpleLabel:
         qr_size: int = 10,
         qr_correction: str = 'L',
         image_fit: bool = False,
-        image: Optional[Any] = None,
-        border_thickness: int = 1,
+        image: Optional[Union[Image.Image, None]] = None,
+        border_thickness: int = 0,
         border_roundness: int = 0,
         border_distance: Tuple[int, int] = (0, 0),
         border_color: Tuple[int, int, int] = (0, 0, 0),
@@ -118,10 +97,23 @@ class SimpleLabel:
 
     def want_text(self, img: Optional[Image.Image]) -> bool:
         """Determine if text should be drawn on the label."""
+
+        # If we are not drawing an image, we need to draw text or the label will
+        # vanish
         if img is None:
             return True
-        if self._label_content not in (LabelContent.QRCODE_ONLY,) and self.text and self.text[0].get('text', ''):
+
+        # If we want to draw only a code, suppress any text
+        if self._label_content in (LabelContent.QRCODE_ONLY,):
+            return False
+
+        # If we are drawing an image, we want to draw text as well if there is
+        # at least one line of text with non-empty content
+        logger.debug(f"Text content: {self.text}")
+        if self.text and len(self.text[0].get('text', '')) > 0:
             return True
+
+        # Don't draw any text
         return False
 
     @property
@@ -243,9 +235,6 @@ class SimpleLabel:
 
         # Resize image to fit if image_fit is True
         if img is not None:
-            # Ensure img is a PIL image
-            img = self._ensure_pil_image(img)
-
             # Resize image to fit if image_fit is True
             if self._image_fit:
                 # Calculate the maximum allowed dimensions
@@ -264,17 +253,17 @@ class SimpleLabel:
                 if self._label_orientation == LabelOrientation.STANDARD:
                     if self._label_type in (LabelType.ENDLESS_LABEL,):
                         # Only width is considered for endless label without rotation
-                        scale = min(max_width / img_width, 1.0)
+                        scale = max_width / img_width
                     else:
                         # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                        scale = max_width / img_width, max_height / img_height
                 else:
                     if self._label_type in (LabelType.ENDLESS_LABEL,):
                         # Only height is considered for endless label without rotation
-                        scale = min(max_height / img_height, 1.0)
+                        scale = max_height / img_height
                     else:
                         # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height, 1.0)
+                        scale = max_width / img_width, max_height / img_height
                 logger.debug(f"Scaling image by factor: {scale}")
 
                 # Resize the image
@@ -363,8 +352,8 @@ class SimpleLabel:
             # Calculate border rectangle (inside the image, respecting thickness)
             rect = [self._border_distance[0],
                     self._border_distance[1],
-                    imgResult.width - self._border_distance[0],
-                    imgResult.height - self._border_distance[1]]
+                    imgResult.width - self._border_distance[0] - 1,
+                    imgResult.height - self._border_distance[1] - 1]
             # Validity checks on rect:
             # - x1 >= x0
             # - y1 >= y0
@@ -439,7 +428,8 @@ class SimpleLabel:
             # Draw TODO box if needed
             todo = line.get('todo', False)
 
-            if do_draw and 'inverted' in line and line['inverted']:
+            INVERT_LINE = 'inverted' in line and line['inverted']
+            if do_draw and INVERT_LINE:
                 # Draw a filled rectangle
                 center_x = 0
                 if anchor == "lt":
@@ -463,10 +453,20 @@ class SimpleLabel:
 
             # Either calculate bbox or actually draw
             if not do_draw:
-                Ag = draw.textbbox((0, y), "Ag", font, anchor="lt")
+                # Get bbox of the text
                 bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
-                # Get bbox with width of text and dummy height
-                bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
+
+                # Ensure consistent line heights for each line except the last
+                # one (where it is not needed). We still need this when
+                # inverting text to ensure the inversion box is large enough to
+                # hold the entire text
+                IS_LAST_LINE = i == len(self.text) - 1
+                if not IS_LAST_LINE or INVERT_LINE:
+                    # Some characters may need special height
+                    all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
+                    Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
+                    # Get bbox with width of text and dummy height
+                    bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
                 bboxes.append((bbox, y))
                 y += bbox[3] - bbox[1] + (spacing if i < len(self.text)-1 else 0)
             else:

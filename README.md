@@ -76,7 +76,8 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
   - Add text to QR Code
   - Change size of QR Code
 - Upload files to print
-  - PDF, PNG and JPG files
+  - PDF files
+  - A larger number of image formats (PNG, JPG, JPEG, GIF, WEBP, AVIF, WMF, EPS, PS, BMP, GBR, ICB, FITS, PCX, TGA, PBM, FTU, VDA, PPM, VST, ICO, CUR, AVIFS, PGM, JPX, RAS, XPM, J2K, MPEG, IM, JPE, PNM, GRIB, TIF, PXR, RGBA, JP2, PFM, FTC, JFIF, JPC, JPF, BUFR, IIM, MPG, APNG, DDS, HDF, XBM, PSD, J2C, DIB, PCD, SGI, MSP, ICNS, FIT, H5, FLC, BW, QOI, DCX, RGB, BLP, TIFF, EMF, FLI)
   - automatically convertion to black/white image
 - Change print color for black/white/red labels
 - Support borders (multi-color, also with rounded edges)
@@ -90,7 +91,7 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
   - gray = busy
   - green = printing successful
   - red = error needing your attention
-- Migrated GUI to Bootstrap 4
+- Migrated GUI to Bootstrap 5
 - Make preview for round labels... round
 - Print images on red/black paper
 - Dockerized

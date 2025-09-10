@@ -24,9 +24,9 @@ function setFontSettingsPerLine() {
         size: $('#fontSize').val(),
         inverted: $('#fontInverted').is(':checked'),
         todo: $('#fontCheckbox').is(':checked'),
-        align: $('input[name=fontAlign]').parent('.active').find('input').val() || 'center',
-        line_spacing: $('input[name=lineSpacing]').parent('.active').find('input').val() || '100',
-        color: $('input[name=fontColor]').parent('.active').find('input').val() || 'black'
+        align: $('input[name=fontAlign]:checked').val() || 'center',
+        line_spacing: $('input[name=lineSpacing]:checked').val() || '100',
+        color: $('input[name=fontColor]:checked').val() || 'black'
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -98,16 +98,16 @@ $(document).ready(function () {
         // Set font size
         $('#fontSize').val(fs.size);
         // Set alignment
-        $('input[name=fontAlign]').prop('checked', false).parent().removeClass('active');
-        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).parent().addClass('active');
+        $('input[name=fontAlign]').prop('checked', false);
+        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).trigger("change");
         // Set line spacing
-        $('input[name=lineSpacing]').prop('checked', false).parent().removeClass('active');
-        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).parent().addClass('active');
+        $('input[name=lineSpacing]').prop('checked', false);
+        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).trigger("change");
         // Set font inversion
         $('#fontInverted').prop('checked', fs.inverted);
         // Set font color
-        $('input[name=fontColor]').prop('checked', false).parent().removeClass('active');
-        $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).parent().addClass('active');
+        $('input[name=fontColor]').prop('checked', false);
+        $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).trigger("change");
         // Set TODO item
         $('#fontCheckbox').prop('checked', fs.todo);
     });
@@ -149,7 +149,6 @@ function formData(cut_once = false) {
         image_fit: $('#imageFitCheckbox').is(':checked') ? 1 : 0,
         print_count: $('#printCount').val(),
         log_level: $('#logLevel').val(),
-        line_spacing: $('input[name=lineSpacing]:checked').val(),
         cut_once: cut_once ? 1 : 0,
         border_thickness: $('#borderThickness').val(),
         border_roundness: $('#borderRoundness').val(),
@@ -179,6 +178,7 @@ function updatePreview(data) {
     };
 }
 
+var lastPreviewData = null;
 function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
@@ -221,6 +221,17 @@ function gen_label(preview = true, cut_once = false) {
         imageDropZone.processQueue();
         return;
     }
+
+    // Get data and compare to the last preview generation, return if nothing
+    // has changed
+    const data = formData(cut_once);
+    const dataJson = JSON.stringify(data);
+    if (dataJson === lastPreviewData) {
+        console.debug("No changes detected, not generating new preview.");
+        return;
+    }
+    // Update lastPreviewData
+    lastPreviewData = dataJson;
 
     // Send printing request
     const url = preview ? (url_for_preview + '?return_format=base64') : url_for_print;
@@ -277,7 +288,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-hourglass-half"></i>
                         <span>${action}...</span>
                     </div>`;
-            iconClass = 'float-right fas fa-hourglass-half text-muted';
+            iconClass = 'float-end fas fa-hourglass-half text-muted';
         } else if (status === 'success') {
             // Success for preview or printing
             if (type === 'preview') {
@@ -285,13 +296,13 @@ function setStatus(data, what = null) {
                             <i class="fas fa-eye"></i>
                             <span>Preview generated successfully.</span>
                         </div>`;
-                iconClass = 'float-right fas fa-check text-success';
+                iconClass = 'float-end fas fa-check text-success';
             } else {
                 html = `<div id="statusBox" class="alert alert-success" role="alert">
                             <i class="fas fa-check"></i>
                             <span>Printing was successful.</span>
                         </div>`;
-                iconClass = 'float-right fas fa-print text-success';
+                iconClass = 'float-end fas fa-print text-success';
             }
         } else if (status === 'error') {
             // Error for preview or printing
@@ -300,7 +311,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>${action}${extra_info}</span>
                     </div>`;
-            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
         } else {
             // Unknown status, clear
             html = "";
@@ -313,7 +324,7 @@ function setStatus(data, what = null) {
                         <i class="fas fa-exclamation-triangle"></i>
                         <span>${action}${extra_info}</span>
                     </div>`;
-            iconClass = 'float-right fas fa-exclamation-triangle text-danger';
+            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
         } else {
             html = "";
             iconClass = "";
@@ -341,7 +352,7 @@ function setStatus(data, what = null) {
 }
 
 var imageDropZone;
-Dropzone.options.myAwesomeDropzone = {
+Dropzone.options.imageDropzone = {
     url: function () {
         if (dropZoneMode == 'preview') {
             return url_for_preview + "?return_format=base64";
@@ -349,11 +360,12 @@ Dropzone.options.myAwesomeDropzone = {
             return url_for_print;
         }
     },
-    paramName: "image",
-    acceptedFiles: 'image/png,image/jpeg,application/pdf',
+    paramName: "image", // The name that will be used to transfer the file
+    acceptedFiles: 'image/*,application/pdf',
     maxFiles: 1,
     addRemoveLinks: true,
     autoProcessQueue: false,
+    thumbnailMethod: 'contain',
     init: function () {
         imageDropZone = this;
 
@@ -459,15 +471,15 @@ function updatePrinterStatus() {
     }
 
     if (printer_status.status_type === 'Offline') {
-        printerModel.classList.add('text-muted');
-        printerPath.classList.add('text-muted');
-        printerIcon.classList.add('text-muted');
+        printerModel.classList.add('text-light');
+        printerPath.classList.add('text-light');
+        printerIcon.classList.add('text-light');
         // Append " (offline)" to printer path
         printerPath.textContent += " (offline)";
     } else {
-        printerModel.classList.remove('text-muted');
-        printerPath.classList.remove('text-muted');
-        printerIcon.classList.remove('text-muted');
+        printerModel.classList.remove('text-light');
+        printerPath.classList.remove('text-light');
+        printerIcon.classList.remove('text-light');
     }
 
     const labelSizeX = document.getElementById('label-width');
@@ -527,7 +539,8 @@ function saveAllSettingsToLocalStorage() {
     $('input, select, textarea').each(function () {
         // Skip the value of #lineSelect
         if (this.id === 'lineSelect') return;
-        const key = this.id.length > 0 ? this.id : this.name;
+        // Prefer name over id for correct handling of radio buttons
+        const key = this.type === 'radio' && this.name.length > 0 ? this.name : this.id;
         if (key.length == 0) return;
         if (this.type === 'checkbox') {
             data[key] = $(this).is(':checked');
@@ -586,7 +599,7 @@ function updateUndoButton() {
         history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
     } catch { history = []; }
     const steps = Math.max(0, history.length - 1);
-    $('#undoSettingsBtn').find('.undo-counter').text(steps);
+    $('#undoCounter').text(steps);
     $('#undoSettingsBtn').prop('disabled', steps === 0);
 }
 
@@ -598,30 +611,29 @@ function restoreAllSettingsFromLocalStorage() {
     try { data = JSON.parse(raw); } catch { return; }
     current_restoring = true;
     $('input, select, textarea').each(function () {
-        const key = this.id || this.name;
+        const key = this.type === 'radio' && this.name.length > 0 ? this.name : this.id;
         if (!(key in data)) return;
-        if (this.type === 'checkbox' || this.type === 'radio') {
+        if (this.type === 'checkbox') {
             $(this).prop('checked', !!data[key]);
-            if (this.type === 'radio') {
-                if ($(this).val() == data[key]) {
-                    $(this).prop('checked', true);
-                    $(this).parent().addClass('active');
-                } else {
-                    $(this).prop('checked', false);
-                    $(this).parent().removeClass('active');
-                }
+        } else if (this.type === 'radio') {
+            if ($(this).val() == data[key]) {
+                this.checked = true;
+                $(`label[for="${this.id}"]`).addClass('active');
+            } else {
+                this.checked = false;
+                $(`label[for="${this.id}"]`).removeClass('active');
             }
         } else {
-            if (data[key] !== undefined) {
-                $(this).val(data[key]);
-            }
+            this.value = data[key];
         }
     });
+
     // Restore fontSettingsPerLine if available
     if (data['fontSettingsPerLine'] && window.fontSettingsPerLine) {
         try {
             window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
             $('#lineSelect').val(0);
+            preview();
         } catch { }
     }
     // Trigger preview after restore
@@ -665,6 +677,7 @@ function resetSettings() {
         // Reset font settings
         window.fontSettingsPerLine = {};
         set_all_inputs_default(true);
+        saveAllSettingsToLocalStorage();
         location.reload();
     }
 }
@@ -689,7 +702,7 @@ window.onload = async function () {
     // Get supported barcodes
     get_barcode_types();
 
-// Get printer status once ...
+    // Get printer status once ...
     getPrinterStatus();
     // ... and update it every 5 seconds
     setInterval(getPrinterStatus, 5000);
@@ -707,6 +720,15 @@ function init2() {
         setFontSettingsPerLine();
         saveAllSettingsToLocalStorage();
     });
+
+    // Add event handler to update active class on manual click for btn-check radios
+    $('input.btn-check[type="radio"]').off('change.btnCheckActive').on('change.btnCheckActive', function () {
+        const name = $(this).attr('name');
+        $(`input[name="${name}"]`).each(function () {
+            $(`label[for="${this.id}"]`).removeClass('active');
+        });
+        $(`label[for="${this.id}"]`).addClass('active');
+    });
     // Export/Import/Reset buttons
     $('#exportSettings').on('click', exportSettings);
     $('#importSettings').on('click', importSettings);
@@ -715,4 +737,7 @@ function init2() {
     // Undo button
     $('#undoSettingsBtn').on('click', undoSettings);
     updateUndoButton();
+
+    // Trigger initial preview
+    preview();
 };
