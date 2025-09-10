@@ -341,7 +341,7 @@ function setStatus(data, what = null) {
 }
 
 var imageDropZone;
-Dropzone.options.myAwesomeDropzone = {
+Dropzone.options.imageDropzone = {
     url: function () {
         if (dropZoneMode == 'preview') {
             return url_for_preview + "?return_format=base64";
@@ -349,11 +349,12 @@ Dropzone.options.myAwesomeDropzone = {
             return url_for_print;
         }
     },
-    paramName: "image",
-    acceptedFiles: 'image/png,image/jpeg,application/pdf',
+    paramName: "image", // The name that will be used to transfer the file
+    acceptedFiles: 'image/*,application/pdf',
     maxFiles: 1,
     addRemoveLinks: true,
     autoProcessQueue: false,
+    thumbnailMethod: 'contain',
     init: function () {
         imageDropZone = this;
 
@@ -458,17 +459,16 @@ function updatePrinterStatus() {
         $(".red-support").hide();
     }
 
-    const offlineColor = getPreferredMode() === 'dark' ? 'text-light' : 'text-muted';
     if (printer_status.status_type === 'Offline') {
-        printerModel.classList.add(offlineColor);
-        printerPath.classList.add(offlineColor);
-        printerIcon.classList.add(offlineColor);
+        printerModel.classList.add('text-light');
+        printerPath.classList.add('text-light');
+        printerIcon.classList.add('text-light');
         // Append " (offline)" to printer path
         printerPath.textContent += " (offline)";
     } else {
-        printerModel.classList.remove(offlineColor);
-        printerPath.classList.remove(offlineColor);
-        printerIcon.classList.remove(offlineColor);
+        printerModel.classList.remove('text-light');
+        printerPath.classList.remove('text-light');
+        printerIcon.classList.remove('text-light');
     }
 
     const labelSizeX = document.getElementById('label-width');

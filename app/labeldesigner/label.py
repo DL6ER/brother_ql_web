@@ -11,7 +11,7 @@ import re
 import random
 import string
 import copy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
@@ -27,27 +27,6 @@ class SimpleLabel:
     Represents a label with text, image, barcode, and QR code support.
     Handles rendering, template processing, and layout.
     """
-    def _ensure_pil_image(self, img: Any) -> Image.Image:
-        """Ensure the image is a PIL.Image.Image instance."""
-        if isinstance(img, Image.Image):
-            return img
-        import io
-        try:
-            if hasattr(img, 'tobytes') and hasattr(img, 'size') and hasattr(img, 'mode'):
-                return Image.frombytes(img.mode, img.size, img.tobytes())
-            if hasattr(img, 'to_pil_image'):
-                return img.to_pil_image()
-            if hasattr(img, 'as_pil_image'):
-                return img.as_pil_image()
-            if hasattr(img, 'save'):
-                buf = io.BytesIO()
-                img.save(buf, format='PNG')
-                buf.seek(0)
-                return Image.open(buf)
-        except Exception as e:
-            logger.error(f"Failed to convert image to PIL.Image: {e}")
-        raise TypeError("Unsupported image type for resizing. Please provide a PIL.Image.Image or compatible object.")
-
     QR_CORRECTION_MAPPING = {
         'M': constants.ERROR_CORRECT_M,
         'L': constants.ERROR_CORRECT_L,
@@ -69,7 +48,7 @@ class SimpleLabel:
         qr_size: int = 10,
         qr_correction: str = 'L',
         image_fit: bool = False,
-        image: Optional[Any] = None,
+        image: Optional[Union[Image.Image, None]] = None,
         border_thickness: int = 1,
         border_roundness: int = 0,
         border_distance: Tuple[int, int] = (0, 0),
@@ -256,9 +235,6 @@ class SimpleLabel:
 
         # Resize image to fit if image_fit is True
         if img is not None:
-            # Ensure img is a PIL image
-            img = self._ensure_pil_image(img)
-
             # Resize image to fit if image_fit is True
             if self._image_fit:
                 # Calculate the maximum allowed dimensions

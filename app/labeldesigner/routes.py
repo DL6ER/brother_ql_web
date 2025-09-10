@@ -4,6 +4,7 @@ from typing import Any
 import barcode
 from . import bp
 from app import FONTS
+from PIL import Image
 from werkzeug.datastructures import FileStorage
 from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
@@ -188,10 +189,22 @@ def create_label_from_request(request: Request, counter: int = 0):
             return [2 * dimensions[0], 2 * dimensions[1]]
         return dimensions
 
-    def get_uploaded_image(image: FileStorage):
+    def get_uploaded_image(image: FileStorage) -> Image.Image:
         name, ext = os.path.splitext(image.filename)
         ext = ext.lower()
-        if ext in ('.png', '.jpg', '.jpeg'):
+
+        # Try to open as PDF
+        if ext == '.pdf':
+            image = pdffile_to_image(image, DEFAULT_DPI)
+            if context['image_mode'] == 'grayscale':
+                return convert_image_to_grayscale(image)
+            else:
+                return convert_image_to_bw(image, context['image_bw_threshold'])
+
+        # Try to read with PIL
+        exts = Image.registered_extensions()
+        supported_extensions = {ex for ex, f in exts.items() if f in Image.OPEN}
+        if ext in supported_extensions:
             image = imgfile_to_image(image)
             if context['image_mode'] == 'grayscale':
                 return convert_image_to_grayscale(image)
@@ -201,14 +214,8 @@ def create_label_from_request(request: Request, counter: int = 0):
                 return image
             else:
                 return convert_image_to_bw(image, context['image_bw_threshold'])
-        elif ext == '.pdf':
-            image = pdffile_to_image(image, DEFAULT_DPI)
-            if context['image_mode'] == 'grayscale':
-                return convert_image_to_grayscale(image)
-            else:
-                return convert_image_to_bw(image, context['image_bw_threshold'])
-        else:
-            raise ValueError("Unsupported file type")
+
+        raise ValueError("Unsupported file type")
 
     print_type = context['print_type']
     image_mode = context['image_mode']
