@@ -351,8 +351,7 @@ function setStatus(data, what = null) {
     $('#dropdownPrintButton').prop('disabled', false);
 }
 
-var imageDropZone;
-Dropzone.options.imageDropzone = {
+let myDropzone = new Dropzone("#image-dropzone", {
     url: function () {
         if (dropZoneMode == 'preview') {
             return url_for_preview + "?return_format=base64";
@@ -412,7 +411,7 @@ Dropzone.options.imageDropzone = {
         // Insert a dummy image
         updatePreview('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=');
     }
-};
+});
 
 
 function toggleQrSettings() {
