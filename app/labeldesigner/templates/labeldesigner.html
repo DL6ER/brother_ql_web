@@ -12,17 +12,19 @@
             <div class="accordion" id="accordion" style="max-height: 90vh; overflow-y: auto;">
                 <div class="accordion-item">
                     <h2 class="accordion-header" id="headingLabelSize">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionLabelSize" aria-expanded="false" aria-controls="accordionLabelSize">
-                            <span class="fas fa-file" aria-hidden="true"></span> Label Size
+                        <button class="accordion-button collapsed d-flex justify-content-between align-items-center" type="button" data-bs-toggle="collapse" data-bs-target="#accordionLabelSize" aria-expanded="false" aria-controls="accordionLabelSize">
+                            <span>
+                                <span class="fas fa-file" aria-hidden="true"></span> Label Size
+                            </span>
+                            <span id="labelMismatchIcon" class="text-danger ms-2" style="display: none;">
+                                <span class="fas fa-exclamation-triangle" aria-hidden="true"></span>
+                            </span>
                         </button>
-                        <span id="labelMismatchIcon" class="float-end text-danger" style="display: none;">
-                            <span class="fas fa-exclamation-triangle" aria-hidden="true"></span>
-                        </span>
                     </h2>
                     <div id="accordionLabelSize" class="accordion-collapse collapse" aria-labelledby="headingLabelSize" data-bs-parent="#accordion">
                         <div class="accordion-body">
                             <label for="labelSize" style="margin-bottom: 0">Label Size:</label>
-                            <select class="form-control" id="labelSize" onChange="preview()" data-default="{{default_label_size}}">
+                            <select class="form-control form-select" id="labelSize" onChange="preview()" data-default="{{default_label_size}}">
                                 {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}"
                                     data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size==label_size[0]
                                     %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
@@ -62,7 +64,7 @@
                         <div class="accordion-body">
                             <div id="fontSettingsLineSelector">
                                 <label for="lineSelect" style="margin-bottom: 0">Select Line:</label>
-                                <select class="form-control" id="lineSelect">
+                                <select class="form-control form-select" id="lineSelect">
                                 </select>
                             </div>
                             <div class="form-check mb-2">
@@ -75,7 +77,7 @@
                             <div id="fontSettingsContainer">
                                 <div id="fontSetting">
                                     <label for="font" style="margin-bottom: 0">Font:</label>
-                                    <select class="form-control" id="font" onChange="preview()">
+                                    <select class="form-control form-select" id="font" onChange="preview()">
                                         {% for font in fonts %}
                                         {% for style in font.styles %}
                                         <option value="{{font.family}},{{style}}">{{font.family}} ({{style}})</option>
@@ -88,11 +90,11 @@
 
                                     <label for="fontAlign" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Font Alignment:</label>
                                     <div class="btn-group" role="radiogroup" aria-label="Font Alignment">
-                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignLeft" autocomplete="off" value="left" onchange="preview()" aria-label="Left Align" {% if default_font_align=='left' %}checked data-default="1"{% endif %}>
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignLeft" autocomplete="off" value="left" onchange="preview()" aria-label="Left Align">
                                         <label class="btn btn-secondary" for="fontAlignLeft"><span class="fas fa-align-left" aria-hidden="true"></span></label>
-                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignCenter" autocomplete="off" value="center" onchange="preview()" aria-label="Center Align" {% if default_font_align=='center' %}checked data-default="1"{% endif %}>
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignCenter" autocomplete="off" value="center" onchange="preview()" aria-label="Center Align" checked data-default="1">
                                         <label class="btn btn-secondary" for="fontAlignCenter"><span class="fas fa-align-center" aria-hidden="true"></span></label>
-                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignRight" autocomplete="off" value="right" onchange="preview()" aria-label="Right Align" {% if default_font_align=='right' %}checked data-default="1"{% endif %}>
+                                        <input type="radio" class="btn-check" name="fontAlign" id="fontAlignRight" autocomplete="off" value="right" onchange="preview()" aria-label="Right Align">
                                         <label class="btn btn-secondary" for="fontAlignRight"><span class="fas fa-align-right" aria-hidden="true"></span></label>
                                     </div>
 
@@ -145,7 +147,7 @@
                     <div id="accordionCodeSettings" class="accordion-collapse collapse" aria-labelledby="headingCodeSettings" data-bs-parent="#accordion">
                         <div class="accordion-body">
                             <label for="barcodeType" style="margin-bottom: 0">Barcode Type:</label>
-                            <select class="form-control" id="barcodeType" onChange="preview()"></select>
+                            <select class="form-control form-select" id="barcodeType" onChange="preview()"></select>
 
                             <div id="qrCodeSizeContainer">
                                 <label for="qrCodeSize" style="margin-top: 10px; margin-bottom: 0">QR Code Size:</label>
@@ -155,7 +157,7 @@
 
                             <div id="qrCodeCorrectionContainer">
                                 <label for="qrCodeCorrection" style="margin-top: 10px; margin-bottom: 0">Error Correction:</label>
-                                <select class="form-control" id="qrCodeCorrection" onChange="preview()">
+                                <select class="form-control form-select" id="qrCodeCorrection" onChange="preview()">
                                     <option value="L">About 7% can be corrected.</option>
                                     <option value="M">About 15% can be corrected.</option>
                                     <option value="Q">About 25% can be corrected.</option>
@@ -176,25 +178,22 @@
                         <div class="accordion-body">
                             <label for="imageMode" class="form-label input-group" style="margin-top: 10px; margin-bottom: 0">Image mode:</label>
                             <div class="btn-group mb-2" role="radiogroup" aria-label="Image Mode">
-                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_bw" autocomplete="off" value="black_and_white" onchange="preview()" aria-label="Black & White" {% if default_image_mode == 'black_and_white' %}checked{% endif %}>
-                                <label class="btn btn-secondary" for="image_mode_bw">
-                                    <span class="fa-solid fa-circle-half-stroke" aria-hidden="true"></span> Black & White
-                                </label>
-
-                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_grayscale" autocomplete="off" value="grayscale" onchange="preview()" aria-label="Grayscale" {% if default_image_mode=='grayscale' %}checked data-default="1"{% endif %}>
-                                <label class="btn btn-secondary" for="image_mode_grayscale">
-                                    <span class="fa-solid fa-grip-lines-vertical" aria-hidden="true"></span> Grayscale
-                                </label>
-
                                 <input type="radio" class="btn-check" name="imageMode" id="image_mode_colored" autocomplete="off" value="colored" onchange="preview()" aria-label="Colored" {% if default_image_mode == 'colored' %}checked{% endif %}>
-                                <label class="btn btn-secondary" for="image_mode_colored">
-                                    <span class="fa-solid fa-palette" aria-hidden="true"></span> Colored
+                                <label class="btn btn-secondary" for="image_mode_colored" data-bs-toggle="tooltip" title="Full color mode">
+                                    <span class="fa-solid fa-palette" aria-hidden="true"></span><br/>Color
                                 </label>
-
-                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_red_and_black" autocomplete="off" value="red_and_black" onchange="preview()" aria-label="Red & Black" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
-                                <label class="btn btn-secondary" for="image_mode_red_and_black">
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_bw" autocomplete="off" value="black_and_white" onchange="preview()" aria-label="Black & White" {% if default_image_mode == 'black_and_white' %}checked{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_bw" data-bs-toggle="tooltip" title="Black & White mode">
+                                    <span class="fa-solid fa-circle-half-stroke" aria-hidden="true"></span><br/>B/W
+                                </label>
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_red_and_black" autocomplete="off" value="red_and_black" onchange="preview()" aria-label="Red & Black & White" {% if default_image_mode == 'red_and_black' %}checked{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_red_and_black" data-bs-toggle="tooltip" title="Red, Black & White mode">
                                     <span class="fa-solid fa-droplet" style="color: #d32f2f;" aria-hidden="true"></span>
-                                    <span class="fa-solid fa-droplet" style="color: #222;" aria-hidden="true"></span> Red & Black
+                                    <span class="fa-solid fa-droplet" style="color: #222;" aria-hidden="true"></span><br/>R/B/W
+                                </label>
+                                <input type="radio" class="btn-check" name="imageMode" id="image_mode_grayscale" autocomplete="off" value="grayscale" onchange="preview()" aria-label="Grayscale" {% if default_image_mode=='grayscale' %}checked data-default="1"{% endif %}>
+                                <label class="btn btn-secondary" for="image_mode_grayscale" data-bs-toggle="tooltip" title="Grayscale mode">
+                                    <span class="fa-solid fa-grip-lines-vertical" aria-hidden="true"></span><br/>Grayscale
                                 </label>
                             </div>
 
@@ -206,7 +205,10 @@
                             </div>
 
                             <label for="imageBwThreshold" style="margin-top: 10px; margin-bottom: 0">Black & White threshold:</label>
-                            <input id="imageBwThreshold" class="form-control" type="number" min="1" max="255" data-default="{{default_bw_threshold}}" onChange="preview()">
+                            <div class="input-group">
+                                <input id="imageBwThreshold" class="form-control" type="number" min="1" max="255" data-default="{{default_bw_threshold}}" onChange="preview()">
+                                <span class="input-group-text" id="threshold-addon">%</span>
+                            </div>
                         </div>
                         <!-- class="accordion-body" -->
                     </div>
@@ -290,7 +292,7 @@
                     <div id="accordionAdvancedSettings" class="accordion-collapse collapse" aria-labelledby="headingAdvancedSettings" data-bs-parent="#accordion">
                         <div class="accordion-body">
                             <label for="logLevel" style="margin-bottom: 0">Log Level:</label>
-                            <select class="form-control mb-3" id="logLevel" onChange="preview()">
+                            <select class="form-control form-select mb-3" id="logLevel" onChange="preview()">
                                 <option value="CRITICAL">CRITICAL</option>
                                 <option value="ERROR">ERROR</option>
                                 <option value="WARNING" selected>WARNING</option>

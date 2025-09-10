@@ -7,24 +7,10 @@ function setDarkMode(mode) {
         document.body.classList.add('dark-mode');
         document.getElementById('darkModeIcon').innerHTML = '<span class="fas fa-moon"></span>';
         document.getElementById('darkModeIcon').style.color = '#f8d90f';
-        navbar.classList.remove('navbar-light', 'bg-light');
-        navbar.classList.add('navbar-dark', 'bg-dark');
-        // Replace all text-muted with text-light
-        document.querySelectorAll('.text-muted').forEach(el => {
-            el.classList.remove('text-muted');
-            el.classList.add('text-light');
-        });
     } else {
         document.body.classList.remove('dark-mode');
         document.getElementById('darkModeIcon').innerHTML = '<span class="fas fa-sun"></span>';
         document.getElementById('darkModeIcon').style.color = '#f8d90f';
-        navbar.classList.remove('navbar-dark', 'bg-dark');
-        navbar.classList.add('navbar-light', 'bg-light');
-        // Replace all text-light with text-muted
-        document.querySelectorAll('.text-light').forEach(el => {
-            el.classList.remove('text-light');
-            el.classList.add('text-muted');
-        });
     }
 }
 

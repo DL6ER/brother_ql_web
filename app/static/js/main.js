@@ -587,7 +587,7 @@ function updateUndoButton() {
         history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
     } catch { history = []; }
     const steps = Math.max(0, history.length - 1);
-    $('#undoSettingsBtn').find('.undo-counter').text(steps);
+    $('#undoCounter').text(steps);
     $('#undoSettingsBtn').prop('disabled', steps === 0);
 }
 
@@ -690,7 +690,7 @@ window.onload = async function () {
     // Get supported barcodes
     get_barcode_types();
 
-// Get printer status once ...
+    // Get printer status once ...
     getPrinterStatus();
     // ... and update it every 5 seconds
     setInterval(getPrinterStatus, 5000);
@@ -716,4 +716,7 @@ function init2() {
     // Undo button
     $('#undoSettingsBtn').on('click', undoSettings);
     updateUndoButton();
+
+    // Trigger initial preview
+    preview();
 };
