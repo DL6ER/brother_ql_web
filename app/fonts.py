@@ -1,18 +1,26 @@
 import os
+import random
+import logging
 from fontTools.ttLib import TTFont
 from collections import defaultdict
 
+import app
+
 
 class Fonts:
-    def __init__(self):
+    def __init__(self,
+                 logger: logging.Logger,
+                 default_family: str = 'DejaVu Serif',
+                 default_style: str = 'Book',
+                 additional_path: str = ''):
         self.fonts = defaultdict(dict)
+        self.default_family = default_family
+        self.default_style = default_style
+        self.additional_path = additional_path
 
-    def scan_global_fonts(self, additional_path=''):
-        """
-        Scan for TTF/OTF fonts using pure Python (fontTools).
-        :param additional_path: Directory to search in addition to
-            common system font paths.
-        """
+        # Scan for TTF/OTF fonts using pure Python (fontTools).
+        # :param additional_path: Directory to search in addition to
+        #     common system font paths.
         search_paths = [
             '/usr/share/fonts', '/usr/local/share/fonts', os.path.expanduser('~/.fonts'),
             os.path.expanduser('~/.local/share/fonts'), '/Library/Fonts', '/System/Library/Fonts',
@@ -60,6 +68,23 @@ class Fonts:
                     # Remove the child
                     del self.fonts[other_family]
 
+        # Sort fonts alphabetically by family name
+        self.fonts = defaultdict(dict, {k: self.fonts[k] for k in sorted(self.fonts.keys(), key=str.lower)})
+
+        # Check if the default family/style is available, if not, pick an
+        # available random one
+        if default_family in self.fonts and default_style in self.fonts[default_family]:
+            logger.debug(f"Selected the following default font: {default_family}")
+        else:
+            logger.warning('Could not find any of the default fonts. Choosing a random one.')
+            family = random.choice(list(self.fonts.keys()))
+            style = random.choice(list(self.fonts[family].keys()))
+            logger.warning(f'The default font is now set to: {family} ({style})')
+
+    def get_default_font(self):
+        """Return the default font family and style."""
+        return (self.default_family, self.default_style)
+
     def fontfamilies(self):
         """Return a sorted list of font family names."""
         return sorted(self.fonts.keys(), key=str.lower)
@@ -82,3 +107,11 @@ class Fonts:
     def fonts_available(self):
         """Return True if any fonts are available, else False."""
         return bool(self.fonts)
+
+    def get_path(self, font: str):
+        family_name, style_name = font.split(",", 1)
+        if family_name not in self.fonts:
+            raise LookupError(f"Unknown font family: {family_name}")
+        if style_name not in self.fonts[family_name]:
+            raise LookupError(f"Unknown font style: {style_name} for font {family_name}")
+        return self.fonts[family_name][style_name]

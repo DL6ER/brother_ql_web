@@ -118,10 +118,23 @@ class SimpleLabel:
 
     def want_text(self, img: Optional[Image.Image]) -> bool:
         """Determine if text should be drawn on the label."""
+
+        # If we are not drawing an image, we need to draw text or the label will
+        # vanish
         if img is None:
             return True
-        if self._label_content not in (LabelContent.QRCODE_ONLY,) and self.text and self.text[0].get('text', ''):
+
+        # If we want to draw only a code, suppress any text
+        if self._label_content in (LabelContent.QRCODE_ONLY,):
+            return False
+
+        # If we are drawing an image, we want to draw text as well if there is
+        # at least one line of text with non-empty content
+        logger.debug(f"Text content: {self.text}")
+        if self.text and len(self.text[0].get('text', '')) > 0:
             return True
+
+        # Don't draw any text
         return False
 
     @property

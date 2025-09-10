@@ -38,7 +38,8 @@ def index():
         default_qr_size=current_app.config['LABEL_DEFAULT_QR_SIZE'],
         default_image_mode=current_app.config['IMAGE_DEFAULT_MODE'],
         default_bw_threshold=current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
-        default_font_family=current_app.config['LABEL_DEFAULT_FONT_FAMILY'],
+        default_font_family=FONTS.get_default_font()[0],
+        default_font_style=FONTS.get_default_font()[1],
         line_spacings=LINE_SPACINGS,
         default_line_spacing=current_app.config['LABEL_DEFAULT_LINE_SPACING'],
         default_dpi=DEFAULT_DPI,
@@ -187,15 +188,6 @@ def create_label_from_request(request: Request, counter: int = 0):
             return [2 * dimensions[0], 2 * dimensions[1]]
         return dimensions
 
-    def get_font_path(line: dict):
-        font = line.get('font', current_app.config['LABEL_DEFAULT_FONT_FAMILY'] + "," + current_app.config['LABEL_DEFAULT_FONT_STYLE'])
-        family_name, style_name = font.split(",", 1)
-        if family_name not in FONTS.fonts:
-            raise LookupError(f"Unknown font family: {family_name}")
-        if style_name not in FONTS.fonts[family_name]:
-            raise LookupError(f"Unknown font style: {style_name} for font {family_name}")
-        return FONTS.fonts[family_name][style_name]
-
     def get_uploaded_image(image: FileStorage):
         name, ext = os.path.splitext(image.filename)
         ext = ext.lower()
@@ -249,17 +241,13 @@ def create_label_from_request(request: Request, counter: int = 0):
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
 
-    # Fix for completely empty text
-    if context['text'] and len(context['text'][0].get('text', '')) == 0:
-        context['text'][0]['text'] = " "
-
     # For each line in text, we determine and add the font path
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
-        line['path'] = get_font_path(line)
+        line['path'] = FONTS.get_path(line.get('font', ''))
         if len(line.get('text', '')) > 10_000:
             raise ValueError("Text is too long")
 
