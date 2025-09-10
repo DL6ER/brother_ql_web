@@ -204,6 +204,7 @@ def create_label_from_request(request: Request, counter: int = 0):
         # Try to read with PIL
         exts = Image.registered_extensions()
         supported_extensions = {ex for ex, f in exts.items() if f in Image.OPEN}
+        current_app.logger.info(f"Supported image extensions: {supported_extensions}")
         if ext in supported_extensions:
             image = imgfile_to_image(image)
             if context['image_mode'] == 'grayscale':

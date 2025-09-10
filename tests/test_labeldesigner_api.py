@@ -839,6 +839,26 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'todo_list.png')
 
+    def test_large_font_not_cropped(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['border_thickness'] = 1
+        data['border_color'] = 'red'
+        data['text'] = json.dumps([
+            {
+                'font': 'DejaVu Math TeX Gyre,Regular',
+                'text': 'Mehrwegbecher',
+                'size': '70',
+                'align': 'left'
+            }
+        ])
+
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'large_text.png')
+
     # We cannot test the print functionality without a physical printer
     def test_print_label(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()

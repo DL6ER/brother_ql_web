@@ -49,7 +49,7 @@ class SimpleLabel:
         qr_correction: str = 'L',
         image_fit: bool = False,
         image: Optional[Union[Image.Image, None]] = None,
-        border_thickness: int = 1,
+        border_thickness: int = 0,
         border_roundness: int = 0,
         border_distance: Tuple[int, int] = (0, 0),
         border_color: Tuple[int, int, int] = (0, 0, 0),
@@ -352,8 +352,8 @@ class SimpleLabel:
             # Calculate border rectangle (inside the image, respecting thickness)
             rect = [self._border_distance[0],
                     self._border_distance[1],
-                    imgResult.width - self._border_distance[0],
-                    imgResult.height - self._border_distance[1]]
+                    imgResult.width - self._border_distance[0] - 1,
+                    imgResult.height - self._border_distance[1] - 1]
             # Validity checks on rect:
             # - x1 >= x0
             # - y1 >= y0
@@ -452,7 +452,9 @@ class SimpleLabel:
 
             # Either calculate bbox or actually draw
             if not do_draw:
-                Ag = draw.textbbox((0, y), "Ag", font, anchor="lt")
+                # Some characters may need special height
+                all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
+                Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
                 bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
                 # Get bbox with width of text and dummy height
                 bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
