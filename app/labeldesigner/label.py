@@ -452,12 +452,18 @@ class SimpleLabel:
 
             # Either calculate bbox or actually draw
             if not do_draw:
-                # Some characters may need special height
-                all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
-                Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
+                # Get bbox of the text
                 bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
-                # Get bbox with width of text and dummy height
-                bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
+
+                # Ensure consistent line heights for each line except the last
+                # one (where it is not needed)
+                is_last_line = i == len(self.text) - 1
+                if not is_last_line:
+                    # Some characters may need special height
+                    all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
+                    Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
+                    # Get bbox with width of text and dummy height
+                    bbox = (bbox[0], Ag[1], bbox[2], Ag[3])
                 bboxes.append((bbox, y))
                 y += bbox[3] - bbox[1] + (spacing if i < len(self.text)-1 else 0)
             else:
