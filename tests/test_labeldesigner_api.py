@@ -13,7 +13,7 @@ from werkzeug.datastructures import FileStorage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
 
-UPDATE_IMAGES = True
+UPDATE_IMAGES = False
 EXAMPLE_FORMDATA = {
     'print_type': 'text',
     'label_size': 62,

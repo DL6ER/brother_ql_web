@@ -428,7 +428,8 @@ class SimpleLabel:
             # Draw TODO box if needed
             todo = line.get('todo', False)
 
-            if do_draw and 'inverted' in line and line['inverted']:
+            INVERT_LINE = 'inverted' in line and line['inverted']
+            if do_draw and INVERT_LINE:
                 # Draw a filled rectangle
                 center_x = 0
                 if anchor == "lt":
@@ -456,9 +457,11 @@ class SimpleLabel:
                 bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
 
                 # Ensure consistent line heights for each line except the last
-                # one (where it is not needed)
-                is_last_line = i == len(self.text) - 1
-                if not is_last_line:
+                # one (where it is not needed). We still need this when
+                # inverting text to ensure the inversion box is large enough to
+                # hold the entire text
+                IS_LAST_LINE = i == len(self.text) - 1
+                if not IS_LAST_LINE or INVERT_LINE:
                     # Some characters may need special height
                     all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
                     Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
