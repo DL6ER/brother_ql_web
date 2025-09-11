@@ -226,7 +226,7 @@ function gen_label(preview = true, cut_once = false) {
     // has changed
     const data = formData(cut_once);
     const dataJson = JSON.stringify(data);
-    if (dataJson === lastPreviewData) {
+    if (preview && dataJson === lastPreviewData) {
         console.debug("No changes detected, not generating new preview.");
         return;
     }
