@@ -497,10 +497,12 @@ class SimpleLabel:
 
                 # Shift text around if requested
                 if "shift" in line:
-                    SHIFT_FACTOR = 0.333
-                    for x_shift in [-SHIFT_FACTOR * int(line['size']), SHIFT_FACTOR * int(line['size'])]:
-                        for y_shift in [-SHIFT_FACTOR * int(line['size']), SHIFT_FACTOR * int(line['size'])]:
-                            draw.text((x + x_shift, y + y_shift), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
+                    def get_shift_amount():
+                        return 0.03 * random.randint(5, 10) * int(line['size'])
+                    for x_shift in [-get_shift_amount(), get_shift_amount()]:
+                        for y_shift in [-get_shift_amount(), get_shift_amount()]:
+                            new_random_text = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=len(line['text'])))
+                            draw.text((x + x_shift, y + y_shift), new_random_text, color, font=font, anchor=anchor, align=align, spacing=spacing)
 
         # Return total bbox
         # each in form (x0, y0, x1, y1)
