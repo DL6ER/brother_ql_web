@@ -1,11 +1,11 @@
 {
-    "name": "Python 3.11 Flask DevContainer",
+    "name": "Python 3 Alpine DevContainer",
     "build": {
         "dockerfile": "../Dockerfile"
     },
-    "forwardPorts": [
-        8013
-    ],
+    "forwardPorts": [8013],
+    "postCreateCommand": "pip install -r requirements.txt",
+    //"remoteUser": "vscode",
     "customizations": {
         "vscode": {
             "settings": {
@@ -20,8 +20,7 @@
                 "ms-python.vscode-pylance",
                 "ms-python.black-formatter",
                 "ms-python.flake8",
-                "ms-python.debugpy",
-                "ms-azuretools.vscode-containers"
+                "ms-python.debugpy"
             ]
         }
     },

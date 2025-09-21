@@ -328,6 +328,12 @@ class SimpleLabel:
         text_offset = horizontal_offset_text, vertical_offset_text
         image_offset = horizontal_offset_image, vertical_offset_image
 
+        # Ensure height and width are at least 1 to avoid generating valishing
+        # preview images for empty inputs. PIL cannot store images with 0
+        # width/height dimensions
+        width = max(int(width), 1)
+        height = max(int(height), 1)
+
         logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
         imgResult = Image.new('RGB', (int(width), int(height)), 'white')
 
