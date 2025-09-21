@@ -79,9 +79,11 @@
                                     <label for="font" style="margin-bottom: 0">Font:</label>
                                     <select class="form-control form-select" id="font" onChange="preview()">
                                         {% for font in fonts %}
+                                        <optgroup label="{{font.family}}">
                                         {% for style in font.styles %}
                                         <option value="{{font.family}},{{style}}">{{font.family}} ({{style}})</option>
                                         {% endfor %}
+                                        </optgroup>
                                         {% endfor %}
                                     </select>
 

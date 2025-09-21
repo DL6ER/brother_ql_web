@@ -193,15 +193,6 @@ function gen_label(preview = true, cut_once = false) {
         } else {
             $('img#previewImg').removeClass('roundPreviewImage');
         }
-
-        // Disable irrelevant margin controls
-        if ($('input[name=orientation]:checked').val() == 'standard') {
-            $('.marginsTopBottom').prop('disabled', false).removeAttr('title');
-            $('.marginsLeftRight').prop('disabled', true).prop('title', 'Only relevant if rotated orientation is selected.');
-        } else {
-            $('.marginsLeftRight').prop('disabled', false).removeAttr('title');
-            $('.marginsTopBottom').prop('disabled', true).prop('title', 'Only relevant if standard orientation is selected.');
-        }
     }
 
     // Show or hide image upload box
