@@ -1,7 +1,7 @@
 # brother_ql_web
 
 This is a dockerized `python3` web service to print labels on Brother QL label printers.
-The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design).
+The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design). The CI tests are run using `pytest` in the [latest version of Python](https://hub.docker.com/layers/library/python/3-alpine) for Alpine Linux.
 
 There are a lot of forks of the `brother_ql` and `brother_ql_web` repos from [pklaus](https://github.com/pklaus/brother_ql).
 This fork tries to support many more printers and provide additional features.
