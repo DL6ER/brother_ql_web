@@ -4,8 +4,6 @@ import logging
 from fontTools.ttLib import TTFont
 from collections import defaultdict
 
-import app
-
 
 class Fonts:
     def __init__(self,
@@ -54,6 +52,9 @@ class Fonts:
                         except Exception:
                             continue
 
+        # Sort fonts alphabetically by family name
+        self.fonts = defaultdict(dict, {k: self.fonts[k] for k in sorted(self.fonts.keys(), key=str.lower)})
+
         # Consolidate fonts: Search for fonts that have children, e.g.
         # "DejaVu Sans" and "DejaVu Sans Condensed" and move children
         # under the parent font, adding them as a style instead
@@ -67,9 +68,6 @@ class Fonts:
 
                     # Remove the child
                     del self.fonts[other_family]
-
-        # Sort fonts alphabetically by family name
-        self.fonts = defaultdict(dict, {k: self.fonts[k] for k in sorted(self.fonts.keys(), key=str.lower)})
 
         # Check if the default family/style is available, if not, pick an
         # available random one

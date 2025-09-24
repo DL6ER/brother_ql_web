@@ -29,8 +29,8 @@
         "TZ=Europe/Berlin",
         "-e",
         "PRINTER_MODEL=QL-800",
-        "-e",
-        "PRINTER_PRINTER=file:///dev/usb/lp0",
+        //        "-e",
+        //        "PRINTER_PRINTER=file:///dev/usb/lp0",
         "-e",
         "PRINTER_OFFLINE=true"
         //        "-v",

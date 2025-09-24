@@ -205,6 +205,12 @@
                                     Auto-fit image to label
                                 </label>
                             </div>
+                            <div class="mb-2">
+                                <label for="imageScalingFactor" class="form-label">Image scaling factor (%):</label>
+                                <input type="number" class="form-control" id="imageScalingFactor" min="1" max="500" value="100" data-default="100"
+                                    oninput="preview()" />
+                                <div class="form-text">Only used if auto-fit is <b>not</b> enabled.</div>
+                            </div>
 
                             <label for="imageBwThreshold" style="margin-top: 10px; margin-bottom: 0">Black & White threshold:</label>
                             <div class="input-group">
