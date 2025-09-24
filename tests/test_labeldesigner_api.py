@@ -905,6 +905,38 @@ class TestLabelDesignerAPI:
         # Check image
         self.verify_image(response.data, 'large_text.png')
 
+    @pytest.mark.parametrize('factor', [0, 1, 10, 100, 150])
+    @pytest.mark.parametrize('sign', [1, -1])
+    def test_image_manual_scaling(self, client, factor, sign):
+        SCALING = factor * sign
+        data = EXAMPLE_FORMDATA.copy()
+        image_path = "tests/fixtures/_demo_image_simple.png"
+        my_file = FileStorage(
+            stream=open(image_path, "rb"),
+            filename=os.path.basename(image_path),
+            content_type="image/png",
+        )
+        data['print_type'] = 'image'
+        data['image'] = my_file
+        data['image_mode'] = 'grayscale'
+        data['image_fit'] = '0'
+        data['image_scaling_factor'] = SCALING
+        response = client.post('/labeldesigner/api/preview', data=data)
+        
+        if SCALING > 0:
+            # Should work
+            assert response.status_code == 200
+            assert response.content_type in ['image/png']
+
+            # Check image
+            self.verify_image(response.data, f'image_manual_scaling_{SCALING}.png')
+        else:
+            # Should be rejected
+            assert response.status_code == 400
+            assert response.is_json
+            data = response.get_json()
+            assert data['message'] == 'Image scaling factor must be > 0.'
+
     # We cannot test the print functionality without a physical printer
     def test_print_label(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()

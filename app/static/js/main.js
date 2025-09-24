@@ -154,7 +154,8 @@ function formData(cut_once = false) {
         border_roundness: $('#borderRoundness').val(),
         border_distance_x: $('#borderDistanceX').val(),
         border_distance_y: $('#borderDistanceY').val(),
-        high_res: $('#highResolutionCheckbox').is(':checked') ? 1 : 0
+        high_res: $('#highResolutionCheckbox').is(':checked') ? 1 : 0,
+        image_scaling_factor: $('#imageScalingFactor').val()
     }
 
     if (printer_status['red_support']) {

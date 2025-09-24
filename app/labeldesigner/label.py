@@ -48,6 +48,7 @@ class SimpleLabel:
         qr_size: int = 10,
         qr_correction: str = 'L',
         image_fit: bool = False,
+        image_scaling_factor: float = 100.0,
         image: Optional[Union[Image.Image, None]] = None,
         border_thickness: int = 0,
         border_roundness: int = 0,
@@ -65,6 +66,8 @@ class SimpleLabel:
             raise ValueError("Border thickness must be non-negative.")
         if qr_size < 1:
             raise ValueError("QR size must be positive.")
+        if image_scaling_factor <= 0:
+            raise ValueError("Image scaling factor must be > 0.")
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -79,6 +82,7 @@ class SimpleLabel:
         self.qr_correction = qr_correction
         self._image = image
         self._image_fit = image_fit
+        self._image_scaling_factor = image_scaling_factor
         self._border_thickness = border_thickness
         self._border_roundness = border_roundness
         self._border_distance = border_distance
@@ -265,15 +269,19 @@ class SimpleLabel:
                         # Both dimensions are considered for standard label
                         scale = max_width / img_width, max_height / img_height
                 logger.debug(f"Scaling image by factor: {scale}")
-
-                # Resize the image
                 new_size = (int(img_width * scale), int(img_height * scale))
                 logger.debug(f"Resized image size: {new_size} px")
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 # Update image dimensions
                 img_width, img_height = img.size
             else:
-                # No resizing requested
+                # Use image_scaling_factor if provided
+                img_width, img_height = img.size
+                scale = self._image_scaling_factor / 100.0
+                logger.debug(f"Manual image scaling factor: {scale}")
+                new_size = (int(img_width * scale), int(img_height * scale))
+                logger.debug(f"Resized image size: {new_size} px")
+                img = img.resize(new_size, Image.Resampling.LANCZOS)
                 img_width, img_height = img.size
         else:
             img_width, img_height = (0, 0)
