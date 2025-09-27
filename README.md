@@ -70,9 +70,12 @@ Additional printer support comes from [matmair/brother_ql-inventree](https://git
 - Import and export of labels in an easily editable format (JSON)
 - Allow text inversion for emphasized text even without color
 - Auto-fit images onto the labels to avoid cropping
+- Arbitrary scaling of images with interpolation
+- Arbitrary rotation of images with interpolation
 - Support for TODO list creation (tickable checkboxes)
 - Allow text together with images
 - Print text as QR Code or barcode
+- Support for a wide range of barcodes (CODABAR, CODE128, CODE39, EAN, EAN13, EAN13-GUARD, EAN14, EAN8, EAN8-GUARD, GS1, GS1-128, GTIN, ISBN, ISBN10, ISBN13, ISSN, ITF, JAN, NW-7, PZN, UPC, UPC-A, QR)
   - Add text to QR Code
   - Change size of QR Code
 - Upload files to print
