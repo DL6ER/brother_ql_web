@@ -70,7 +70,7 @@ class SimpleLabel:
         if image_scaling_factor <= 0:
             raise ValueError("Image scaling factor must be > 0.")
         if image_rotation < 0 or image_rotation > 360:
-            raise ValueError("Image rotation must be between 0 and 360.")
+            raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
         self._height = height
         self.label_content = label_content

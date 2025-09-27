@@ -952,7 +952,7 @@ class TestLabelDesignerAPI:
         data['image_fit'] = '1'
         data['image_rotation'] = rotation
         response = client.post('/labeldesigner/api/preview', data=data)
-        
+
         if rotation >= 0 and rotation <= 360:
             # Should work
             assert response.status_code == 200
@@ -963,7 +963,7 @@ class TestLabelDesignerAPI:
             assert response.status_code == 400
             assert response.is_json
             data = response.get_json()
-            assert data['message'] == 'Image rotation must be between 0 and 360.'
+            assert data['message'] == 'Image rotation must be between 0 and 360 inclusive.'
 
     # We cannot test the print functionality without a physical printer
     def test_print_label(self, client: FlaskClient):
