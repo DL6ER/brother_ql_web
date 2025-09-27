@@ -49,6 +49,7 @@ class SimpleLabel:
         qr_correction: str = 'L',
         image_fit: bool = False,
         image_scaling_factor: float = 100.0,
+        image_rotation: int = 0,
         image: Optional[Union[Image.Image, None]] = None,
         border_thickness: int = 0,
         border_roundness: int = 0,
@@ -68,6 +69,8 @@ class SimpleLabel:
             raise ValueError("QR size must be positive.")
         if image_scaling_factor <= 0:
             raise ValueError("Image scaling factor must be > 0.")
+        if image_rotation < 0 or image_rotation > 360:
+            raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
         self._height = height
         self.label_content = label_content
@@ -83,6 +86,7 @@ class SimpleLabel:
         self._image = image
         self._image_fit = image_fit
         self._image_scaling_factor = image_scaling_factor
+        self._image_rotation = image_rotation
         self._border_thickness = border_thickness
         self._border_roundness = border_roundness
         self._border_distance = border_distance
@@ -239,6 +243,9 @@ class SimpleLabel:
 
         # Resize image to fit if image_fit is True
         if img is not None:
+            # First rotate the image if requested
+            if self._image_rotation != 0 and self._image_rotation != 360:
+                img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
             # Resize image to fit if image_fit is True
             if self._image_fit:
                 # Calculate the maximum allowed dimensions
