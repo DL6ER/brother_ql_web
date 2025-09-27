@@ -1,5 +1,7 @@
 # brother_ql_web
 
+[![Python tests](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml) [![Build and Push master to GHCR.io](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml)
+
 This is a dockerized `python3` web service to print labels on Brother QL label printers.
 The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design). The CI tests are run using `pytest` in the [latest version of Python](https://hub.docker.com/layers/library/python/3-alpine) for Alpine Linux.
 
