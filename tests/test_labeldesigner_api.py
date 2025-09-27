@@ -936,6 +936,34 @@ class TestLabelDesignerAPI:
             assert response.is_json
             data = response.get_json()
             assert data['message'] == 'Image scaling factor must be > 0.'
+    
+    @pytest.mark.parametrize('rotation', [-10, -1, 0, 1, 10, 45, 90, 180, 270, 360, 450])
+    def test_image_rotation(self, client, rotation):
+        data = EXAMPLE_FORMDATA.copy()
+        image_path = "tests/fixtures/_demo_image_simple.png"
+        my_file = FileStorage(
+            stream=open(image_path, "rb"),
+            filename=os.path.basename(image_path),
+            content_type="image/png",
+        )
+        data['print_type'] = 'image'
+        data['image'] = my_file
+        data['image_mode'] = 'grayscale'
+        data['image_fit'] = '1'
+        data['image_rotation'] = rotation
+        response = client.post('/labeldesigner/api/preview', data=data)
+        
+        if rotation >= 0 and rotation <= 360:
+            # Should work
+            assert response.status_code == 200
+            assert response.content_type in ['image/png']
+            self.verify_image(response.data, f'image_rotation_{rotation}.png')
+        else:
+            # Should be rejected
+            assert response.status_code == 400
+            assert response.is_json
+            data = response.get_json()
+            assert data['message'] == 'Image rotation must be between 0 and 360.'
 
     # We cannot test the print functionality without a physical printer
     def test_print_label(self, client: FlaskClient):

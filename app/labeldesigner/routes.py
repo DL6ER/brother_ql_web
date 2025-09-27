@@ -177,6 +177,7 @@ def create_label_from_request(request: Request, counter: int = 0):
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': int(d.get('image_fit', 1)) > 0,
         'image_scaling_factor': float(d.get('image_scaling_factor', 100.0)),
+        'image_rotation': int(d.get('image_rotation', 0)),
         'print_color': d.get('print_color', 'black'),
         'timestamp': int(d.get('timestamp', 0)),
         'high_res': int(d.get('high_res', 0)) != 0
@@ -286,6 +287,7 @@ def create_label_from_request(request: Request, counter: int = 0):
         image=image,
         image_fit=context['image_fit'],
         image_scaling_factor=context['image_scaling_factor'],
+        image_rotation=context['image_rotation'],
         border_thickness=context['border_thickness'],
         border_roundness=context['border_roundness'],
         border_distance=(context['border_distanceX'], context['border_distanceY']),
