@@ -5,7 +5,6 @@ import json
 import random
 import pytest
 import unicodedata
-import multiprocessing
 from typing import Union
 from datetime import datetime
 from flask.testing import FlaskClient
@@ -539,19 +538,37 @@ class TestLabelDesignerAPI:
         self.verify_image(response.data, 'template_unknown.png')
 
     def test_concurrent_preview_requests(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
+        """
+        Spawn multiple threads that each create their own test client instance
+        and post to the preview endpoint. Using threads avoids pickling issues
+        with Flask test clients when using multiprocessing.Process.
+        """
+        from threading import Thread
+
         results = []
+        # Protect shared list
+        import threading
+        results_lock = threading.Lock()
+
         def make_request(i: int):
+            # Each thread creates its own test client to avoid sharing state
+            app = client.application
+            data = EXAMPLE_FORMDATA.copy()
             data['text'] = json.dumps([
                 {'font': 'DejaVu Sans,Book', 'text': str(i), 'size': '32', 'align': 'center'}
             ])
-            resp = client.post('/labeldesigner/api/preview', data=data)
-            results.append(resp.status_code)
-        threads = [multiprocessing.Process(target=make_request, args=(i,)) for i in range(50)]
+            with app.test_client() as local_client:
+                resp = local_client.post('/labeldesigner/api/preview', data=data)
+                with results_lock:
+                    results.append(resp.status_code)
+
+        threads = [Thread(target=make_request, args=(i,)) for i in range(50)]
         for t in threads:
             t.start()
         for t in threads:
             t.join()
+
+        assert len(results) == 50
         assert all(code == 200 for code in results)
 
     def test_invalid_image_upload(self, client: FlaskClient):
