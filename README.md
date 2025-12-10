@@ -141,6 +141,19 @@ cd brother_ql_web
 docker compose build
 ```
 
+If you want the container to automatically detect and use a USB printer that may be powered on or off intermittently, you can grant the Docker container privileged access to `/dev/usb`. The container will automatically connect to the printer when it becomes available:
+
+``` yaml
+    ...
+    ports:
+      - "8013:8013"
+    privileged: true
+    volumes:
+      - /dev/usb:/dev/usb
+    environment:
+    ...
+```
+
 ### Usage
 
 Once it's running, access the web interface by opening the page with your browser.
