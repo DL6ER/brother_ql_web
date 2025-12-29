@@ -939,7 +939,7 @@ class TestLabelDesignerAPI:
         data['image_fit'] = '0'
         data['image_scaling_factor'] = SCALING
         response = client.post('/labeldesigner/api/preview', data=data)
-        
+
         if SCALING > 0:
             # Should work
             assert response.status_code == 200
@@ -953,9 +953,9 @@ class TestLabelDesignerAPI:
             assert response.is_json
             data = response.get_json()
             assert data['message'] == 'Image scaling factor must be > 0.'
-    
+
     @pytest.mark.parametrize('rotation', [-10, -1, 0, 1, 10, 45, 90, 180, 270, 360, 450])
-    def test_image_rotation(self, client, rotation):
+    def test_image_rotation(self, client: FlaskClient, rotation):
         data = EXAMPLE_FORMDATA.copy()
         image_path = "tests/fixtures/_demo_image_simple.png"
         my_file = FileStorage(
@@ -1022,3 +1022,34 @@ class TestLabelDesignerAPI:
         assert sim is not None
         # Simulator should use the configured PRINTER_MODEL
         assert sim.get('model') == client.application.config['PRINTER_MODEL']
+
+    @pytest.mark.parametrize('fit', ['fit', 'no_fit'])
+    @pytest.mark.parametrize('orientation', ['standard', 'rotated'])
+    @pytest.mark.parametrize('label_size', ["12", "62", "62x29", "62x100", "d12"])
+    def test_print_pdf_all_permutations(self, client: FlaskClient, label_size, orientation, fit):
+        """PDF printing for endless and die-cut labels.
+
+        Uses tests/images/TestPrint.pdf and checks both orientations
+        and image-fit enabled/disabled.
+        """
+        pdf_path = 'tests/images/TestPrint.pdf'
+        data = EXAMPLE_FORMDATA.copy()
+        data['print_type'] = 'image'
+        data['label_size'] = label_size
+        data['orientation'] = orientation
+        data['image_mode'] = 'grayscale'
+        data['image_fit'] = '1' if fit == 'fit' else '0'
+
+        my_file = FileStorage(
+            stream=open(pdf_path, 'rb'),
+            filename=os.path.basename(pdf_path),
+            content_type='application/pdf',
+        )
+        data['image'] = my_file
+
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+        ls = label_size.replace(' ', '-').lower()
+        rot = 'rotated' if orientation == 'rotated' else 'standard'
+        self.verify_image(response.data, f'pdf_printing_{ls}_{rot}_{fit}.png')
