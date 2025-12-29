@@ -267,14 +267,14 @@ class SimpleLabel:
                         scale = max_width / img_width
                     else:
                         # Both dimensions are considered for standard label
-                        scale = max_width / img_width, max_height / img_height
+                        scale = min(max_width / img_width, max_height / img_height)
                 else:
                     if self._label_type in (LabelType.ENDLESS_LABEL,):
                         # Only height is considered for endless label without rotation
                         scale = max_height / img_height
                     else:
                         # Both dimensions are considered for standard label
-                        scale = max_width / img_width, max_height / img_height
+                        scale = min(max_width / img_width, max_height / img_height)
                 logger.debug(f"Scaling image by factor: {scale}")
                 new_size = (int(img_width * scale), int(img_height * scale))
                 logger.debug(f"Resized image size: {new_size} px")
