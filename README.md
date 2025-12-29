@@ -47,6 +47,7 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 ## New Features
 
 - Automatic printer and label detection
+- Multi-printer support
 - Support for more printers via `brother_ql-inventree` (**new**)
   - QL-500
   - QL-550
@@ -133,25 +134,34 @@ services:
       - PRINTER_PRINTER=file:///dev/usb/lp0
 ```
 
-To build the image locally:
-
-```bash
-git clone https://github.com/DL6ER/brother_ql_web.git
-cd brother_ql_web
-docker compose build
-```
-
-If you want the container to automatically detect and use a USB printer that may be powered on or off intermittently, you can grant the Docker container privileged access to `/dev/usb`. The container will automatically connect to the printer when it becomes available:
+Or, if you want to use automatic printer detection:
 
 ``` yaml
-    ...
+services:
+  brother_ql_web:
+    image: ghcr.io/dl6er/brother-ql-web:latest
+    # build: . # you may also build the container locally
+    container_name: brother_ql_web
+    restart: always
     ports:
       - "8013:8013"
     privileged: true
     volumes:
       - /dev/usb:/dev/usb
     environment:
-    ...
+      - LABEL_DEFAULT_SIZE=62
+      - LABEL_DEFAULT_ORIENTATION=standard
+      - PRINTER_MODEL=QL-800
+```
+
+The container will automatically show printers when they become available.
+
+To build the image locally:
+
+```bash
+git clone https://github.com/DL6ER/brother_ql_web.git
+cd brother_ql_web
+docker compose build
 ```
 
 ### Usage

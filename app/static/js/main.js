@@ -164,6 +164,12 @@ function formData(cut_once = false) {
         data['border_color'] = $('input[name=borderColor]:checked').val();
     }
 
+    // Include selected printer if available
+    const printerSelect = document.getElementById('printerSelect');
+    if (printerSelect && printerSelect.value) {
+        data['printer'] = printerSelect.value;
+    }
+
     return data;
 }
 
@@ -446,32 +452,11 @@ function get_barcode_types() {
 }
 
 function updatePrinterStatus() {
-    const printerIcon = document.getElementById('printerIcon');
-    const printerModel = document.getElementById('printerModel');
-    if (printerModel) {
-        printerModel.textContent = printer_status.model || 'Unknown';
-    }
-    const printerPath = document.getElementById('printerPath');
-    if (printerPath) {
-        printerPath.textContent = printer_status.path || 'Unknown';
-    }
     if ($('#labelSize option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
         $('#print_color_black').prop('active', true);
         $(".red-support").hide();
-    }
-
-    if (printer_status.status_type === 'Offline') {
-        printerModel.classList.add('text-light');
-        printerPath.classList.add('text-light');
-        printerIcon.classList.add('text-light');
-        // Append " (offline)" to printer path
-        printerPath.textContent += " (offline)";
-    } else {
-        printerModel.classList.remove('text-light');
-        printerPath.classList.remove('text-light');
-        printerIcon.classList.remove('text-light');
     }
 
     const labelSizeX = document.getElementById('label-width');
@@ -516,7 +501,38 @@ function updatePrinterStatus() {
 async function getPrinterStatus() {
     const response = await fetch(url_for_get_printer_status);
     const data = await response.json();
-    printer_status = data;
+    // If server returned multiple printers, populate the select and pick the chosen one
+    if (data && Array.isArray(data.printers)) {
+        const select = document.getElementById('printerSelect');
+        if (select) {
+            // remember current selection
+            const cur = select.value;
+            select.innerHTML = '';
+            data.printers.forEach((p) => {
+                const opt = document.createElement('option');
+                opt.value = p.path || p.path;
+                const displayPath = p.path? p.path.replace(/file:\/\//g, '' ) : '';
+                opt.textContent = (p.model || 'Unknown') + ' @ ' + displayPath;
+                select.appendChild(opt);
+            });
+            // choose previously selected or server selected or first
+            if (cur && Array.from(select.options).some(o => o.value === cur)) {
+                select.value = cur;
+            } else if (data.selected) {
+                select.value = data.selected;
+            } else if (data.printers[0]) {
+                select.value = data.printers[0].path;
+            }
+        }
+        // Choose active printer status based on the select value
+        const chosenPath = (document.getElementById('printerSelect') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
+        let chosen = data.printers.find(p => p.path === chosenPath) || data.printers[0] || {};
+        printer_status = chosen;
+        // keep a list of available printers globally
+        window.available_printers = data.printers;
+    } else {
+        printer_status = data;
+    }
     updatePrinterStatus();
 }
 

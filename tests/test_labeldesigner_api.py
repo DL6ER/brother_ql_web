@@ -982,15 +982,46 @@ class TestLabelDesignerAPI:
             data = response.get_json()
             assert data['message'] == 'Image rotation must be between 0 and 360 inclusive.'
 
-    # We cannot test the print functionality without a physical printer
-    def test_print_label(self, client: FlaskClient):
+    # We cannot test the print functionality without a physical printer, this
+    # will go through the simulator and be a no-op.
+    def test_print_label_simulator(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         # Set config for printer
-        client.application.config['PRINTER_OFFLINE'] = True
         response = client.post('/labeldesigner/api/print', data=data)
         assert response.status_code == 200
         assert response.is_json
-        assert 'success' in response.get_json()
+        json_response = response.get_json()
+        assert 'success' in json_response
+        assert json_response['success'] is True
+
+    # Test printing to an invalid printer path
+    def test_print_label_invalid_printer(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['printer'] = '/dev/nonexistentprinter'
+        response = client.post('/labeldesigner/api/print', data=data)
+        assert response.status_code == 400
+        assert response.is_json
+        json_response = response.get_json()
+        assert 'message' in json_response
+        assert json_response['message'] == "Exception during sending to printer: [Errno 2] No such file or directory: '/dev/nonexistentprinter'"
+        assert 'success' in json_response
+        assert json_response['success'] is False
+
+    def test_printer_status_returns_simulator(self, client: FlaskClient):
+        """Check /api/printer_status includes simulator."""
+        response = client.get('/labeldesigner/api/printer_status')
+        assert response.status_code == 200
+        assert response.is_json
+        data = response.get_json()
+        assert 'printers' in data
+        printers = data['printers']
+        assert isinstance(printers, list)
+        # There must be at least the simulator printer
+        assert any(p.get('path') == 'simulation' for p in printers)
+        sim = next((p for p in printers if p.get('path') == 'simulation'), None)
+        assert sim is not None
+        # Simulator should use the configured PRINTER_MODEL
+        assert sim.get('model') == client.application.config['PRINTER_MODEL']
 
     @pytest.mark.parametrize('fit', ['fit', 'no_fit'])
     @pytest.mark.parametrize('orientation', ['standard', 'rotated'])
