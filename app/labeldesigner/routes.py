@@ -115,6 +115,7 @@ def print_label():
         current_app.logger.exception(e)
         return make_response(jsonify(return_dict), 400)
 
+    status = ""
     try:
         for i in range(print_count):
             label = create_label_from_request(request, i)
@@ -123,21 +124,28 @@ def print_label():
             # - we cut only once and this is the last label to be generated
             cut = not cut_once or (cut_once and i == print_count - 1)
             printer.add_label_to_queue(label, cut, high_res)
-        status = printer.process_queue(current_app.config['PRINTER_OFFLINE'])
+        status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
         return make_response(jsonify(return_dict), 400)
 
-    return_dict['success'] = status
+    return_dict['success'] = len(status) == 0
+    if len(status) > 0:
+        return_dict['message'] = status
+        return make_response(jsonify(return_dict), 400)
     return return_dict
 
 
 def create_printer_from_request(request: Request):
     label_size = request.values.get('label_size', '62')
+    # Allow overriding the device specifier via the request (frontend selection)
+    device = request.values.get('printer') or current_app.config['PRINTER_PRINTER']
+    # Allow overriding model via request if provided
+    model = request.values.get('model') or current_app.config['PRINTER_MODEL']
     return PrinterQueue(
-        model=current_app.config['PRINTER_MODEL'],
-        device_specifier=current_app.config['PRINTER_PRINTER'],
+        model=model,
+        device_specifier=device,
         label_size=label_size
     )
 

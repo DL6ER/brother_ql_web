@@ -62,9 +62,7 @@ def parse_args(app):
     parser.add_argument('--model', default=os.getenv('PRINTER_MODEL', app.config['PRINTER_MODEL']), choices=models,
                         help='The model of your printer (default: QL-500)')
     parser.add_argument('printer', nargs='?', default=os.environ.get('PRINTER_PRINTER', app.config['PRINTER_PRINTER']),
-                        help='String descriptor for the printer to use (like tcp://192.168.0.23:9100 or file:///dev/usb/lp0)')
-    parser.add_argument('--offline', action='store_true', default=os.environ.get('PRINTER_OFFLINE', app.config['PRINTER_OFFLINE']),
-                        help='Run the printer in offline mode (default: false)')
+                        help='String descriptor for the printer to use (like tcp://192.168.0.23:9100 or file:///dev/usb/lp0), may be left out to use auto-detection.')
     args = parser.parse_args()
 
     if args.printer:
@@ -75,5 +73,3 @@ def parse_args(app):
         app.config['LABEL_DEFAULT_SIZE'] = args.default_label_size
     if args.default_orientation:
         app.config['LABEL_DEFAULT_ORIENTATION'] = args.default_orientation
-    if args.offline:
-        app.config['PRINTER_OFFLINE'] = args.offline
