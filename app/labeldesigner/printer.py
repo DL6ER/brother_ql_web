@@ -3,7 +3,8 @@ import os
 import time
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
-from brother_ql.backends.helpers import get_printer, get_status
+from brother_ql.backends.helpers import get_status
+from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
@@ -68,6 +69,30 @@ class PrinterQueue:
         except Exception as e:
             logger.exception("Exception during sending to printer: %s", e)
             return "Exception during sending to printer: " + str(e)
+
+
+def get_printer(printer_identifier=None, backend_identifier=None):
+    """
+    Instantiate a printer object for communication. Only bidirectional transport backends are supported.
+
+    :param str printer_identifier: Identifier for the printer.
+    :param str backend_identifier: Can enforce the use of a specific backend.
+    """
+
+    selected_backend = None
+    if backend_identifier:
+        selected_backend = backend_identifier
+    else:
+        try:
+            selected_backend = guess_backend(printer_identifier)
+        except ValueError:
+            logger.info("No backend stated. Selecting the default linux_kernel backend.")
+            selected_backend = "linux_kernel"
+
+    be = backend_factory(selected_backend)
+    BrotherQLBackend = be["backend_class"]
+    printer = BrotherQLBackend(printer_identifier)
+    return printer
 
 
 def get_ptr_status(config: Config):
