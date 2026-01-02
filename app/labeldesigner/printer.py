@@ -58,8 +58,13 @@ class PrinterQueue:
                 logger.info('Simulated sending %d bytes to simulator printer', len(qlr.data))
                 return ""
 
+            network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
+            logger.info("Sending data to printer at %s", self.device_specifier)
             info = send(qlr.data, self.device_specifier)
             logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
+            if network_printer:
+                logger.info('Network printer does not provide status information.')
+                return ""
             logger.info('Printer response: %s', str(info))
             if info.get('did_print') and info.get('ready_for_next_job'):
                 logger.info('Label printed successfully and printer is ready for next job')
@@ -193,6 +198,17 @@ def get_ptr_status(config: Config):
                     'selected': None,
                     **status
                 }
+        elif device_specifier.startswith('tcp://'):
+            # TCP printers are not supported for status queries
+            status['status_type'] = 'Unknown'
+            printer = SIMULATOR_PRINTER.copy()
+            printer['path'] = device_specifier
+            printer['phase_type'] = 'Network Printer'
+            printer['status_type'] = 'Network Printer'
+            sim = SIMULATOR_PRINTER.copy()
+            status['printers'] = [printer, sim]
+            status['selected'] = device_specifier
+            return status
         else:
             printer = get_printer(device_specifier)
             printer_state = get_status(printer)
