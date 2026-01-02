@@ -231,9 +231,6 @@ class SimpleLabel:
                 img = self._generate_qr()
             else:
                 img = self._generate_barcode()
-                # Remove the first line of text as the barcode already contains
-                # it
-                self.text = self.text[1:]
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
             img = self._image
         else:
