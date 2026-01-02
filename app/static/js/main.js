@@ -163,6 +163,7 @@ function formData(cut_once = false) {
         data['print_color'] = $('input[name=printColor]:checked').val();
         data['border_color'] = $('input[name=borderColor]:checked').val();
     }
+    data['code_text'] = $('#codeText').val() || '';
 
     // Include selected printer if available
     const printerSelect = document.getElementById('printerSelect');

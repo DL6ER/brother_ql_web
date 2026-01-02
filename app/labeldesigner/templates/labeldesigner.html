@@ -166,6 +166,9 @@
                                 <option value="H">About 30% can be corrected.</option>
                             </select>
                         </div>
+                        <label for="codeText" style="margin-top: 10px; margin-bottom: 0">Code Text (overrides label text):</label>
+                        <textarea rows="3" id="codeText" class="form-control" onChange="preview()" onInput="preview()" data-default=""></textarea>
+                        <div class="form-text text-muted">If filled, this text will be used for generating barcodes/QR codes and printed below the code.</div>
                         <!-- class="accordion-body" -->
                     </div>
                 </div>

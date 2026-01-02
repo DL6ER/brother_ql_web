@@ -188,7 +188,8 @@ def create_label_from_request(request: Request, counter: int = 0):
         'image_rotation': int(d.get('image_rotation', 0)),
         'print_color': d.get('print_color', 'black'),
         'timestamp': int(d.get('timestamp', 0)),
-        'high_res': int(d.get('high_res', 0)) != 0
+        'high_res': int(d.get('high_res', 0)) != 0,
+        'code_text': d.get('code_text', '').strip(),
     }
 
     def get_label_dimensions(label_size: str, high_res: bool = False):
@@ -301,5 +302,6 @@ def create_label_from_request(request: Request, counter: int = 0):
         border_distance=(context['border_distanceX'], context['border_distanceY']),
         border_color=border_color,
         timestamp=context['timestamp'],
-        counter=counter
+        counter=counter,
+        code_text=context['code_text']
     )
