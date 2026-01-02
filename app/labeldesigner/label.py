@@ -57,7 +57,8 @@ class SimpleLabel:
         border_color: Tuple[int, int, int] = (0, 0, 0),
         timestamp: int = 0,
         counter: int = 0,
-        red_support: bool = False
+        red_support: bool = False,
+        code_text: str = '',
     ):
         """Initialize a SimpleLabel object."""
         # Input validation
@@ -94,6 +95,7 @@ class SimpleLabel:
         self._counter = counter
         self._timestamp = timestamp
         self._red_support = red_support
+        self._code_text = code_text
 
     @property
     def label_content(self):
@@ -229,9 +231,6 @@ class SimpleLabel:
                 img = self._generate_qr()
             else:
                 img = self._generate_barcode()
-                # Remove the first line of text as the barcode already contains
-                # it
-                self.text = self.text[1:]
         elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
             img = self._image
         else:
@@ -387,7 +386,11 @@ class SimpleLabel:
 
     def _generate_barcode(self):
         barcode_generator = barcode.get_barcode_class(self.barcode_type)
-        value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
+        if len(self._code_text) > 0:
+            value = self._code_text
+        else:
+            # Take value from the first line of text
+            value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
         my_barcode = barcode_generator(value, writer=ImageWriter())
         return my_barcode.render()
 
@@ -398,8 +401,11 @@ class SimpleLabel:
             box_size=self._qr_size,
             border=0,
         )
-        # Combine texts
-        text = "\n".join(line.get('text', '') for line in self.text)
+        if len(self._code_text) > 0:
+            text = self._code_text
+        else:
+            # Combine texts from all lines for QR code
+            text = "\n".join(line.get('text', '') for line in self.text)
         qr.add_data(text.encode("utf-8-sig"))
         qr.make(fit=True)
         fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'

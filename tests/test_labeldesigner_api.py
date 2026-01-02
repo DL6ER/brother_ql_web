@@ -280,14 +280,8 @@ class TestLabelDesignerAPI:
         data['barcode_type'] = 'ean13'
         data['text'] = json.dumps([
             {
-                'font': 'DejaVu Sans,Book',
-                'text': '123456789012',
-                'size': '60',
-                'align': 'left'
-            },
-            {
                 'font': 'Droid Serif,Bold',
-                'text': 'Some example product',
+                'text': '123456789012',
                 'size': '50',
                 'align': 'center'
             }
@@ -323,6 +317,38 @@ class TestLabelDesignerAPI:
         data = response.get_json()
         assert data['message'] == 'EAN must have 12 digits, received 10.'
 
+    def test_generate_ean13_custom_label(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['print_type'] = 'qrcode_text'
+        data['barcode_type'] = 'ean13'
+        data['code_text'] = '123456789012'
+        data['text'] = json.dumps([
+            {
+                'font': 'DejaVu Sans,Book',
+                'text': 'Some example product',
+                'size': '50',
+                'align': 'center'
+            }
+        ])
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'barcode_ean13_custom_label.png')
+
+    def test_generate_ean13_empty(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['print_type'] = 'qrcode_text'
+        data['barcode_type'] = 'ean13'
+        data['code_text'] = '123456789012'
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'barcode_ean13_empty_label.png')
+
     def test_generate_qr(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['print_type'] = 'qrcode_text'
@@ -347,6 +373,32 @@ class TestLabelDesignerAPI:
 
         # Check image
         self.verify_image(response.data, 'qr.png')
+
+    def test_generate_qr_custom_content(self, client: FlaskClient):
+        data = EXAMPLE_FORMDATA.copy()
+        data['print_type'] = 'qrcode_text'
+        data['barcode_type'] = 'QR'
+        data['text'] = json.dumps([
+            {
+                'font': 'DejaVu Sans,Book',
+                'text': 'This is some text not',
+                'size': '40',
+                'align': 'center'
+            },
+            {
+                'font': 'DejaVu Sans,Book',
+                'text': 'contained in the QR code',
+                'size': '40',
+                'align': 'center'
+            }
+        ])
+        data['code_text'] = 'https://github.com/DL6ER/brother_ql_web'
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        self.verify_image(response.data, 'qr_custom_label.png')
 
     def test_image(self, client: FlaskClient):
         self.run_image_test(client)

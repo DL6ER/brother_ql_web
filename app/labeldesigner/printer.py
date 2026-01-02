@@ -100,6 +100,10 @@ def get_printer(printer_identifier=None, backend_identifier=None):
     return printer
 
 
+_last_scan_ts = 0
+_cached_printers = []
+
+
 def get_ptr_status(config: Config):
     # Simple in-memory cache for detected printers
     global _last_scan_ts, _cached_printers
@@ -126,11 +130,6 @@ def get_ptr_status(config: Config):
         'red_support': default_model in [m.identifier for m in ALL_MODELS if m.two_color]
     }
 
-    try:
-        _last_scan_ts
-    except NameError:
-        _last_scan_ts = 0
-        _cached_printers = []
     status = {
         "errors": [],
         "path": device_specifier,
