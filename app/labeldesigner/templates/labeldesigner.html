@@ -414,6 +414,29 @@
         </div>
     </div>
 </div>
+<!-- Repository Modal -->
+<div class="modal fade" id="repoModal" tabindex="-1" aria-labelledby="repoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="repoModalLabel">Label Repository</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 d-flex gap-2">
+                    <input id="repoSaveName" class="form-control" placeholder="Enter name to save current label...">
+                    <button id="repoSaveBtn" class="btn btn-primary">Save</button>
+                </div>
+                <div id="repoListBody">
+                    <p class="text-muted">Loading...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block javascript %}
@@ -422,6 +445,11 @@ const url_for_preview = '{{ url_for('.preview_from_image') }}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
 const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};
+const url_for_repo_list = '{{ url_for('.repo_list') }}';
+const url_for_repo_save = '{{ url_for('.repo_save') }}';
+const url_for_repo_load = '{{ url_for('.repo_load') }}';
+const url_for_repo_delete = '{{ url_for('.repo_delete') }}';
+const url_for_repo_preview = '{{ url_for('.repo_preview') }}';
 
 {{ super() }}
 {% endblock %}

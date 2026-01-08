@@ -27,3 +27,42 @@ label {
 .navbar {
     margin-bottom: 20px;
 }
+
+/* Repository thumbnail and modal tweaks (light mode) */
+.repo-thumb {
+    width: 160px;
+    height: auto;
+    object-fit: contain;
+    border: 1px solid #ddd;
+    padding: 8px;
+    background: #fff;
+}
+
+.modal-body {
+    padding: 1rem 1.25rem;
+}
+
+/* Make thumbnails responsive on small screens */
+.list-group-item .d-flex {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.repo-thumb {
+    max-width: 100%;
+    height: auto;
+}
+
+@media (max-width: 576px) {
+    .repo-thumb {
+        width: 40vw; /* scale with viewport on very small screens */
+        max-width: 120px;
+    }
+    .list-group-item .btn-group {
+        width: 100%;
+        display: flex;
+        gap: 0.4rem;
+        justify-content: flex-start;
+        margin-top: 0.5rem;
+    }
+}

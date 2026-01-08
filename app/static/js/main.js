@@ -680,6 +680,183 @@ function importSettings() {
     input.click();
 }
 
+// --- Repository UI functions ---------------------------------------------------------
+function openRepositoryModal() {
+    // show modal and load list
+    const modalEl = document.getElementById('repoModal');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    loadRepositoryList();
+}
+
+function loadRepositoryList() {
+    const body = $('#repoListBody');
+    body.html('<p class="text-muted">Loading...</p>');
+    fetch(url_for_repo_list)
+        .then(r => r.json())
+        .then(data => {
+            renderRepoList(data.files || []);
+        })
+        .catch(e => {
+            body.html('<div class="text-danger">Failed to load repository list.</div>');
+            console.error(e);
+        });
+}
+
+function renderRepoList(files) {
+    const body = $('#repoListBody');
+    if (!files || files.length === 0) {
+        body.html('<p class="text-muted">No labels in repository.</p>');
+        return;
+    }
+    const table = $('<div class="list-group"></div>');
+    files.forEach(f => {
+        const item = $(
+            ` <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div class="d-flex gap-3 align-items-center">
+                        <img class="repo-thumb" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
+                        <div>
+                            <strong class="repo-name">${f.name}</strong><br/>
+                            <small class="text-muted">${new Date(f.mtime * 1000).toLocaleString()} — ${f.size} bytes</small><br/>
+                            <small class="text-muted">Label size: ${f.label_size ? f.label_size : 'unknown'}</small>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-success repo-load" data-name="${f.name}">Load</button>
+                        <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${f.name}">Delete</button>
+                    </div>
+                </div>`
+        );
+        table.append(item);
+        // fetch thumbnail asynchronously (do not override main preview)
+        const img = item.find('.repo-thumb')[0];
+        if (img) {
+            repoFetchThumbnail(f.name, img);
+        }
+    });
+    body.html(table);
+
+    // Attach handlers
+    $('.repo-preview').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoPreview(name);
+    });
+    $('.repo-load').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoLoad(name);
+    });
+    $('.repo-delete').off('click').on('click', function () {
+        const name = $(this).data('name');
+        if (!confirm('Delete ' + name + '?')) return;
+        repoDelete(name);
+    });
+}
+
+function repoSaveCurrent() {
+    const name = $('#repoSaveName').val();
+    if (!name) {
+        alert('Please provide a name to save.');
+        return;
+    }
+    // Ensure settings are saved to localStorage
+    try { saveAllSettingsToLocalStorage(); } catch (e) { }
+    let payload = {};
+    try { payload = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { payload = {}; }
+    fetch(url_for_repo_save + '?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(r => r.json())
+        .then(resp => {
+            // consider save successful when server returns explicit success or a saved name
+            if (resp && (resp.success || resp.name)) {
+                // clear the input field and reload list
+                try { $('#repoSaveName').val(''); } catch (e) {}
+                loadRepositoryList();
+            } else {
+                alert('Save failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
+            }
+        }).catch(e => {
+            console.error(e);
+            alert('Save failed');
+        });
+}
+
+function repoLoad(name) {
+    fetch(url_for_repo_load + '?name=' + encodeURIComponent(name))
+        .then(r => {
+            if (!r.ok) throw new Error('Load failed');
+            return r.json();
+        })
+        .then(data => {
+            try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch (e) { }
+            restoreAllSettingsFromLocalStorage();
+            // close modal
+            const modalEl = document.getElementById('repoModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+        }).catch(e => {
+            console.error(e);
+            alert('Failed to load label');
+        });
+}
+
+function repoDelete(name) {
+    fetch(url_for_repo_delete + '?name=' + encodeURIComponent(name), { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp && resp.success) {
+                loadRepositoryList();
+            } else {
+                alert('Delete failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
+            }
+        }).catch(e => {
+            console.error(e);
+            alert('Delete failed');
+        });
+}
+
+function repoPreview(name) {
+    // request base64 preview
+    fetch(url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64')
+        .then(r => {
+            if (!r.ok) throw new Error('Preview failed');
+            return r.text();
+        })
+        .then(b64 => {
+            updatePreview(b64);
+        }).catch(e => {
+            console.error(e);
+            alert('Preview failed');
+        });
+}
+
+function repoFetchThumbnail(name, imgEl) {
+    // include selected printer if present so preview matches selected device
+    const printerSelect = document.getElementById('printerSelect');
+    const printer = printerSelect && printerSelect.value ? printerSelect.value : null;
+    let url = url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64';
+    if (printer) url += '&printer=' + encodeURIComponent(printer);
+    fetch(url)
+        .then(r => {
+            if (!r.ok) throw new Error('Preview fetch failed');
+            return r.text();
+        })
+        .then(b64 => {
+            imgEl.src = 'data:image/png;base64,' + b64;
+        })
+        .catch(e => {
+            console.debug('Thumbnail fetch failed for', name, e);
+            imgEl.style.opacity = 0.4;
+        });
+}
+
+// Wire modal button on DOM ready
+$(document).ready(function () {
+    $('#openRepoBtn').off('click').on('click', openRepositoryModal);
+    $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
+});
+
 function resetSettings() {
     if (confirm('Really reset all label settings to default?')) {
         localStorage.removeItem(LS_KEY);
