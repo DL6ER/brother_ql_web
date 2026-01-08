@@ -71,27 +71,23 @@ def repo_list():
         if not name.lower().endswith('.json'):
             continue
         path = os.path.join(repo, name)
-        try:
-            stat = os.stat(path)
-            entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
-            # try to read label metadata (non-fatal)
-            try:
-                with open(path, 'r', encoding='utf-8') as fh:
-                    data = json.load(fh)
-                # exported format may use 'labelSize' or 'label_size'
-                label_size = data.get('labelSize') or data.get('label_size') or None
-                if label_size:
-                    label_size_human = next(
-                        (label.name for label in ALL_LABELS if label.identifier == label_size), None
-                    )
-                    if label_size_human:
-                        label_size = f"{label_size_human}"
-                    entry['label_size'] = str(label_size)
-            except Exception:
-                pass
-            files.append(entry)
-        except Exception:
-            continue
+        stat = os.stat(path)
+        entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
+        # Read label metadata
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        # Parse label size
+        label_size = data.get('labelSize')
+        if label_size:
+            label_size_human = next(
+                (label.name for label in ALL_LABELS if label.identifier == label_size), None
+            )
+            if label_size_human:
+                label_size = f"{label_size_human}"
+            entry['label_size'] = str(label_size)
+        else:
+            entry['label_size'] = None
+        files.append(entry)
     return {'files': files}
 
 
