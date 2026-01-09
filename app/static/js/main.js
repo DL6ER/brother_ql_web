@@ -23,7 +23,7 @@ function setFontSettingsPerLine() {
         font: $('#font option:selected').val() || DEFAULT_FONT,
         size: $('#font_size').val(),
         inverted: $('#font_inverted').is(':checked'),
-        todo: $('#font_checkbox').is(':checked'),
+        checkbox: $('#font_checkbox').is(':checked'),
         align: $('input[name=font_align]:checked').val() || 'center',
         line_spacing: $('input[name=line_spacing]:checked').val() || '100',
         color: $('input[name=print_color]:checked').val() || 'black'
@@ -108,8 +108,8 @@ $(document).ready(function () {
         // Set font color
         $('input[name=print_color]').prop('checked', false);
         $('input[name=print_color][value="' + fs.color + '"]').prop('checked', true).trigger("change");
-        // Set TODO item
-        $('#font_checkbox').prop('checked', fs.todo);
+        // Set checkbox item
+        $('#font_checkbox').prop('checked', fs.checkbox);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls

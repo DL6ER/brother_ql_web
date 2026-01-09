@@ -59,7 +59,10 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     assert loaded.get('label_size') == '62'
     # Compare content to original payload
     loaded["text"] = json.loads(loaded.get("text", "[]"))
-    assert loaded == payload
+    # All keys in payload should be in loaded with same value
+    for key, value in payload.items():
+        assert key in loaded
+        assert loaded[key] == value
 
     # Delete the file
     del_url = '/labeldesigner/api/repository/delete?name=repo_test.json'

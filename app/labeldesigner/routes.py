@@ -104,9 +104,27 @@ def repo_save():
     repo = _get_repo_dir()
     path = os.path.join(repo, filename)
     try:
+        text = data.get('fontSettingsPerLine', [])
+        if isinstance(text, str):
+            data['text'] = json.loads(text)
+        # Remove redundant information about zeroth line font settings
+        if "font_size" in data:
+            del data['font_size']
+        if "font_inverted" in data:
+            del data['font_inverted']
+        if "font" in data:
+            del data['font']
+        if "font_align" in data:
+            del data['font_align']
+        if "font_checkbox" in data:
+            del data['font_checkbox']
+        if "font_color" in data:
+            del data['font_color']
+        if "line_spacing" in data:
+            del data['line_spacing']
+        if "fontSettingsPerLine" in data:
+            del data['fontSettingsPerLine']
         with open(path, 'w', encoding='utf-8') as fh:
-            if isinstance(data.get('text', []), str):
-                data['text'] = json.loads(data.get('text', []))
             json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
     except Exception as e:
         current_app.logger.exception(e)
@@ -127,7 +145,18 @@ def repo_load():
     try:
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
-            data['text'] = json.dumps(data.get('text', []))
+        text = data.get('text', [])
+        data['text'] = json.dumps(text)
+        if len(text) > 0:
+            # Restore zeroth line font settings
+            data['font_size'] = str(text[0].get('size', current_app.config['LABEL_DEFAULT_FONT_SIZE']))
+            data['font_inverted'] = True if text[0].get('inverted', 0) else False
+            data['font'] = text[0].get('font', FONTS.get_default_font()[0])
+            data['font_align'] = text[0].get('align', 'left')
+            data['font_checkbox'] = True if text[0].get('checkbox', 0) else False
+            data['font_color'] = text[0].get('color', 'black')
+            data['font_inverted'] = True if text[0].get('inverted', 0) else False
+            data['line_spacing'] = str(text[0].get('line_spacing', current_app.config['LABEL_DEFAULT_LINE_SPACING']))
         return data
     except Exception as e:
         current_app.logger.exception(e)

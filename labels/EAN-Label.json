@@ -6,24 +6,18 @@
   "border_roundness": "0",
   "border_thickness": "0",
   "code_text": "400845203106",
-  "font": "DejaVu Math TeX Gyre,Regular",
-  "font_align": "center",
-  "font_checkbox": false,
-  "font_color": "black",
-  "font_inverted": false,
   "text": [
     {
       "font": "DejaVu Math TeX Gyre,Regular",
       "size": "50",
       "inverted": false,
-      "todo": false,
+      "checkbox": false,
       "align": "center",
       "line_spacing": "100",
       "color": "black",
       "text": "Joghurt 1,5% Fett"
     }
   ],
-  "font_size": "50",
   "high_res": false,
   "image_bw_threshold": "70",
   "image_fit": false,
@@ -32,7 +26,6 @@
   "image_scaling_factor": "100",
   "label_size": "62",
   "label_text": "Joghurt 1,5% Fett",
-  "line_spacing": "100",
   "log_level": "DEBUG",
   "margin_bottom": "0",
   "margin_left": "0",
