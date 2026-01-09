@@ -652,37 +652,6 @@ function restoreAllSettingsFromLocalStorage() {
     setTimeout(() => { preview(); current_restoring = false; }, 100);
 }
 
-function exportSettings() {
-    const data = localStorage.getItem(LS_KEY) || '{}';
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'labeldesigner_settings.json';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
-}
-
-function importSettings() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.onchange = function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function (evt) {
-            try {
-                localStorage.setItem(LS_KEY, evt.target.result);
-                restoreAllSettingsFromLocalStorage();
-            } catch { }
-        };
-        reader.readAsText(file);
-    };
-    input.click();
-}
-
 // --- Repository UI functions ---------------------------------------------------------
 function openRepositoryModal() {
     // show modal and load list
@@ -921,9 +890,7 @@ function init2() {
         });
         $(`label[for="${this.id}"]`).addClass('active');
     });
-    // Export/Import/Reset buttons
-    $('#exportSettings').on('click', exportSettings);
-    $('#importSettings').on('click', importSettings);
+    // Reset button
     $('#resetSettings').on('click', resetSettings);
 
     // Undo button
