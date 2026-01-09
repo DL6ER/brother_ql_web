@@ -48,7 +48,7 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     # decode and check PNG header
     decoded = base64.b64decode(b64)
     assert decoded.startswith(b"\x89PNG\r\n\x1a\n")
-    
+
     # Verify image preview
     verify_image(decoded, 'repo_test_preview.png')
 
@@ -56,8 +56,9 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     resp = client.get('/labeldesigner/api/repository/load?name=repo_test.json')
     assert resp.status_code == 200
     loaded = resp.get_json()
-    assert loaded.get('labelSize') == '62'
+    assert loaded.get('label_size') == '62'
     # Compare content to original payload
+    loaded["text"] = json.loads(loaded.get("text", "[]"))
     assert loaded == payload
 
     # Delete the file

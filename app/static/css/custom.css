@@ -12,7 +12,7 @@
     display: table-cell;
 }
 
-textarea#labelText {
+textarea#label_text {
     resize: none;
 }
 

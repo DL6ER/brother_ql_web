@@ -1,6 +1,5 @@
 import os
 import logging
-from typing import Any
 import barcode
 from . import bp
 from app import FONTS
@@ -11,7 +10,6 @@ from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.utils import secure_filename
-from werkzeug.datastructures import MultiDict
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black,
     pdffile_to_image, imgfile_to_image, image_to_png_bytes
@@ -76,8 +74,8 @@ def repo_list():
         # Read label metadata
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
-        # Parse label size
-        label_size = data.get('labelSize')
+        # Parse label size (support both snake_case and legacy camelCase)
+        label_size = data.get('label_size') or data.get('labelSize')
         if label_size:
             label_size_human = next(
                 (label.name for label in ALL_LABELS if label.identifier == label_size), None
@@ -107,7 +105,9 @@ def repo_save():
     path = os.path.join(repo, filename)
     try:
         with open(path, 'w', encoding='utf-8') as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
+            if isinstance(data.get('text', []), str):
+                data['text'] = json.loads(data.get('text', []))
+            json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
@@ -127,6 +127,7 @@ def repo_load():
     try:
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
+            data['text'] = json.dumps(data.get('text', []))
         return data
     except Exception as e:
         current_app.logger.exception(e)
@@ -158,7 +159,9 @@ def _load_repo_json(name: str):
     if not os.path.exists(path):
         raise FileNotFoundError(name)
     with open(path, 'r', encoding='utf-8') as fh:
-        return json.load(fh)
+        data = json.load(fh)
+        data['text'] = json.dumps(data.get('text', []))
+        return data
 
 
 @bp.route('/api/repository/preview', methods=['GET', 'POST'])
@@ -174,50 +177,12 @@ def repo_preview():
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to preview file'}), 500)
 
-    # Map exported JSON keys to request values expected by create_label_from_request
-    values = {}
-    # If the export contains fontSettingsPerLine, convert to 'text'
-    if 'fontSettingsPerLine' in data:
-        fs = data.get('fontSettingsPerLine')
-        if isinstance(fs, str):
-            try:
-                fs = json.loads(fs)
-            except Exception:
-                fs = []
-        values['text'] = json.dumps(fs)
-
-    # Map common control keys (mirror client-side mapping)
-    mapping = {
-        'labelSize': 'label_size', 'orientation': 'orientation', 'marginTop': 'margin_top',
-        'marginBottom': 'margin_bottom', 'marginLeft': 'margin_left', 'marginRight': 'margin_right',
-        'printType': 'print_type', 'barcodeType': 'barcode_type', 'qrCodeSize': 'qrcode_size',
-        'qrCodeCorrection': 'qrcode_correction', 'imageBwThreshold': 'image_bw_threshold',
-        'imageMode': 'image_mode', 'imageFitCheckbox': 'image_fit', 'printCount': 'print_count',
-        'logLevel': 'log_level', 'borderThickness': 'border_thickness', 'borderRoundness': 'border_roundness',
-        'borderDistanceX': 'border_distance_x', 'borderDistanceY': 'border_distance_y',
-        'highResolutionCheckbox': 'high_res', 'imageScalingFactor': 'image_scaling_factor',
-        'imageRotation': 'image_rotation', 'codeText': 'code_text', 'printerSelect': 'printer'
-    }
-    for src, tgt in mapping.items():
-        if src in data:
-            v = data[src]
-            # booleans -> ints for checkboxes
-            if isinstance(v, bool):
-                values[tgt] = '1' if v else '0'
-            else:
-                values[tgt] = str(v)
-
     # allow override printer via query param
     if request.values.get('printer'):
-        values['printer'] = request.values.get('printer')
-
-    # Build a dummy request-like object with .values and .files
-    dummy = type('D', (), {})()
-    dummy.values = MultiDict(values)
-    dummy.files = {}
+        data['printer'] = request.values.get('printer')
 
     try:
-        label = create_label_from_request(dummy)
+        label = create_label_from_request(data)
         im = label.generate(rotate=True)
     except Exception as e:
         current_app.logger.exception(e)
@@ -251,7 +216,9 @@ def preview_from_image():
         if isinstance(level, int):
             current_app.logger.setLevel(level)
     try:
-        label = create_label_from_request(request)
+        values = request.values.to_dict(flat=True)
+        files = request.files.to_dict(flat=True)
+        label = create_label_from_request(values, files)
         im = label.generate(rotate=True)
     except Exception as e:
         current_app.logger.exception(e)
@@ -303,7 +270,9 @@ def print_label():
     status = ""
     try:
         for i in range(print_count):
-            label = create_label_from_request(request, i)
+            values = request.values.to_dict(flat=True)
+            files = request.files.to_dict(flat=True)
+            label = create_label_from_request(values, files, i)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
@@ -335,15 +304,7 @@ def create_printer_from_request(request: Request):
     )
 
 
-def parse_text_form(input: str) -> Any:
-    """Parse text form data from frontend."""
-    if not input:
-        return []
-    return json.loads(input)
-
-
-def create_label_from_request(request: Request, counter: int = 0):
-    d = request.values
+def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
@@ -362,7 +323,7 @@ def create_label_from_request(request: Request, counter: int = 0):
         'border_distanceX': int(d.get('border_distance_x', 0)),
         'border_distanceY': int(d.get('border_distance_y', 0)),
         'border_color': d.get('border_color', 'black'),
-        'text': parse_text_form(d.get('text', '')),
+        'text': json.loads(d.get('text', '[]')),
         'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
@@ -448,6 +409,7 @@ def create_label_from_request(request: Request, counter: int = 0):
     # For each line in text, we determine and add the font path
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
+            current_app.logger.error(line)
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
@@ -458,7 +420,7 @@ def create_label_from_request(request: Request, counter: int = 0):
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
-    uploaded = request.files.get('image', None)
+    uploaded = files.get('image', None)
     image = get_uploaded_image(uploaded) if uploaded is not None else None
 
     return SimpleLabel(
