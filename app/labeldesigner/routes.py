@@ -110,7 +110,7 @@ def repo_save():
             json.dump(data, fh, ensure_ascii=False, indent=2)
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 500)
+        return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
     return {'success': True, 'name': filename}
 
 
@@ -130,7 +130,7 @@ def repo_load():
         return data
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 500)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
 
 
 @bp.route('/api/repository/delete', methods=['POST'])
@@ -148,7 +148,7 @@ def repo_delete():
         return {'success': True}
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 500)
+        return make_response(jsonify({'success': False, 'message': 'Failed to delete file'}), 500)
 
 
 def _load_repo_json(name: str):
@@ -172,7 +172,7 @@ def repo_preview():
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 500)
+        return make_response(jsonify({'success': False, 'message': 'Failed to preview file'}), 500)
 
     # Map exported JSON keys to request values expected by create_label_from_request
     values = {}
