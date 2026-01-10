@@ -11,7 +11,7 @@ from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.utils import secure_filename
 from app.utils import (
-    convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black,
+    convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
     pdffile_to_image, imgfile_to_image, image_to_png_bytes
 )
 
@@ -147,16 +147,7 @@ def repo_load():
             data = json.load(fh)
         text = data.get('text', [])
         data['text'] = json.dumps(text)
-        if len(text) > 0:
-            # Restore zeroth line font settings
-            data['font_size'] = str(text[0].get('size', current_app.config['LABEL_DEFAULT_FONT_SIZE']))
-            data['font_inverted'] = True if text[0].get('inverted', 0) else False
-            data['font'] = text[0].get('font', FONTS.get_default_font()[0])
-            data['font_align'] = text[0].get('align', 'left')
-            data['font_checkbox'] = True if text[0].get('checkbox', 0) else False
-            data['font_color'] = text[0].get('color', 'black')
-            data['font_inverted'] = True if text[0].get('inverted', 0) else False
-            data['line_spacing'] = str(text[0].get('line_spacing', current_app.config['LABEL_DEFAULT_LINE_SPACING']))
+        data = fill_first_line_fields(text, data)
         return data
     except Exception as e:
         current_app.logger.exception(e)

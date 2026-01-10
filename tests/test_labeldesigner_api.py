@@ -41,6 +41,8 @@ def verify_image(response_data: bytes, expected_image_path: str):
 
 def make_client(tmp_path):
     app = create_app()
+    # Bind app context
+    app.app_context().push()
     app.config['TESTING'] = True
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
     # point repository to temporary folder

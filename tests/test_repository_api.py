@@ -1,26 +1,29 @@
 import os
 import json
 import base64
+from app.utils import fill_first_line_fields
 from test_labeldesigner_api import verify_image, make_client
+import pytest
 
 
-def test_repository_save_list_load_delete_and_preview(tmp_path):
+@pytest.mark.parametrize('label', ['EAN-Label', 'QR-Example', 'URGENT-Text'])
+def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     client = make_client(tmp_path)
 
     # Load some label from file to use as test data
     sample_label_path = os.path.join(
-        os.path.dirname(__file__), '../labels/EAN-Label.json'
+        os.path.dirname(__file__), f'../labels/{label}.json'
     )
     with open(sample_label_path, 'r', encoding='utf-8') as f:
-        payload = json.load(f)
+        file = json.load(f)
 
     # Save the label
-    save_url = '/labeldesigner/api/repository/save?name=repo_test'
-    resp = client.post(save_url, json=payload)
+    save_url = f'/labeldesigner/api/repository/save?name=repo_test_{label}.json'
+    resp = client.post(save_url, json=file)
     assert resp.status_code == 200
     data = resp.get_json()
     assert data.get('success') is True
-    assert data.get('name') == 'repo_test.json'
+    assert data.get('name') == f'repo_test_{label}.json'
 
     # List repository, expect the saved file among them
     resp = client.get('/labeldesigner/api/repository/list')
@@ -29,17 +32,17 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     assert 'files' in listing
     files = listing['files']
     names = [f['name'] for f in files]
-    assert 'repo_test.json' in names
+    assert f'repo_test_{label}.json' in names
 
     # Check that label_size metadata is present
-    entry = next((f for f in files if f['name'] == 'repo_test.json'), None)
+    entry = next((f for f in files if f['name'] == f'repo_test_{label}.json'), None)
     assert entry is not None
-    assert entry.get('label_size') == '62mm endless'
+    assert entry.get('label_size') == '62mm endless' if label != 'URGENT-Text' else '62mm endless (black/red/white)'
 
     # Preview the stored label (base64)
     preview_url = (
         '/labeldesigner/api/repository/preview?'
-        'name=repo_test.json&return_format=base64'
+        f'name=repo_test_{label}.json&return_format=base64'
     )
     resp = client.get(preview_url)
     assert resp.status_code == 200
@@ -50,22 +53,21 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     assert decoded.startswith(b"\x89PNG\r\n\x1a\n")
 
     # Verify image preview
-    verify_image(decoded, 'repo_test_preview.png')
+    verify_image(decoded, f'repo_test_{label}.png')
 
     # Load the stored JSON
-    resp = client.get('/labeldesigner/api/repository/load?name=repo_test.json')
+    resp = client.get(f'/labeldesigner/api/repository/load?name=repo_test_{label}.json')
     assert resp.status_code == 200
     loaded = resp.get_json()
-    assert loaded.get('label_size') == '62'
-    # Compare content to original payload
+
+    # Compare content to original file
     loaded["text"] = json.loads(loaded.get("text", "[]"))
-    # All keys in payload should be in loaded with same value
-    for key, value in payload.items():
-        assert key in loaded
-        assert loaded[key] == value
+    # Fill first line fields to match what the client would do
+    file = fill_first_line_fields(file["text"], file)
+    assert loaded == file
 
     # Delete the file
-    del_url = '/labeldesigner/api/repository/delete?name=repo_test.json'
+    del_url = f'/labeldesigner/api/repository/delete?name=repo_test_{label}.json'
     resp = client.post(del_url)
     assert resp.status_code == 200
     assert resp.get_json().get('success') is True
@@ -74,7 +76,7 @@ def test_repository_save_list_load_delete_and_preview(tmp_path):
     resp = client.get('/labeldesigner/api/repository/list')
     files = resp.get_json().get('files', [])
     names = [f['name'] for f in files]
-    assert 'repo_test.json' not in names
+    assert f'repo_test_{label}.json' not in names
 
 
 def test_repository_save_requires_json_and_name(tmp_path):
