@@ -221,6 +221,60 @@ def repo_preview():
     return response
 
 
+@bp.route('/api/repository/print', methods=['POST'])
+def repo_print():
+    # Print a saved repository template by name. The server will load the JSON
+    # and perform the same printing logic as the /api/print endpoint.
+    name = request.values.get('name') or request.values.get('filename')
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    try:
+        data = _load_repo_json(name)
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
+
+    # Allow overriding printer or other request-like parameters via form/query
+    if request.values.get('printer'):
+        data['printer'] = request.values.get('printer')
+
+    # Prepare printer queue using requested or default device/model and label_size from data
+    try:
+        device = request.values.get('printer') or current_app.config['PRINTER_PRINTER']
+        model = request.values.get('model') or current_app.config['PRINTER_MODEL']
+        label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
+        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
+
+        # Determine printing options (print_count, cut_once, high_res)
+        print_count = int(request.values.get('print_count') or data.get('print_count') or 1)
+        if print_count < 1:
+            raise ValueError("print_count must be greater than 0")
+        cut_once = int(request.values.get('cut_once') or data.get('cut_once') or 0) == 1
+        high_res = int(request.values.get('high_res') or data.get('high_res') or 0) != 0
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+
+    status = ""
+    try:
+        for i in range(print_count):
+            label = create_label_from_request(data, {}, i)
+            cut = not cut_once or (cut_once and i == print_count - 1)
+            printer.add_label_to_queue(label, cut, high_res)
+        status = printer.process_queue()
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+
+    result = {'success': len(status) == 0}
+    if len(status) > 0:
+        result['message'] = status
+        return make_response(jsonify(result), 400)
+    return result
+
+
 @bp.route('/api/barcodes', methods=['GET'])
 def get_barcodes():
     barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]

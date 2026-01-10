@@ -696,6 +696,7 @@ function renderRepoList(files) {
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-sm btn-outline-success repo-load" data-name="${f.name}">Load</button>
+                        <button class="btn btn-sm btn-outline-primary repo-print" data-name="${f.name}">Print</button>
                         <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${f.name}">Delete</button>
                     </div>
                 </div>`
@@ -722,6 +723,10 @@ function renderRepoList(files) {
         const name = $(this).data('name');
         if (!confirm('Delete ' + name + '?')) return;
         repoDelete(name);
+    });
+    $('.repo-print').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoPrint(name);
     });
 }
 
@@ -803,6 +808,30 @@ function repoPreview(name) {
         }).catch(e => {
             console.error(e);
             alert('Preview failed');
+        });
+}
+
+function repoPrint(name) {
+    // Ask server to print a repository template by name
+    const printerSelect = document.getElementById('printer');
+    const body = new URLSearchParams();
+    body.append('name', name);
+    if (printerSelect && printerSelect.value) body.append('printer', printerSelect.value);
+
+    fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp && resp.success) {
+                setStatus({ type: 'printing', status: 'success' });
+                console.log('Print job queued successfully');
+            } else {
+                const msg = resp && resp.message ? resp.message : 'Print failed';
+                setStatus({ type: 'printing', status: 'error', message: msg });
+                console.error(msg);
+            }
+        }).catch(e => {
+            console.error(e);
+            console.error('Print failed');
         });
 }
 
