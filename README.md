@@ -127,6 +127,8 @@ services:
       - "8013:8013"
     devices:
       - "/dev/usb/lp0:/dev/usb/lp0"
+    volumes:
+      - ./labels:/app/labels
     environment:
       - LABEL_DEFAULT_SIZE=62
       - LABEL_DEFAULT_ORIENTATION=standard
@@ -148,6 +150,7 @@ services:
     privileged: true
     volumes:
       - /dev/usb:/dev/usb
+      - ./labels:/app/labels
     environment:
       - LABEL_DEFAULT_SIZE=62
       - LABEL_DEFAULT_ORIENTATION=standard

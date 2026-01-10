@@ -1,0 +1,82 @@
+{
+  "barcode_type": "QR",
+  "border_color": "black",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_roundness": "0",
+  "border_thickness": "0",
+  "code_text": "",
+  "text": [
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": true,
+      "checkbox": false,
+      "align": "right",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{datetime:%H:%M:%S Uhr am %d.%m.%Y}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "right",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Counter: {{counter}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "25",
+      "inverted": false,
+      "checkbox": false,
+      "align": "right",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "UUID: {{uuid}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "right",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Short UUID: {{short-uuid}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "right",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Timezone: {{env:TZ}}"
+    }
+  ],
+  "high_res": false,
+  "image_bw_threshold": "70",
+  "image_fit": false,
+  "image_mode": "grayscale",
+  "image_rotation": "0",
+  "image_scaling_factor": "100",
+  "label_size": "62",
+  "label_text": "{{datetime:%H:%M:%S Uhr am %d.%m.%Y}}\nCounter: {{counter}}\nUUID: {{uuid}}\nShort UUID: {{short-uuid}}\nTimezone: {{env:TZ}}",
+  "log_level": "DEBUG",
+  "margin_bottom": "10",
+  "margin_left": "10",
+  "margin_right": "10",
+  "margin_top": "10",
+  "orientation": "standard",
+  "print_count": "20",
+  "print_type": "text",
+  "printer": "file:///dev/usb/lp3",
+  "qrcode_correction": "H",
+  "qrcode_size": "10",
+  "repo_save_name": "Template-Example",
+  "sync_font_settings": false
+}

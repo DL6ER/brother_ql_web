@@ -34,4 +34,6 @@ class Config(object):
     LABEL_DEFAULT_MARGIN_LEFT = 35
     LABEL_DEFAULT_MARGIN_RIGHT = 35
 
+    LABEL_REPOSITORY_DIR = os.path.join(basedir, 'labels')
+
     FONT_FOLDER = ''

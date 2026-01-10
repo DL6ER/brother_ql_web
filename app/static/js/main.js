@@ -14,19 +14,19 @@ const DEFAULT_FONT = 'Droid Serif,Regular';
 // Each new line inherits the font settings of the previous line.
 var fontSettingsPerLine = [];
 function setFontSettingsPerLine() {
-    var text = $('#labelText').val() || '';
+    var text = $('#label_text').val() || '';
     var lines = text.split(/\r?\n/);
     if (lines.length === 0) lines = [''];
 
     // Default font settings from the current UI controls
     var currentFont = {
         font: $('#font option:selected').val() || DEFAULT_FONT,
-        size: $('#fontSize').val(),
-        inverted: $('#fontInverted').is(':checked'),
-        todo: $('#fontCheckbox').is(':checked'),
-        align: $('input[name=fontAlign]:checked').val() || 'center',
-        line_spacing: $('input[name=lineSpacing]:checked').val() || '100',
-        color: $('input[name=fontColor]:checked').val() || 'black'
+        size: $('#font_size').val(),
+        inverted: $('#font_inverted').is(':checked'),
+        checkbox: $('#font_checkbox').is(':checked'),
+        align: $('input[name=font_align]:checked').val() || 'center',
+        line_spacing: $('input[name=line_spacing]:checked').val() || '100',
+        color: $('input[name=print_color]:checked').val() || 'black'
     };
 
     // Create lines in the <option> with id #lineSelect
@@ -48,7 +48,7 @@ function setFontSettingsPerLine() {
     }
 
     // Should we use the same font settings for all lines?
-    const isSynced = $('#syncFontSettings').is(':checked');
+    const isSynced = $('#sync_font_settings').is(':checked');
     if (isSynced) {
         fontSettingsPerLine = [];
         for (var i = 0; i < lines.length; i++) {
@@ -96,24 +96,24 @@ $(document).ready(function () {
         // Set font
         $('#font').val(fs.font || DEFAULT_FONT);
         // Set font size
-        $('#fontSize').val(fs.size);
+        $('#font_size').val(fs.size);
         // Set alignment
-        $('input[name=fontAlign]').prop('checked', false);
-        $('input[name=fontAlign][value="' + fs.align + '"]').prop('checked', true).trigger("change");
+        $('input[name=font_align]').prop('checked', false);
+        $('input[name=font_align][value="' + fs.align + '"]').prop('checked', true).trigger("change");
         // Set line spacing
-        $('input[name=lineSpacing]').prop('checked', false);
-        $('input[name=lineSpacing][value="' + fs.line_spacing + '"]').prop('checked', true).trigger("change");
+        $('input[name=line_spacing]').prop('checked', false);
+        $('input[name=line_spacing][value="' + fs.line_spacing + '"]').prop('checked', true).trigger("change");
         // Set font inversion
-        $('#fontInverted').prop('checked', fs.inverted);
+        $('#font_inverted').prop('checked', fs.inverted);
         // Set font color
-        $('input[name=fontColor]').prop('checked', false);
-        $('input[name=fontColor][value="' + fs.color + '"]').prop('checked', true).trigger("change");
-        // Set TODO item
-        $('#fontCheckbox').prop('checked', fs.todo);
+        $('input[name=print_color]').prop('checked', false);
+        $('input[name=print_color][value="' + fs.color + '"]').prop('checked', true).trigger("change");
+        // Set checkbox item
+        $('#font_checkbox').prop('checked', fs.checkbox);
     });
 
     // When the user changes the caret/selection in the textarea, update #lineSelect and font controls
-    $('#labelText').on('click keyup', function (e) {
+    $('#label_text').on('click keyup', function (e) {
         var textarea = this;
         var caret = textarea.selectionStart;
         var lines = textarea.value.split(/\r?\n/);
@@ -134,39 +134,40 @@ $(document).ready(function () {
 function formData(cut_once = false) {
     data = {
         text: JSON.stringify(fontSettingsPerLine),
-        label_size: $('#labelSize').val(),
+        label_size: $('#label_size').val(),
         orientation: $('input[name=orientation]:checked').val(),
-        margin_top: parseInt($('#marginTop').val(), 10) || 0,
-        margin_bottom: parseInt($('#marginBottom').val(), 10) || 0,
-        margin_left: parseInt($('#marginLeft').val(), 10) || 0,
-        margin_right: parseInt($('#marginRight').val(), 10) || 0,
-        print_type: $('input[name=printType]:checked').val(),
-        barcode_type: $('#barcodeType').val(),
-        qrcode_size: parseInt($('#qrCodeSize').val(), 10) || 0,
-        qrcode_correction: $('#qrCodeCorrection option:selected').val(),
-        image_bw_threshold: parseInt($('#imageBwThreshold').val(), 10) || 0,
-        image_mode: $('input[name=imageMode]:checked').val(),
-        image_fit: $('#imageFitCheckbox').is(':checked') ? 1 : 0,
-        print_count: parseInt($('#printCount').val(), 10) || 0,
-        log_level: $('#logLevel').val(),
+        margin_top: parseInt($('#margin_top').val(), 10) || 0,
+        margin_bottom: parseInt($('#margin_bottom').val(), 10) || 0,
+        margin_left: parseInt($('#margin_left').val(), 10) || 0,
+        margin_right: parseInt($('#margin_right').val(), 10) || 0,
+        print_type: $('input[name=print_type]:checked').val(),
+        barcode_type: $('#barcode_type').val(),
+        qrcode_size: parseInt($('#qrcode_size').val(), 10) || 0,
+        qrcode_correction: $('#qrcode_correction option:selected').val(),
+        image_bw_threshold: parseInt($('#image_bw_threshold').val(), 10) || 0,
+        image_mode: $('input[name=image_mode]:checked').val(),
+        image_fit: $('#image_fit').is(':checked') ? 1 : 0,
+        print_count: parseInt($('#print_count').val(), 10) || 0,
+        log_level: $('#log_level').val(),
         cut_once: cut_once ? 1 : 0,
-        border_thickness: parseInt($('#borderThickness').val(), 10) || 0,
-        border_roundness: parseInt($('#borderRoundness').val(), 10) || 0,
-        border_distance_x: parseInt($('#borderDistanceX').val(), 10) || 0,
-        border_distance_y: parseInt($('#borderDistanceY').val(), 10) || 0,
-        high_res: $('#highResolutionCheckbox').is(':checked') ? 1 : 0,
-        image_scaling_factor: parseInt($('#imageScalingFactor').val(), 10) || 0,
-        image_rotation: parseInt($('#imageRotation').val(), 10) || 0,
+        border_thickness: parseInt($('#border_thickness').val(), 10) || 0,
+        border_roundness: parseInt($('#border_roundness').val(), 10) || 0,
+        border_distance_x: parseInt($('#border_distance_x').val(), 10) || 0,
+        border_distance_y: parseInt($('#border_distance_y').val(), 10) || 0,
+        high_res: $('#high_res').is(':checked') ? 1 : 0,
+        image_scaling_factor: parseInt($('#image_scaling_factor').val(), 10) || 0,
+        image_rotation: parseInt($('#image_rotation').val(), 10) || 0,
+        sync_font_settings: $('#sync_font_settings').is(':checked') ? 1 : 0
     }
 
     if (printer_status['red_support']) {
-        data['print_color'] = $('input[name=printColor]:checked').val();
-        data['border_color'] = $('input[name=borderColor]:checked').val();
+        data['print_color'] = $('input[name=print_color]:checked').val();
+        data['border_color'] = $('input[name=border_color]:checked').val();
     }
-    data['code_text'] = $('#codeText').val() || '';
+    data['code_text'] = $('#code_text').val() || '';
 
     // Include selected printer if available
-    const printerSelect = document.getElementById('printerSelect');
+    const printerSelect = document.getElementById('printer');
     if (printerSelect && printerSelect.value) {
         data['printer'] = printerSelect.value;
     }
@@ -175,7 +176,7 @@ function formData(cut_once = false) {
 }
 
 function get_dpi() {
-    return $('#highResolutionCheckbox').is(':checked') ? 600 : 300;
+    return $('#high_res').is(':checked') ? 600 : 300;
 }
 
 function updatePreview(data) {
@@ -197,7 +198,7 @@ function gen_label(preview = true, cut_once = false) {
 
     if (preview) {
         // Update preview image based on label size
-        if ($('#labelSize option:selected').data('round') == 'True') {
+        if ($('#label_size option:selected').data('round') == 'True') {
             $('img#previewImg').addClass('roundPreviewImage');
         } else {
             $('img#previewImg').removeClass('roundPreviewImage');
@@ -205,7 +206,7 @@ function gen_label(preview = true, cut_once = false) {
     }
 
     // Show or hide image upload box
-    if ($('input[name=printType]:checked').val() == 'image') {
+    if ($('input[name=print_type]:checked').val() == 'image') {
         $('#groupLabelImage').show();
     } else {
         $('#groupLabelImage').hide();
@@ -216,7 +217,7 @@ function gen_label(preview = true, cut_once = false) {
     setStatus({ type: type, 'status': 'pending' });
 
     // Process image upload
-    if ($('input[name=printType]:checked').val() == 'image') {
+    if ($('input[name=print_type]:checked').val() == 'image') {
         dropZoneMode = preview ? 'preview' : 'printing';
         imageDropZone.processQueue();
         return;
@@ -415,7 +416,7 @@ let myDropzone = new Dropzone("#image-dropzone", {
 
 
 function toggleQrSettings() {
-    var barcodeType = document.getElementById('barcodeType');
+    var barcodeType = document.getElementById('barcode_type');
     var qrCodeSize = document.getElementById('qrCodeSizeContainer');
     var qrCodeCorrection = document.getElementById('qrCodeCorrectionContainer');
     if (barcodeType) {
@@ -429,7 +430,7 @@ function get_barcode_types() {
     fetch(url_for_get_barcodes)
         .then(response => response.json())
         .then(data => {
-            const select = document.getElementById('barcodeType');
+            const select = document.getElementById('barcode_type');
             barcodes = data['barcodes'];
             if (select && Array.isArray(barcodes) && barcodes.length > 0) {
                 barcodes.forEach((barcode, idx) => {
@@ -453,7 +454,7 @@ function get_barcode_types() {
 }
 
 function updatePrinterStatus() {
-    if ($('#labelSize option:selected').val().includes('red')) {
+    if ($('#label_size option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
         $('#print_color_black').prop('active', true);
@@ -476,7 +477,7 @@ function updatePrinterStatus() {
     }
 
     // Check for label size mismatch compared to data-x property of select
-    const labelSizeSelect = document.getElementById('labelSize');
+    const labelSizeSelect = document.getElementById('label_size');
     if (labelSizeSelect) {
         const selectedOption = labelSizeSelect.options[labelSizeSelect.selectedIndex];
         const dataX = selectedOption.getAttribute('data-x');
@@ -504,7 +505,7 @@ async function getPrinterStatus() {
     const data = await response.json();
     // If server returned multiple printers, populate the select and pick the chosen one
     if (data && Array.isArray(data.printers)) {
-        const select = document.getElementById('printerSelect');
+        const select = document.getElementById('printer');
         if (select) {
             // remember current selection
             const cur = select.value;
@@ -526,7 +527,7 @@ async function getPrinterStatus() {
             }
         }
         // Choose active printer status based on the select value
-        const chosenPath = (document.getElementById('printerSelect') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
+        const chosenPath = (document.getElementById('printer') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
         let chosen = data.printers.find(p => p.path === chosenPath) || data.printers[0] || {};
         printer_status = chosen;
         // keep a list of available printers globally
@@ -634,6 +635,7 @@ function restoreAllSettingsFromLocalStorage() {
             }
         } else {
             this.value = data[key];
+            console.log(key + ": " + data[key]);
         }
     });
 
@@ -641,6 +643,7 @@ function restoreAllSettingsFromLocalStorage() {
     if (data['fontSettingsPerLine'] && window.fontSettingsPerLine) {
         try {
             window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
+            console.log(window.fontSettingsPerLine);
             $('#lineSelect').val(0);
             preview();
         } catch { }
@@ -649,36 +652,214 @@ function restoreAllSettingsFromLocalStorage() {
     setTimeout(() => { preview(); current_restoring = false; }, 100);
 }
 
-function exportSettings() {
-    const data = localStorage.getItem(LS_KEY) || '{}';
-    const blob = new Blob([data], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'labeldesigner_settings.json';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+// --- Repository UI functions ---------------------------------------------------------
+function openRepositoryModal() {
+    // show modal and load list
+    const modalEl = document.getElementById('repoModal');
+    if (!modalEl) return;
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    loadRepositoryList();
 }
 
-function importSettings() {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json';
-    input.onchange = function (e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = function (evt) {
-            try {
-                localStorage.setItem(LS_KEY, evt.target.result);
-                restoreAllSettingsFromLocalStorage();
-            } catch { }
-        };
-        reader.readAsText(file);
-    };
-    input.click();
+function loadRepositoryList() {
+    const body = $('#repoListBody');
+    body.html('<p class="text-muted">Loading...</p>');
+    fetch(url_for_repo_list)
+        .then(r => r.json())
+        .then(data => {
+            renderRepoList(data.files || []);
+        })
+        .catch(e => {
+            body.html('<div class="text-danger">Failed to load repository list.</div>');
+            console.error(e);
+        });
 }
+
+function renderRepoList(files) {
+    const body = $('#repoListBody');
+    if (!files || files.length === 0) {
+        body.html('<p class="text-muted">No labels in repository.</p>');
+        return;
+    }
+    const table = $('<div class="list-group"></div>');
+    files.forEach(f => {
+        const item = $(
+            ` <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div class="d-flex gap-3 align-items-center">
+                        <img class="repo-thumb" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
+                        <div>
+                            <strong class="repo-name">${f.name}</strong><br/>
+                            <small class="text-muted">${new Date(f.mtime * 1000).toLocaleString()} — ${f.size} bytes</small><br/>
+                            <small class="text-muted">Label size: ${f.label_size ? f.label_size : 'unknown'}</small>
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-sm btn-outline-success repo-load" data-name="${f.name}">Load</button>
+                        <button class="btn btn-sm btn-outline-primary repo-print" data-name="${f.name}">Print</button>
+                        <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${f.name}">Delete</button>
+                    </div>
+                </div>`
+        );
+        table.append(item);
+        // fetch thumbnail asynchronously (do not override main preview)
+        const img = item.find('.repo-thumb')[0];
+        if (img) {
+            repoFetchThumbnail(f.name, img);
+        }
+    });
+    body.html(table);
+
+    // Attach handlers
+    $('.repo-preview').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoPreview(name);
+    });
+    $('.repo-load').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoLoad(name);
+    });
+    $('.repo-delete').off('click').on('click', function () {
+        const name = $(this).data('name');
+        if (!confirm('Delete ' + name + '?')) return;
+        repoDelete(name);
+    });
+    $('.repo-print').off('click').on('click', function () {
+        const name = $(this).data('name');
+        repoPrint(name);
+    });
+}
+
+function repoSaveCurrent() {
+    const name = $('#repoSaveName').val();
+    if (!name) {
+        alert('Please provide a name to save.');
+        return;
+    }
+    // Ensure settings are saved to localStorage
+    try { saveAllSettingsToLocalStorage(); } catch (e) { }
+    let payload = {};
+    try { payload = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { payload = {}; }
+    fetch(url_for_repo_save + '?name=' + encodeURIComponent(name), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    }).then(r => r.json())
+        .then(resp => {
+            // consider save successful when server returns explicit success or a saved name
+            if (resp && (resp.success || resp.name)) {
+                // clear the input field and reload list
+                try { $('#repoSaveName').val(''); } catch (e) {}
+                loadRepositoryList();
+            } else {
+                alert('Save failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
+            }
+        }).catch(e => {
+            console.error(e);
+            alert('Save failed');
+        });
+}
+
+function repoLoad(name) {
+    fetch(url_for_repo_load + '?name=' + encodeURIComponent(name))
+        .then(r => {
+            if (!r.ok) throw new Error('Load failed');
+            return r.json();
+        })
+        .then(data => {
+            try {
+                data['fontSettingsPerLine'] = data['text'] || '[]';
+                localStorage.setItem(LS_KEY, JSON.stringify(data));
+            } catch (e) { }
+            restoreAllSettingsFromLocalStorage();
+            // close modal
+            const modalEl = document.getElementById('repoModal');
+            bootstrap.Modal.getInstance(modalEl).hide();
+        }).catch(e => {
+            console.error(e);
+            alert('Failed to load label');
+        });
+}
+
+function repoDelete(name) {
+    fetch(url_for_repo_delete + '?name=' + encodeURIComponent(name), { method: 'POST' })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp && resp.success) {
+                loadRepositoryList();
+            } else {
+                alert('Delete failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
+            }
+        }).catch(e => {
+            console.error(e);
+            alert('Delete failed');
+        });
+}
+
+function repoPreview(name) {
+    // request base64 preview
+    fetch(url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64')
+        .then(r => {
+            if (!r.ok) throw new Error('Preview failed');
+            return r.text();
+        })
+        .then(b64 => {
+            updatePreview(b64);
+        }).catch(e => {
+            console.error(e);
+            alert('Preview failed');
+        });
+}
+
+function repoPrint(name) {
+    // Ask server to print a repository template by name
+    const printerSelect = document.getElementById('printer');
+    const body = new URLSearchParams();
+    body.append('name', name);
+    if (printerSelect && printerSelect.value) body.append('printer', printerSelect.value);
+
+    fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body })
+        .then(r => r.json())
+        .then(resp => {
+            if (resp && resp.success) {
+                setStatus({ type: 'printing', status: 'success' });
+                console.log('Print job queued successfully');
+            } else {
+                const msg = resp && resp.message ? resp.message : 'Print failed';
+                setStatus({ type: 'printing', status: 'error', message: msg });
+                console.error(msg);
+            }
+        }).catch(e => {
+            console.error(e);
+            console.error('Print failed');
+        });
+}
+
+function repoFetchThumbnail(name, imgEl) {
+    // include selected printer if present so preview matches selected device
+    const printerSelect = document.getElementById('printer');
+    const printer = printerSelect && printerSelect.value ? printerSelect.value : null;
+    let url = url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64';
+    if (printer) url += '&printer=' + encodeURIComponent(printer);
+    fetch(url)
+        .then(r => {
+            if (!r.ok) throw new Error('Preview fetch failed');
+            return r.text();
+        })
+        .then(b64 => {
+            imgEl.src = 'data:image/png;base64,' + b64;
+        })
+        .catch(e => {
+            console.debug('Thumbnail fetch failed for', name, e);
+            imgEl.style.opacity = 0.4;
+        });
+}
+
+// Wire modal button on DOM ready
+$(document).ready(function () {
+    $('#openRepoBtn').off('click').on('click', openRepositoryModal);
+    $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
+});
 
 function resetSettings() {
     if (confirm('Really reset all label settings to default?')) {
@@ -738,9 +919,7 @@ function init2() {
         });
         $(`label[for="${this.id}"]`).addClass('active');
     });
-    // Export/Import/Reset buttons
-    $('#exportSettings').on('click', exportSettings);
-    $('#importSettings').on('click', importSettings);
+    // Reset button
     $('#resetSettings').on('click', resetSettings);
 
     // Undo button

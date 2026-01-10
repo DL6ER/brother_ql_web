@@ -121,3 +121,46 @@ body.dark-mode {
 .dark-mode .dropzone .dz-message {
 	color: #b0b0b0 !important;
 }
+
+/* Modal styling for dark mode */
+.dark-mode .modal-content,
+.dark-mode .modal-header,
+.dark-mode .modal-body,
+.dark-mode .modal-footer {
+	background-color: #23272b !important;
+	color: #e8e6e3 !important;
+	border-color: #444 !important;
+}
+
+.dark-mode .modal-title {
+	color: #e8e6e3 !important;
+}
+
+.dark-mode .modal-backdrop.show {
+	background-color: rgba(0,0,0,0.6) !important;
+}
+
+/* repo thumbnail tweaks for dark mode */
+.dark-mode .repo-thumb {
+	border: 1px solid #444 !important;
+	background: #1f2223 !important;
+	padding: 6px !important;
+}
+
+/* modal body padding */
+.dark-mode .modal-body {
+	padding: 1rem 1.25rem !important;
+}
+
+/* Repository list and list-group items */
+.dark-mode #repoListBody,
+.dark-mode .list-group,
+.dark-mode .list-group-item {
+	background-color: #23272b !important;
+	color: #e8e6e3 !important;
+	border-color: #444 !important;
+}
+
+.dark-mode .list-group-item {
+	border: 1px solid #444 !important;
+}

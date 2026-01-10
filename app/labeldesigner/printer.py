@@ -81,7 +81,7 @@ def get_printer(printer_identifier=None, backend_identifier=None):
     Instantiate a printer object for communication. Only bidirectional transport backends are supported.
 
     :param str printer_identifier: Identifier for the printer.
-    :param str backend_identifier: Can enforce the use of a specific backend.
+    :param str backend_identifier: Can enforce the use of a specific backend.1
     """
 
     selected_backend = None

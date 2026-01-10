@@ -452,8 +452,8 @@ class SimpleLabel:
 #                raise ValueError("Red font is not supported on this label")
             color = (255, 0, 0) if red_font else (0, 0, 0)
 
-            # Draw TODO box if needed
-            todo = line.get('todo', False)
+            # Draw checkbox if needed
+            checkbox = line.get('checkbox', False)
 
             INVERT_LINE = 'inverted' in line and line['inverted']
             if do_draw and INVERT_LINE:
@@ -513,12 +513,12 @@ class SimpleLabel:
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = max_bbox_x + text_offset[0]
 
-                # Draw TODO box if needed
-                if todo:
-                    todo_box_dimensions = 8 * int(line['size']) // 10
-                    bbox = draw.textbbox((x - 1.2 * todo_box_dimensions, y), line['text'], font=font, align=align, anchor=anchor)
-                    box_dimensions = bbox[0], y, bbox[0] + todo_box_dimensions, y + todo_box_dimensions
-                    draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, todo_box_dimensions//10), fill=(255,255,255))
+                # Draw checkbox if needed
+                if checkbox:
+                    checkbox_box_dimensions = 8 * int(line['size']) // 10
+                    bbox = draw.textbbox((x - 1.2 * checkbox_box_dimensions, y), line['text'], font=font, align=align, anchor=anchor)
+                    box_dimensions = bbox[0], y, bbox[0] + checkbox_box_dimensions, y + checkbox_box_dimensions
+                    draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, checkbox_box_dimensions//10), fill=(255,255,255))
 
                 draw.text((x, y), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
 
