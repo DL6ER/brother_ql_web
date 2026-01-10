@@ -1,0 +1,42 @@
+{
+  "barcode_type": "EAN13-GUARD",
+  "border_color": "black",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_roundness": "0",
+  "border_thickness": "0",
+  "code_text": "400845203106",
+  "text": [
+    {
+      "font": "DejaVu Math TeX Gyre,Regular",
+      "size": "50",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Joghurt 1,5% Fett"
+    }
+  ],
+  "high_res": false,
+  "image_bw_threshold": "70",
+  "image_fit": false,
+  "image_mode": "grayscale",
+  "image_rotation": "0",
+  "image_scaling_factor": "100",
+  "label_size": "62",
+  "label_text": "Joghurt 1,5% Fett",
+  "log_level": "DEBUG",
+  "margin_bottom": "0",
+  "margin_left": "0",
+  "margin_right": "0",
+  "margin_top": "0",
+  "orientation": "standard",
+  "print_count": "20",
+  "print_type": "qrcode_text",
+  "printer": "file:///dev/usb/lp3",
+  "qrcode_correction": "H",
+  "qrcode_size": "5",
+  "repo_save_name": "EAN-Label",
+  "sync_font_settings": false
+}

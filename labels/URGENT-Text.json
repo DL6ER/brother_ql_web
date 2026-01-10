@@ -1,0 +1,52 @@
+{
+  "barcode_type": "QR",
+  "border_color": "black",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_roundness": "0",
+  "border_thickness": "0",
+  "code_text": "",
+  "text": [
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "80",
+      "inverted": true,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "red",
+      "text": "!!! URGENT !!!"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "50",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Ship as soon as possible"
+    }
+  ],
+  "high_res": false,
+  "image_bw_threshold": "70",
+  "image_fit": false,
+  "image_mode": "grayscale",
+  "image_rotation": "0",
+  "image_scaling_factor": "100",
+  "label_size": "62red",
+  "label_text": "!!! URGENT !!!\nShip as soon as possible",
+  "log_level": "DEBUG",
+  "margin_bottom": "10",
+  "margin_left": "10",
+  "margin_right": "10",
+  "margin_top": "10",
+  "orientation": "standard",
+  "print_count": "20",
+  "print_type": "text",
+  "printer": "file:///dev/usb/lp3",
+  "qrcode_correction": "H",
+  "qrcode_size": "10",
+  "repo_save_name": "URGENT-Text",
+  "sync_font_settings": false
+}

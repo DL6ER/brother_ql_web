@@ -1,6 +1,5 @@
 import os
 import logging
-from typing import Any
 import barcode
 from . import bp
 from app import FONTS
@@ -10,8 +9,9 @@ from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
+from werkzeug.utils import secure_filename
 from app.utils import (
-    convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black,
+    convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
     pdffile_to_image, imgfile_to_image, image_to_png_bytes
 )
 
@@ -51,6 +51,232 @@ def index():
     )
 
 
+# --- Label repository utilities and API -------------------------------------------------
+def _get_repo_dir():
+    repo = current_app.config.get('LABEL_REPOSITORY_DIR')
+    if not repo:
+        # default to a folder inside the app root
+        repo = os.path.join(current_app.root_path, 'labels')
+    os.makedirs(repo, exist_ok=True)
+    return repo
+
+
+@bp.route('/api/repository/list', methods=['GET'])
+def repo_list():
+    repo = _get_repo_dir()
+    files = []
+    for name in sorted(os.listdir(repo)):
+        if not name.lower().endswith('.json'):
+            continue
+        path = os.path.join(repo, name)
+        stat = os.stat(path)
+        entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
+        # Read label metadata
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        # Parse label size (support both snake_case and legacy camelCase)
+        label_size = data.get('label_size') or data.get('labelSize')
+        if label_size:
+            label_size_human = next(
+                (label.name for label in ALL_LABELS if label.identifier == label_size), None
+            )
+            if label_size_human:
+                label_size = f"{label_size_human}"
+            entry['label_size'] = str(label_size)
+        else:
+            entry['label_size'] = None
+        files.append(entry)
+    return {'files': files}
+
+
+@bp.route('/api/repository/save', methods=['POST'])
+def repo_save():
+    # Expect a JSON payload and a 'name' form field
+    data = request.get_json(force=True, silent=True)
+    name = data.get('name') if data is not None else request.values.get('name') or None
+    if not data:
+        return make_response(jsonify({'success': False, 'message': 'No JSON payload provided'}), 400)
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name provided'}), 400)
+    filename = secure_filename(name)
+    if not filename.lower().endswith('.json'):
+        filename = filename + '.json'
+    repo = _get_repo_dir()
+    path = os.path.join(repo, filename)
+    try:
+        text = data.get('fontSettingsPerLine', [])
+        if isinstance(text, str):
+            data['text'] = json.loads(text)
+        # Remove redundant information about zeroth line font settings
+        if "font_size" in data:
+            del data['font_size']
+        if "font_inverted" in data:
+            del data['font_inverted']
+        if "font" in data:
+            del data['font']
+        if "font_align" in data:
+            del data['font_align']
+        if "font_checkbox" in data:
+            del data['font_checkbox']
+        if "font_color" in data:
+            del data['font_color']
+        if "line_spacing" in data:
+            del data['line_spacing']
+        if "fontSettingsPerLine" in data:
+            del data['fontSettingsPerLine']
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
+    return {'success': True, 'name': filename}
+
+
+@bp.route('/api/repository/load', methods=['GET'])
+def repo_load():
+    name = request.values.get('name')
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    filename = secure_filename(name)
+    repo = _get_repo_dir()
+    path = os.path.join(repo, filename)
+    if not os.path.exists(path):
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        text = data.get('text', [])
+        data['text'] = json.dumps(text)
+        data = fill_first_line_fields(text, data)
+        return data
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
+
+
+@bp.route('/api/repository/delete', methods=['POST'])
+def repo_delete():
+    jdata = request.get_json(force=True, silent=True) or {}
+    name = jdata.get('name') or request.values.get('name')
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    filename = secure_filename(name)
+    repo = _get_repo_dir()
+    path = os.path.join(repo, filename)
+    if not os.path.exists(path):
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    try:
+        os.remove(path)
+        return {'success': True}
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to delete file'}), 500)
+
+
+def _load_repo_json(name: str):
+    filename = secure_filename(name)
+    repo = _get_repo_dir()
+    path = os.path.join(repo, filename)
+    if not os.path.exists(path):
+        raise FileNotFoundError(name)
+    with open(path, 'r', encoding='utf-8') as fh:
+        data = json.load(fh)
+        data['text'] = json.dumps(data.get('text', []))
+        return data
+
+
+@bp.route('/api/repository/preview', methods=['GET', 'POST'])
+def repo_preview():
+    name = request.values.get('name')
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    try:
+        data = _load_repo_json(name)
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to preview file'}), 500)
+
+    # allow override printer via query param
+    if request.values.get('printer'):
+        data['printer'] = request.values.get('printer')
+
+    try:
+        label = create_label_from_request(data)
+        im = label.generate(rotate=True)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'message': str(e)}), 400)
+
+    return_format = request.values.get('return_format', 'png')
+    response_data = image_to_png_bytes(im)
+    if return_format == 'base64':
+        import base64
+        response_data = base64.b64encode(response_data)
+        content_type = 'text/plain'
+    else:
+        content_type = 'image/png'
+    response = make_response(response_data)
+    response.headers.set('Content-type', content_type)
+    return response
+
+
+@bp.route('/api/repository/print', methods=['POST'])
+def repo_print():
+    # Print a saved repository template by name. The server will load the JSON
+    # and perform the same printing logic as the /api/print endpoint.
+    jdata = request.get_json(force=True, silent=True) or {}
+    name = jdata.get('name') or request.values.get('name')
+    if not name:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    try:
+        data = _load_repo_json(name)
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
+
+    # Allow overriding printer or other request-like parameters via form/query
+    if request.values.get('printer'):
+        data['printer'] = request.values.get('printer')
+
+    # Prepare printer queue using requested or default device/model and label_size from data
+    try:
+        device = request.values.get('printer') or current_app.config['PRINTER_PRINTER']
+        model = request.values.get('model') or current_app.config['PRINTER_MODEL']
+        label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
+        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
+
+        # Determine printing options (print_count, cut_once, high_res)
+        print_count = int(request.values.get('print_count') or data.get('print_count') or 1)
+        if print_count < 1:
+            raise ValueError("print_count must be greater than 0")
+        cut_once = int(request.values.get('cut_once') or data.get('cut_once') or 0) == 1
+        high_res = int(request.values.get('high_res') or data.get('high_res') or 0) != 0
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+
+    status = ""
+    try:
+        for i in range(print_count):
+            label = create_label_from_request(data, {}, i)
+            cut = not cut_once or (cut_once and i == print_count - 1)
+            printer.add_label_to_queue(label, cut, high_res)
+        status = printer.process_queue()
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+
+    result = {'success': len(status) == 0}
+    if len(status) > 0:
+        result['message'] = status
+        return make_response(jsonify(result), 400)
+    return result
+
+
 @bp.route('/api/barcodes', methods=['GET'])
 def get_barcodes():
     barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]
@@ -66,7 +292,9 @@ def preview_from_image():
         if isinstance(level, int):
             current_app.logger.setLevel(level)
     try:
-        label = create_label_from_request(request)
+        values = request.values.to_dict(flat=True)
+        files = request.files.to_dict(flat=True)
+        label = create_label_from_request(values, files)
         im = label.generate(rotate=True)
     except Exception as e:
         current_app.logger.exception(e)
@@ -118,7 +346,9 @@ def print_label():
     status = ""
     try:
         for i in range(print_count):
-            label = create_label_from_request(request, i)
+            values = request.values.to_dict(flat=True)
+            files = request.files.to_dict(flat=True)
+            label = create_label_from_request(values, files, i)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
@@ -150,15 +380,7 @@ def create_printer_from_request(request: Request):
     )
 
 
-def parse_text_form(input: str) -> Any:
-    """Parse text form data from frontend."""
-    if not input:
-        return []
-    return json.loads(input)
-
-
-def create_label_from_request(request: Request, counter: int = 0):
-    d = request.values
+def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
@@ -177,7 +399,7 @@ def create_label_from_request(request: Request, counter: int = 0):
         'border_distanceX': int(d.get('border_distance_x', 0)),
         'border_distanceY': int(d.get('border_distance_y', 0)),
         'border_color': d.get('border_color', 'black'),
-        'text': parse_text_form(d.get('text', '')),
+        'text': json.loads(d.get('text', '[]')),
         'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
@@ -263,6 +485,7 @@ def create_label_from_request(request: Request, counter: int = 0):
     # For each line in text, we determine and add the font path
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
+            current_app.logger.error(line)
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
@@ -273,7 +496,7 @@ def create_label_from_request(request: Request, counter: int = 0):
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
-    uploaded = request.files.get('image', None)
+    uploaded = files.get('image', None)
     image = get_uploaded_image(uploaded) if uploaded is not None else None
 
     return SimpleLabel(

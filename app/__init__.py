@@ -15,15 +15,22 @@ from brother_ql.models import ALL_MODELS
 from . import fonts
 from config import Config
 
+FONTS = None
+
 
 def create_app(config_class=Config) -> Flask:
+    global FONTS
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
     app.config.from_pyfile('application.py', silent=True)
 
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 
-    init_fonts_and_args(app)
+    FONTS = init_fonts(app)
+
+    # Only parse command-line arguments if not running under pytest
+    if not any('pytest' in arg for arg in sys.argv[0:1]):
+        parse_args(app)
 
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
@@ -37,8 +44,7 @@ def create_app(config_class=Config) -> Flask:
     return app
 
 
-def init_fonts_and_args(app: Flask):
-    global FONTS
+def init_fonts(app: Flask):
     FONTS = fonts.Fonts(app.logger,
                         app.config.get('LABEL_DEFAULT_FONT_FAMILY'),
                         app.config.get('LABEL_DEFAULT_FONT_STYLE'),
@@ -47,9 +53,7 @@ def init_fonts_and_args(app: Flask):
         app.logger.error("No fonts found on your system. Please install some.")
         sys.exit(2)
 
-    # Only parse command-line arguments if not running under pytest
-    if not any('pytest' in arg for arg in sys.argv[0:1]):
-        parse_args(app)
+    return FONTS
 
 
 def parse_args(app):

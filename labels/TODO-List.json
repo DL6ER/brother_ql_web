@@ -1,0 +1,62 @@
+{
+  "barcode_type": "QR",
+  "border_color": "black",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_roundness": "0",
+  "border_thickness": "0",
+  "code_text": "",
+  "text": [
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": true,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Print shipping label"
+    },
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "40",
+      "inverted": false,
+      "checkbox": true,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Put items inside"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": true,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Confirm shipping"
+    }
+  ],
+  "high_res": false,
+  "image_bw_threshold": "70",
+  "image_fit": false,
+  "image_mode": "grayscale",
+  "image_rotation": "0",
+  "image_scaling_factor": "100",
+  "label_size": "62",
+  "label_text": "Print shipping label\nPut items inside\nConfirm shipping",
+  "log_level": "DEBUG",
+  "margin_bottom": "10",
+  "margin_left": "10",
+  "margin_right": "10",
+  "margin_top": "10",
+  "orientation": "standard",
+  "print_count": "20",
+  "print_type": "text",
+  "printer": "file:///dev/usb/lp3",
+  "qrcode_correction": "H",
+  "qrcode_size": "10",
+  "repo_save_name": "TODO-List",
+  "sync_font_settings": false
+}

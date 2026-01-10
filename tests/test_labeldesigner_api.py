@@ -22,23 +22,37 @@ EXAMPLE_FORMDATA = {
 }
 
 
+def verify_image(response_data: bytes, expected_image_path: str):
+    # Compare generated preview with the image in file (if it exists)
+    if not UPDATE_IMAGES and os.path.isfile('tests/images/' + expected_image_path):
+        with open('tests/images/' + expected_image_path, 'rb') as f:
+            expected_data = f.read()
+        if response_data != expected_data:
+            # Save image for debugging purposes
+            failed_image_path = 'tests/' + 'FAILED_' + expected_image_path
+            with open(failed_image_path, 'wb') as f:
+                f.write(response_data)
+            raise AssertionError("Generated image does not match expected image")
+
+    # Write image into file
+    with open('tests/images/' + expected_image_path, 'wb') as f:
+        f.write(response_data)
+
+
+def make_client(tmp_path):
+    app = create_app()
+    # Bind app context
+    app.app_context().push()
+    app.config['TESTING'] = True
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+    # point repository to temporary folder
+    repo_dir = tmp_path / 'label_repo'
+    app.config['LABEL_REPOSITORY_DIR'] = str(repo_dir)
+    os.makedirs(app.config['LABEL_REPOSITORY_DIR'], exist_ok=True)
+    return app.test_client()
+
+
 class TestLabelDesignerAPI:
-    def verify_image(self, response_data: bytes, expected_image_path: str):
-        # Compare generated preview with the image in file (if it exists)
-        if not UPDATE_IMAGES and os.path.isfile('tests/images/' + expected_image_path):
-            with open('tests/images/' + expected_image_path, 'rb') as f:
-                expected_data = f.read()
-            if response_data != expected_data:
-                # Save image for debugging purposes
-                failed_image_path = 'tests/' + 'FAILED_' + expected_image_path
-                with open(failed_image_path, 'wb') as f:
-                    f.write(response_data)
-                raise AssertionError("Generated image does not match expected image")
-
-        # Write image into file
-        with open('tests/images/' + expected_image_path, 'wb') as f:
-            f.write(response_data)
-
     def run_image_test(self,
                        client: FlaskClient,
                        image_path: Union[str, None] = None,
@@ -86,15 +100,11 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, expected_img_path)
+        verify_image(response.data, expected_img_path)
 
     @pytest.fixture(autouse=True)
-    def client(self):
-        my_app = create_app()
-        my_app.config['TESTING'] = True
-        my_app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
-        with my_app.test_client() as client:
-            yield client
+    def client(self, tmp_path):
+        yield make_client(tmp_path)
 
     def image_updating_is_disabled(self):
         assert not UPDATE_IMAGES
@@ -136,7 +146,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'simple.png')
+        verify_image(response.data, 'simple.png')
 
     def test_generate_preview_high_res(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -161,7 +171,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'simple_high_res.png')
+        verify_image(response.data, 'simple_high_res.png')
 
     def test_generate_preview_inverted(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -200,7 +210,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'inverted_text.png')
+        verify_image(response.data, 'inverted_text.png')
 
     def test_generate_preview_rotated(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -224,7 +234,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'rotated.png')
+        verify_image(response.data, 'rotated.png')
 
     def test_generate_preview_no_margins(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -272,7 +282,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'simple_no_margins_rotated.png')
+        verify_image(response.data, 'simple_no_margins_rotated.png')
 
     def test_generate_ean13(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -291,7 +301,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'barcode_ean13.png')
+        verify_image(response.data, 'barcode_ean13.png')
 
     def test_invalid_ean13(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -335,7 +345,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'barcode_ean13_custom_label.png')
+        verify_image(response.data, 'barcode_ean13_custom_label.png')
 
     def test_generate_ean13_empty(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -347,7 +357,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'barcode_ean13_empty_label.png')
+        verify_image(response.data, 'barcode_ean13_empty_label.png')
 
     def test_generate_qr(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -372,7 +382,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'qr.png')
+        verify_image(response.data, 'qr.png')
 
     def test_generate_qr_custom_content(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -398,7 +408,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'qr_custom_label.png')
+        verify_image(response.data, 'qr_custom_label.png')
 
     def test_image(self, client: FlaskClient):
         self.run_image_test(client)
@@ -480,7 +490,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'template.png')
+        verify_image(response.data, 'template.png')
 
     def test_generate_shifted_randomness(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -507,7 +517,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'shifted_random.png')
+        verify_image(response.data, 'shifted_random.png')
 
     def test_invalid_data_types(self, client: FlaskClient):
         # Non-integer label_size
@@ -576,7 +586,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'template_incomplete.png')
+        verify_image(response.data, 'template_incomplete.png')
 
         # Unknown template variable
         data['text'] = json.dumps([
@@ -587,7 +597,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'template_unknown.png')
+        verify_image(response.data, 'template_unknown.png')
 
     def test_concurrent_preview_requests(self, client: FlaskClient):
         """
@@ -665,7 +675,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'empty_label.png')
+        verify_image(response.data, 'empty_label.png')
 
     def test_minimal_label(self, client: FlaskClient):
         # Minimum label_size
@@ -678,7 +688,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'minimal_label.png')
+        verify_image(response.data, 'minimal_label.png')
 
     def test_unicode_and_special_characters(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -691,7 +701,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'unicode.png')
+        verify_image(response.data, 'unicode.png')
 
     def test_security_xss(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -704,8 +714,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'security_xss.png')
-
+        verify_image(response.data, 'security_xss.png')
 
     @pytest.mark.parametrize('method', ['put', 'delete', 'patch'])
     def test_invalid_http_methods(self, client: FlaskClient, method):
@@ -724,7 +733,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'red_text.png')
+        verify_image(response.data, 'red_text.png')
 
     def test_large_number_of_text_blocks(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -744,7 +753,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'large_label.png')
+        verify_image(response.data, 'large_label.png')
 
     def test_file_size_limits(self, client: FlaskClient):
         # Just below the limit
@@ -773,7 +782,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'extra_fields.png')
+        verify_image(response.data, 'extra_fields.png')
 
     def test_multiple_images_failure(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -820,7 +829,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'html_in_text_plain.png')
+        verify_image(response.data, 'html_in_text_plain.png')
 
     def test_missing_optional_fields(self, client: FlaskClient):
         data = {
@@ -838,7 +847,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'missing_optional_fields.png')
+        verify_image(response.data, 'missing_optional_fields.png')
 
     def test_invalid_json_structure(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -907,7 +916,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'unicode_normalization.png')
+        verify_image(response.data, 'unicode_normalization.png')
 
     def test_head_request(self, client: FlaskClient):
         response = client.head('/labeldesigner/api/preview')
@@ -942,17 +951,17 @@ class TestLabelDesignerAPI:
     def test_todo_list(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'todo': True},
-            {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'todo': True},
-            {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'todo': False, 'color': 'red'},
-            {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'todo': True}
+            {'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'checkbox': True},
+            {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'checkbox': True},
+            {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'checkbox': False, 'color': 'red'},
+            {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'checkbox': True}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'todo_list.png')
+        verify_image(response.data, 'todo_list.png')
 
     def test_large_font_not_cropped(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -972,7 +981,7 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
 
         # Check image
-        self.verify_image(response.data, 'large_text.png')
+        verify_image(response.data, 'large_text.png')
 
     @pytest.mark.parametrize('factor', [0, 1, 10, 100, 150])
     @pytest.mark.parametrize('sign', [1, -1])
@@ -998,7 +1007,7 @@ class TestLabelDesignerAPI:
             assert response.content_type in ['image/png']
 
             # Check image
-            self.verify_image(response.data, f'image_manual_scaling_{SCALING}.png')
+            verify_image(response.data, f'image_manual_scaling_{SCALING}.png')
         else:
             # Should be rejected
             assert response.status_code == 400
@@ -1026,7 +1035,7 @@ class TestLabelDesignerAPI:
             # Should work
             assert response.status_code == 200
             assert response.content_type in ['image/png']
-            self.verify_image(response.data, f'image_rotation_{rotation}.png')
+            verify_image(response.data, f'image_rotation_{rotation}.png')
         else:
             # Should be rejected
             assert response.status_code == 400
@@ -1104,4 +1113,4 @@ class TestLabelDesignerAPI:
         assert response.content_type in ['image/png']
         ls = label_size.replace(' ', '-').lower()
         rot = 'rotated' if orientation == 'rotated' else 'standard'
-        self.verify_image(response.data, f'pdf_printing_{ls}_{rot}_{fit}.png')
+        verify_image(response.data, f'pdf_printing_{ls}_{rot}_{fit}.png')
