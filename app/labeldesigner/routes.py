@@ -56,7 +56,7 @@ def _get_repo_dir():
     repo = current_app.config.get('LABEL_REPOSITORY_DIR')
     if not repo:
         # default to a folder inside the app root
-        repo = os.path.join(current_app.root_path, 'label_repository')
+        repo = os.path.join(current_app.root_path, 'labels')
     os.makedirs(repo, exist_ok=True)
     return repo
 
@@ -93,7 +93,7 @@ def repo_list():
 def repo_save():
     # Expect a JSON payload and a 'name' form field
     data = request.get_json(force=True, silent=True)
-    name = request.values.get('name') or request.values.get('filename') or None
+    name = data.get('name') if data is not None else request.values.get('name') or None
     if not data:
         return make_response(jsonify({'success': False, 'message': 'No JSON payload provided'}), 400)
     if not name:
@@ -156,7 +156,8 @@ def repo_load():
 
 @bp.route('/api/repository/delete', methods=['POST'])
 def repo_delete():
-    name = request.values.get('name')
+    jdata = request.get_json(force=True, silent=True) or {}
+    name = jdata.get('name') or request.values.get('name')
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     filename = secure_filename(name)
@@ -225,7 +226,8 @@ def repo_preview():
 def repo_print():
     # Print a saved repository template by name. The server will load the JSON
     # and perform the same printing logic as the /api/print endpoint.
-    name = request.values.get('name') or request.values.get('filename')
+    jdata = request.get_json(force=True, silent=True) or {}
+    name = jdata.get('name') or request.values.get('name')
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     try:

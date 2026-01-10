@@ -1,9 +1,24 @@
 import os
 import json
 import base64
+
+from flask.testing import FlaskClient
 from app.utils import fill_first_line_fields
 from test_labeldesigner_api import verify_image, make_client
 import pytest
+
+
+def _test_repository_save_sample_labels(label: str, client: FlaskClient):
+    # Copy sample label to repository
+    sample_label_path = os.path.join(
+        os.path.dirname(__file__), f'../labels/{label}.json'
+    )
+    with open(sample_label_path, 'r', encoding='utf-8') as f:
+        file = json.load(f)
+        file["name"] = f'{label}.json'
+    save_url = '/labeldesigner/api/repository/save'
+    resp = client.post(save_url, json=file)
+    assert resp.status_code == 200
 
 
 @pytest.mark.parametrize('label', ['EAN-Label', 'QR-Example', 'URGENT-Text'])
@@ -18,7 +33,8 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
         file = json.load(f)
 
     # Save the label
-    save_url = f'/labeldesigner/api/repository/save?name=repo_test_{label}.json'
+    save_url = '/labeldesigner/api/repository/save'
+    file["name"] = f'repo_test_{label}.json'
     resp = client.post(save_url, json=file)
     assert resp.status_code == 200
     data = resp.get_json()
@@ -84,7 +100,7 @@ def test_repository_save_requires_json_and_name(tmp_path):
 
     # Missing JSON payload
     resp = client.post(
-        '/labeldesigner/api/repository/save?name=noname',
+        '/labeldesigner/api/repository/save',
         data='not-json',
         headers={'Content-Type': 'text/plain'}
     )
@@ -96,3 +112,39 @@ def test_repository_save_requires_json_and_name(tmp_path):
         json={'foo': 'bar'}
     )
     assert resp.status_code == 400
+
+
+@pytest.mark.parametrize('label', ['EAN-Label', 'QR-Example'])
+def test_repository_print_success(tmp_path, label: str):
+    client = make_client(tmp_path)
+    _test_repository_save_sample_labels(label, client)
+
+    # Print the stored label (simulator)
+    print_url = '/labeldesigner/api/repository/print'
+    data = {
+        'name': f'{label}.json',
+    }
+    resp = client.post(print_url, json=data)
+    assert resp.status_code == 200
+    assert resp.is_json
+    data = resp.get_json()
+    assert data.get('success') is True
+
+
+def test_repository_print_wrong_label(tmp_path):
+    client = make_client(tmp_path)
+    label = 'URGENT-Text'
+    _test_repository_save_sample_labels(label, client)
+
+    # Attempt to print to an invalid printer path
+    print_url = '/labeldesigner/api/repository/print'
+    data = {
+        'name': f'{label}.json',
+    }
+    resp = client.post(print_url, json=data)
+    assert resp.status_code == 400
+    assert resp.is_json
+    data = resp.get_json()
+    assert 'message' in data
+    assert "Printing in red is not supported with the selected model." in data['message']
+    assert data.get('success') is False

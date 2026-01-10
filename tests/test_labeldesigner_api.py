@@ -716,7 +716,6 @@ class TestLabelDesignerAPI:
         # Check image
         verify_image(response.data, 'security_xss.png')
 
-
     @pytest.mark.parametrize('method', ['put', 'delete', 'patch'])
     def test_invalid_http_methods(self, client: FlaskClient, method):
         func = getattr(client, method)
