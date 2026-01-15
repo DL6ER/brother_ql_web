@@ -740,10 +740,28 @@ function repoSaveCurrent() {
     try { saveAllSettingsToLocalStorage(); } catch (e) { }
     let payload = {};
     try { payload = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { payload = {}; }
-    fetch(url_for_repo_save + '?name=' + encodeURIComponent(name), {
+    payload['repoSaveName'] = name;
+
+    // Build multipart form data so we can include the current image file (if any)
+    const fd = new FormData();
+    // Include a JSON representation of the payload so the server can parse complex fields
+    fd.append('json', JSON.stringify(payload));
+    // Also include repoSaveName as a separate field for backwards compatibility
+    fd.append('repoSaveName', name);
+    // If an image is present in Dropzone, include it as the 'image' file
+    try {
+        if (imageDropZone && imageDropZone.files && imageDropZone.files.length > 0) {
+            const f = imageDropZone.files[0];
+            // Dropzone File may be a Blob with an upload property; use the File object
+            fd.append('image', f, f.name || 'image');
+        }
+    } catch (e) {
+        console.warn('No image to attach to repo save', e);
+    }
+
+    fetch(url_for_repo_save, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: fd
     }).then(r => r.json())
         .then(resp => {
             // consider save successful when server returns explicit success or a saved name
@@ -772,6 +790,29 @@ function repoLoad(name) {
                 localStorage.setItem(LS_KEY, JSON.stringify(data));
             } catch (e) { }
             restoreAllSettingsFromLocalStorage();
+            // If the repository entry includes an embedded image, populate Dropzone
+            try {
+                const img_b64 = data.image_data;
+                const img_mime = data.image_mime || 'image/png';
+                const img_name = data.image_name || data.image || 'image';
+                if (img_b64) {
+                    const dataUrl = 'data:' + img_mime + ';base64,' + img_b64;
+                    fetch(dataUrl)
+                        .then(res => res.blob())
+                        .then(blob => {
+                            const file = new File([blob], img_name, { type: img_mime });
+                            try { imageDropZone.removeAllFiles(true); } catch (e) {}
+                            // Use Dropzone's API to add the file so it is
+                            // processed identically to a user upload.
+                            try {
+                                imageDropZone.addFile(file);
+                            } catch (e) {
+                                console.warn('Failed to populate Dropzone with repository image', e);
+                            }
+                            preview();
+                        }).catch(e => console.warn('Failed to load image blob', e));
+                }
+            } catch (e) { console.warn(e); }
             // close modal
             const modalEl = document.getElementById('repoModal');
             bootstrap.Modal.getInstance(modalEl).hide();
