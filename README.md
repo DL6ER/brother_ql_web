@@ -16,9 +16,9 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 
 ![Barcode](./screenshots/image1.png)
 
-### QR code with text
+### Label repository
 
-![QR code](./screenshots/image2.png)
+![Label repository](./screenshots/image2.png)
 
 ### Image with auto-fit
 
@@ -28,10 +28,6 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 
 ![Supported barcodes](./screenshots/image4.png)
 
-### Automatic printer and label detection
-
-![Automatic printer and label detection](./screenshots/image5.png)
-
 ### Native dark mode
 
 ![Native dark mode](./screenshots/image6.png)
@@ -40,14 +36,11 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 
 ![Template support](./screenshots/image7.png)
 
-### TODO list creation
-
-![TODO list creation](./screenshots/image8.png)
-
 ## New Features
 
 - Automatic printer and label detection
 - Multi-printer support
+- Convenient label repository (save, load, edit and print labels easily)
 - Support for more printers via `brother_ql-inventree` (**new**)
   - QL-500
   - QL-550
