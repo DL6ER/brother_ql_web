@@ -120,7 +120,7 @@ class SimpleLabel:
         # If we are drawing an image, we want to draw text as well if there is
         # at least one line of text with non-empty content
         logger.debug(f"Text content: {self.text}")
-        if self.text and len(self.text[0].get('text', '')) > 0:
+        if self.text and any(line.get('text', '').strip() != '' for line in self.text):
             return True
 
         # Don't draw any text

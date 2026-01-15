@@ -91,10 +91,12 @@ def repo_list():
 
 @bp.route('/api/repository/save', methods=['POST'])
 def repo_save():
-    # Expect a JSON payload and a 'name' form field
+    # Expect JSON payload
     data = request.get_json(force=True, silent=True)
-    name = data.get('name') if data is not None else request.values.get('name') or None
-    if not data:
+    name = None
+    if data is not None:
+        name = data.get('name') or request.values.get('name') or None
+    if data is None:
         return make_response(jsonify({'success': False, 'message': 'No JSON payload provided'}), 400)
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name provided'}), 400)
@@ -104,26 +106,45 @@ def repo_save():
     repo = _get_repo_dir()
     path = os.path.join(repo, filename)
     try:
+        # Extract text properties
         text = data.get('fontSettingsPerLine', [])
         if isinstance(text, str):
             data['text'] = json.loads(text)
+
+        # Accept JSON image payloads that include raw base64 image data in
+        # fields `image_data` (base64 string), `image_mime` and optional
+        # `image_name` so clients can submit images using pure JSON payloads.
+        try:
+            img_b64 = data.get('image_data')
+            if isinstance(img_b64, str) and len(img_b64) > 0:
+                img_mime = data.get('image_mime', 'image/png')
+                ext = {
+                    'image/png': '.png',
+                    'image/jpeg': '.jpg',
+                    'image/jpg': '.jpg',
+                    'image/gif': '.gif',
+                    'application/pdf': '.pdf'
+                }.get(img_mime, '.png')
+                base = os.path.splitext(filename)[0]
+                image_name = secure_filename(data.get('image_name') or (base + '_image' + ext))
+                image_path = os.path.join(repo, image_name)
+                import base64 as _b64
+                with open(image_path, 'wb') as imgfh:
+                    imgfh.write(_b64.b64decode(img_b64))
+                data['image'] = image_name
+        except Exception:
+            current_app.logger.exception('Failed to store base64 image from JSON')
+
+        # Remove raw image data from JSON before saving
+        if 'image_data' in data:
+            del data['image_data']
+
         # Remove redundant information about zeroth line font settings
-        if "font_size" in data:
-            del data['font_size']
-        if "font_inverted" in data:
-            del data['font_inverted']
-        if "font" in data:
-            del data['font']
-        if "font_align" in data:
-            del data['font_align']
-        if "font_checkbox" in data:
-            del data['font_checkbox']
-        if "font_color" in data:
-            del data['font_color']
-        if "line_spacing" in data:
-            del data['line_spacing']
-        if "fontSettingsPerLine" in data:
-            del data['fontSettingsPerLine']
+        for key in ['font_size', 'font_inverted', 'font', 'font_align', 'font_checkbox', 'font_color', 'line_spacing', 'fontSettingsPerLine']:
+            if key in data:
+                del data[key]
+
+        # Finally, save the JSON file
         with open(path, 'w', encoding='utf-8') as fh:
             json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
     except Exception as e:
@@ -148,6 +169,33 @@ def repo_load():
         text = data.get('text', [])
         data['text'] = json.dumps(text)
         data = fill_first_line_fields(text, data)
+        # If the saved JSON references an image file, include the image as
+        # base64 in the response so the frontend can populate the
+        # Dropzone control when loading a template.
+        try:
+            image_ref = data.get('image')
+            if isinstance(image_ref, str) and len(image_ref) > 0:
+                repo = _get_repo_dir()
+                image_path = os.path.join(repo, secure_filename(image_ref))
+                if os.path.exists(image_path):
+                    import base64 as _b64
+                    with open(image_path, 'rb') as imgfh:
+                        b = imgfh.read()
+                    # Guess mime from extension
+                    _, ext = os.path.splitext(image_path)
+                    ext = ext.lower()
+                    mime = {
+                        '.png': 'image/png',
+                        '.jpg': 'image/jpeg',
+                        '.jpeg': 'image/jpeg',
+                        '.gif': 'image/gif',
+                        '.pdf': 'application/pdf'
+                    }.get(ext, 'application/octet-stream')
+                    data['image_name'] = image_ref
+                    data['image_mime'] = mime
+                    data['image_data'] = _b64.b64encode(b).decode('ascii')
+        except Exception:
+            current_app.logger.exception('Failed to include repository image in load response')
         return data
     except Exception as e:
         current_app.logger.exception(e)
@@ -167,6 +215,17 @@ def repo_delete():
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
     try:
         os.remove(path)
+        # Also remove any associated image files stored alongside the JSON
+        try:
+            base = os.path.splitext(filename)[0]
+            for f in os.listdir(repo):
+                if f.startswith(base + '_image'):
+                    try:
+                        os.remove(os.path.join(repo, f))
+                    except Exception:
+                        current_app.logger.exception(f'Failed to remove associated image {f}')
+        except Exception:
+            current_app.logger.exception('Failed to cleanup associated images')
         return {'success': True}
     except Exception as e:
         current_app.logger.exception(e)
@@ -497,7 +556,33 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
     uploaded = files.get('image', None)
-    image = get_uploaded_image(uploaded) if uploaded is not None else None
+    image = None
+    if uploaded is not None:
+        image = get_uploaded_image(uploaded)
+    else:
+        # If no uploaded FileStorage was provided but the data references an
+        # image filename (stored in repository), attempt to load it from the
+        # repository directory and convert it consistent with uploaded images.
+        image_ref = d.get('image')
+        if isinstance(image_ref, str) and len(image_ref) > 0:
+            try:
+                repo = _get_repo_dir()
+                image_path = os.path.join(repo, secure_filename(image_ref))
+                if os.path.exists(image_path):
+                    # Open image file with PIL
+                    with open(image_path, 'rb') as fh:
+                        pil_img = imgfile_to_image(fh)
+                    # Apply same conversions as get_uploaded_image would
+                    if context['image_mode'] == 'grayscale':
+                        image = convert_image_to_grayscale(pil_img)
+                    elif context['image_mode'] == 'red_and_black':
+                        image = convert_image_to_red_and_black(pil_img)
+                    elif context['image_mode'] == 'colored':
+                        image = pil_img
+                    else:
+                        image = convert_image_to_bw(pil_img, context['image_bw_threshold'])
+            except Exception:
+                current_app.logger.exception('Failed to load repository image')
 
     return SimpleLabel(
         width=width,

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from PIL import Image
-from io import BytesIO
+from io import BufferedReader, BytesIO
 from PIL.ImageOps import colorize
 from flask import current_app
 from pdf2image import convert_from_bytes
@@ -29,9 +29,12 @@ def convert_image_to_red_and_black(image: Image.Image,
                     blackpoint=blackpoint, whitepoint=whitepoint, midpoint=redpoint)
 
 
-def imgfile_to_image(file: FileStorage) -> Image.Image:
+def imgfile_to_image(file: FileStorage | BufferedReader) -> Image.Image:
     s = BytesIO()
-    file.save(s)
+    if isinstance(file, BufferedReader):
+        s.write(file.read())
+    else:
+        file.save(s)
     im = Image.open(s)
     return im
 
