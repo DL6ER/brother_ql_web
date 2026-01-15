@@ -93,12 +93,9 @@ def repo_list():
 def repo_save():
     # Expect JSON payload
     data = request.get_json(force=True, silent=True)
-    # Accept either 'repoSaveName' (frontend) or 'name' (tests/sample files)
     name = None
     if data is not None:
-        name = data.get('repoSaveName') or data.get('name')
-    if not name:
-        name = request.values.get('repoSaveName') or request.values.get('name') or None
+        name = data.get('name') or request.values.get('name') or None
     if data is None:
         return make_response(jsonify({'success': False, 'message': 'No JSON payload provided'}), 400)
     if not name:

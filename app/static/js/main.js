@@ -740,42 +740,63 @@ function repoSaveCurrent() {
     try { saveAllSettingsToLocalStorage(); } catch (e) { }
     let payload = {};
     try { payload = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { payload = {}; }
-    payload['repoSaveName'] = name;
+    payload['name'] = name;
 
-    // Build multipart form data so we can include the current image file (if any)
-    const fd = new FormData();
-    // Include a JSON representation of the payload so the server can parse complex fields
-    fd.append('json', JSON.stringify(payload));
-    // Also include repoSaveName as a separate field for backwards compatibility
-    fd.append('repoSaveName', name);
-    // If an image is present in Dropzone, include it as the 'image' file
+    // If an image is present in Dropzone, encode it as base64 and include
+    // it in the JSON payload so the server can accept pure JSON saves.
+    function sendJsonPayload(p) {
+        fetch(url_for_repo_save, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p)
+        }).then(r => r.json())
+            .then(resp => {
+                if (resp && (resp.success || resp.name)) {
+                    try { $('#repoSaveName').val(''); } catch (e) {}
+                    loadRepositoryList();
+                } else {
+                    alert('Save failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
+                }
+            }).catch(e => {
+                console.error(e);
+                alert('Save failed');
+            });
+    }
+
     try {
         if (imageDropZone && imageDropZone.files && imageDropZone.files.length > 0) {
             const f = imageDropZone.files[0];
-            // Dropzone File may be a Blob with an upload property; use the File object
-            fd.append('image', f, f.name || 'image');
+            // Use FileReader to read the file as data URL
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                try {
+                    const dataUrl = e.target.result;
+                    const comma = dataUrl.indexOf(',');
+                    const header = dataUrl.substring(5, comma); // e.g. image/jpeg;base64
+                    const mime = header.split(';')[0];
+                    const b64 = dataUrl.substring(comma + 1);
+                    payload['image_data'] = b64;
+                    payload['image_mime'] = mime;
+                    payload['image_name'] = f.name || 'image';
+                } catch (err) {
+                    console.warn('Failed to extract base64 from FileReader result', err);
+                }
+                sendJsonPayload(payload);
+            };
+            reader.onerror = function (err) {
+                console.warn('Failed to read image for repo save', err);
+                // fallback: send JSON without image
+                sendJsonPayload(payload);
+            };
+            reader.readAsDataURL(f);
+            return;
         }
     } catch (e) {
         console.warn('No image to attach to repo save', e);
     }
 
-    fetch(url_for_repo_save, {
-        method: 'POST',
-        body: fd
-    }).then(r => r.json())
-        .then(resp => {
-            // consider save successful when server returns explicit success or a saved name
-            if (resp && (resp.success || resp.name)) {
-                // clear the input field and reload list
-                try { $('#repoSaveName').val(''); } catch (e) {}
-                loadRepositoryList();
-            } else {
-                alert('Save failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
-            }
-        }).catch(e => {
-            console.error(e);
-            alert('Save failed');
-        });
+    // No image — send JSON payload directly
+    sendJsonPayload(payload);
 }
 
 function repoLoad(name) {

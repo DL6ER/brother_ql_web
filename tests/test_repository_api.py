@@ -148,3 +148,80 @@ def test_repository_print_wrong_label(tmp_path):
     assert 'message' in data
     assert "Printing in red is not supported with the selected model." in data['message']
     assert data.get('success') is False
+
+
+def test_save_image_restore_other_and_print(tmp_path):
+    client = make_client(tmp_path)
+
+    # Save another sample label to restore later
+    sample_b_path = os.path.join(os.path.dirname(__file__), '../labels/EAN-Label.json')
+    with open(sample_b_path, 'r', encoding='utf-8') as fh:
+        label_b = json.load(fh)
+    label_b['name'] = 'repo_other.json'
+    resp = client.post('/labeldesigner/api/repository/save', json=label_b)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data.get('success') is True
+
+    # Prepare and save a label that includes a demo image as base64 in JSON
+    sample_a_path = os.path.join(os.path.dirname(__file__), '../labels/Kopie-vorab.json')
+    with open(sample_a_path, 'r', encoding='utf-8') as fh:
+        label_a = json.load(fh)
+
+    # Read demo image
+    demo_img_path = os.path.join(os.path.dirname(__file__), '../labels/Kopie-vorab_image.png')
+    with open(demo_img_path, 'rb') as imgfh:
+        img_b = imgfh.read()
+
+    label_a['name'] = 'repo_image.json'
+    label_a['image_data'] = base64.b64encode(img_b).decode('ascii')
+    label_a['image_mime'] = 'image/png'
+    label_a['image_name'] = 'repo_image_image.png'
+
+    resp = client.post('/labeldesigner/api/repository/save', json=label_a)
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data.get('success') is True
+
+    # Restore/load the other label
+    resp = client.get('/labeldesigner/api/repository/load?name=repo_other.json')
+
+    # Preview the stored label (base64) - this test should NOT return the other
+    # label
+    preview_url = (
+        '/labeldesigner/api/repository/preview?'
+        'name=repo_image.json&return_format=base64'
+    )
+    resp = client.get(preview_url)
+    assert resp.status_code == 200
+    # Should return base64 text
+    b64 = resp.get_data()
+    # decode and check PNG header
+    decoded = base64.b64decode(b64)
+    assert decoded.startswith(b"\x89PNG\r\n\x1a\n")
+    # Verify image preview
+    verify_image(decoded, 'repo_image.png')
+    assert resp.status_code == 200
+
+    # Preview the other label to ensure it's different
+    preview_url = (
+        '/labeldesigner/api/repository/preview?'
+        'name=repo_other.json&return_format=base64'
+    )
+    resp = client.get(preview_url)
+    assert resp.status_code == 200
+    # Should return base64 text
+    b64 = resp.get_data()
+    # decode and check PNG header
+    decoded = base64.b64decode(b64)
+    assert decoded.startswith(b"\x89PNG\r\n\x1a\n")
+    # Verify image preview
+    verify_image(decoded, 'repo_other.png')
+    assert resp.status_code == 200
+
+    # Now print the image label using the repository print endpoint
+    resp = client.post('/labeldesigner/api/repository/print', json={'name': 'repo_image.json'})
+    assert resp.status_code == 200
+    assert resp.is_json
+    data = resp.get_json()
+    assert data.get('success') is True
