@@ -135,6 +135,10 @@ def repo_save():
         except Exception:
             current_app.logger.exception('Failed to store base64 image from JSON')
 
+        # Remove raw image data from JSON before saving
+        if 'image_data' in data:
+            del data['image_data']
+
         # Remove redundant information about zeroth line font settings
         for key in ['font_size', 'font_inverted', 'font', 'font_align', 'font_checkbox', 'font_color', 'line_spacing', 'fontSettingsPerLine']:
             if key in data:
