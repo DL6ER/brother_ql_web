@@ -641,9 +641,9 @@ function saveAllSettingsToLocalStorage() {
             const dataUrl = imageDropZone.files[0].dataURL;
             const parsed = parseDataUrl(dataUrl);
             if (parsed.b64) {
-                const imagHash = generateHash(parsed.b64);
-                _saveImageToDB(imagHash, parsed.mime, parsed.b64).catch(e => console.debug('Failed saving image to IndexedDB', e));
-                data['image_ref'] = imagHash;
+                const imageHash = generateHash(parsed.b64);
+                _saveImageToDB(imageHash, parsed.mime, parsed.b64).catch(e => console.debug('Failed saving image to IndexedDB', e));
+                data['image_ref'] = imageHash;
                 data['image_mime'] = parsed.mime;
                 data['image_name'] = f.name || 'image';
             }
@@ -734,27 +734,35 @@ function restoreAllSettingsFromLocalStorage() {
     }
 
     // If image data is available (embedded) populate Dropzone, otherwise try IndexedDB by image_ref
+    let imageRestorePromise = Promise.resolve();
     try {
         if (data.image_ref) {
             // try to retrieve from IndexedDB
-            _getImageFromDB(data.image_ref).then(record => {
+            imageRestorePromise = _getImageFromDB(data.image_ref).then(record => {
                 if (record && record.b64) {
                     const dataUrl = 'data:' + (record.mime || 'image/png') + ';base64,' + record.b64;
-                    fetch(dataUrl)
+                    return fetch(dataUrl)
                         .then(res => res.blob())
                         .then(blob => {
                             const file = new File([blob], data.image_name || 'image', { type: record.mime || 'image/png' });
                             try { imageDropZone.removeAllFiles(true); } catch (e) { }
                             try { imageDropZone.addFile(file); } catch (e) { }
-                        }).catch(e => console.debug('Failed to fetch blob from IndexedDB dataUrl', e));
+                        }).catch(e => {
+                            console.debug('Failed to fetch blob from IndexedDB dataUrl', e);
+                        });
                 }
-            }).catch(e => console.debug('Failed to read image from IndexedDB', e));
+            }).catch(e => {
+                console.debug('Failed to read image from IndexedDB', e);
+            });
         }
     } catch (e) {
         console.debug('No image to restore from storage', e);
     }
-    // Trigger preview after restore
-    setTimeout(() => { preview(); current_restoring = false; }, 100);
+    // Trigger preview after restore (after image restoration promise settles)
+    imageRestorePromise.finally(() => {
+        preview();
+        current_restoring = false;
+    });
 }
 
 // --- Repository UI functions ---------------------------------------------------------
@@ -1097,11 +1105,17 @@ function init2() {
 };
 
 // Simple hash function to generate a hash from a string
+// Uses a 64-bit FNV-1a style hash implemented with BigInt to reduce collision probability
 const generateHash = (string) => {
-    let hash = 0;
-    for (const char of string) {
-        hash = (hash << 5) - hash + char.charCodeAt(0);
-        hash |= 0; // Constrain to 32bit integer
+    const FNV_OFFSET_BASIS = 14695981039346656037n; // 64-bit offset basis
+    const FNV_PRIME = 1099511628211n;               // 64-bit FNV prime
+    let hash = FNV_OFFSET_BASIS;
+
+    for (let i = 0; i < string.length; i++) {
+        hash ^= BigInt(string.charCodeAt(i));
+        hash *= FNV_PRIME;
+        // Constrain to 64 bits
+        hash &= (1n << 64n) - 1n;
     }
     // Return as base36 string
     return hash.toString(36);
