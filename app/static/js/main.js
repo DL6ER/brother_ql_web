@@ -629,8 +629,7 @@ function saveAllSettingsToLocalStorage() {
             const dataUrl = imageDropZone.files[0].dataURL;
             const parsed = parseDataUrl(dataUrl);
             if (parsed.b64) {
-                const imagHash = 'img_' + generateHash(parsed.b64);
-                // fire-and-forget save into IndexedDB
+                const imagHash = generateHash(parsed.b64);
                 _saveImageToDB(imagHash, parsed.mime, parsed.b64).catch(e => console.debug('Failed saving image to IndexedDB', e));
                 data['image_ref'] = imagHash;
                 data['image_mime'] = parsed.mime;
@@ -1085,11 +1084,13 @@ function init2() {
     preview();
 };
 
+// Simple hash function to generate a hash from a string
 const generateHash = (string) => {
     let hash = 0;
     for (const char of string) {
         hash = (hash << 5) - hash + char.charCodeAt(0);
         hash |= 0; // Constrain to 32bit integer
     }
-    return hash;
+    // Return as base36 string
+    return hash.toString(36);
 };
