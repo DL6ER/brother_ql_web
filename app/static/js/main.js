@@ -40,10 +40,22 @@ function _saveImageToDB(id, mime, b64) {
     return _openImageDB().then(db => new Promise((resolve, reject) => {
         const tx = db.transaction('images', 'readwrite');
         const store = tx.objectStore('images');
-        const req = store.put({ mime, b64 }, id);
+        // Use add() so we don't overwrite an existing entry with the same id.
+        const req = store.add({ mime, b64 }, id);
         req.onsuccess = () => { db.close(); resolve(true); };
-        req.onerror = (e) => { db.close(); reject(e.target.error); };
-    }));
+        req.onerror = (e) => {
+            const err = e && e.target && e.target.error;
+            // If the key already exists, add() will throw a ConstraintError —
+            // in that case we resolve(false) to indicate we did not change the DB.
+            if (err && err.name === 'ConstraintError') {
+                db.close();
+                resolve(false);
+            } else {
+                db.close();
+                reject(err);
+            }
+        };
+    })).catch(() => null);
 }
 
 function _getImageFromDB(id) {
