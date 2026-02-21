@@ -1,3 +1,55 @@
+// --- Printer Power Button (Home Assistant integration) ---
+function updatePrinterPowerStatus() {
+    fetch('/api/printer_power/status')
+        .then(r => r.json())
+        .then(data => {
+            const btn = document.getElementById('printerPowerBtn');
+            const icon = document.getElementById('printerPowerIcon');
+            const status = document.getElementById('printerPowerStatus');
+            if (data.state === 'on') {
+                icon.classList.remove('fa-plug', 'text-danger');
+                icon.classList.add('fa-bolt', 'text-success');
+                status.textContent = 'On';
+                btn.classList.remove('btn-outline-info');
+                btn.classList.add('btn-success');
+            } else if (data.state === 'off') {
+                icon.classList.remove('fa-bolt', 'text-success');
+                icon.classList.add('fa-plug', 'text-danger');
+                status.textContent = 'Off';
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-info');
+            } else {
+                icon.classList.remove('fa-bolt', 'fa-plug', 'text-success', 'text-danger');
+                status.textContent = 'Unknown';
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-info');
+            }
+        })
+        .catch(() => {
+            const btn = document.getElementById('printerPowerBtn');
+            const icon = document.getElementById('printerPowerIcon');
+            const status = document.getElementById('printerPowerStatus');
+            icon.classList.remove('fa-bolt', 'fa-plug', 'text-success', 'text-danger');
+            status.textContent = 'Error';
+            btn.classList.remove('btn-success');
+            btn.classList.add('btn-outline-info');
+        });
+}
+
+function togglePrinterPower() {
+    fetch('/api/printer_power/toggle', { method: 'POST' })
+        .then(r => r.json())
+        .then(() => setTimeout(updatePrinterPowerStatus, 1000));
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('printerPowerBtn');
+    if (btn) {
+        btn.addEventListener('click', togglePrinterPower);
+        updatePrinterPowerStatus();
+        setInterval(updatePrinterPowerStatus, 5000);
+    }
+});
 // Global printer status object to be populated from the API
 var printer_status = {
     'errors': [],
@@ -598,7 +650,7 @@ async function getPrinterStatus() {
             data.printers.forEach((p) => {
                 const opt = document.createElement('option');
                 opt.value = p.path || '';
-                const displayPath = p.path? p.path.replace(/file:\/\//g, '' ) : '';
+                const displayPath = p.path ? p.path.replace(/file:\/\//g, '') : '';
                 opt.textContent = (p.model || 'Unknown') + ' @ ' + displayPath;
                 select.appendChild(opt);
             });
@@ -883,7 +935,7 @@ function repoSaveCurrent() {
         }).then(r => r.json())
             .then(resp => {
                 if (resp && (resp.success || resp.name)) {
-                    try { $('#repoSaveName').val(''); } catch (e) {}
+                    try { $('#repoSaveName').val(''); } catch (e) { }
                     loadRepositoryList();
                 } else {
                     alert('Save failed: ' + (resp && resp.message ? resp.message : 'Unknown'));
@@ -952,7 +1004,7 @@ function repoLoad(name) {
                         .then(res => res.blob())
                         .then(blob => {
                             const file = new File([blob], img_name, { type: img_mime });
-                            try { imageDropZone.removeAllFiles(true); } catch (e) {}
+                            try { imageDropZone.removeAllFiles(true); } catch (e) { }
                             // Use Dropzone's API to add the file so it is
                             // processed identically to a user upload.
                             try {

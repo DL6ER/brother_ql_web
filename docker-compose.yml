@@ -12,6 +12,10 @@ services:
       - LABEL_DEFAULT_ORIENTATION=standard
       - PRINTER_MODEL=QL-800
       - PRINTER_PRINTER=file:///dev/usb/lp0
+      # Home Assistant integration for printer power control
+      - HOMEASSISTANT_API_URL=http://homeassistant.local:8123/api
+      - HOMEASSISTANT_API_KEY=your_long_lived_access_token
+      - HOMEASSISTANT_PRINTER_ENTITY_ID=switch.label_printer_plug
 #    devices:
 #      - "/dev/usb/lp0:/dev/usb/lp0"
     volumes:

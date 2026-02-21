@@ -41,6 +41,10 @@ def create_app(config_class=Config) -> Flask:
     from app.errors import bp as errors_bp
     app.register_blueprint(errors_bp)
 
+    # Register printer power control API
+    from app.printer_power import bp as printer_power_bp
+    app.register_blueprint(printer_power_bp)
+
     return app
 
 

@@ -1,19 +1,25 @@
 {% block doc -%}
 <!DOCTYPE html>
 <html{% block html_attribs %}{% endblock html_attribs %}>
-{%- block html %}
+    {%- block html %}
+
     <head>
         {%- block metas %}
         <!-- Required meta tags -->
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
         <meta name="msapplication-TileColor" content="#ffffff">
-        <meta name="msapplication-TileImage" content="{{url_for('static', filename='images/favicon/ms-icon-144x144.png')}}">
+        <meta name="msapplication-TileImage"
+            content="{{url_for('static', filename='images/favicon/ms-icon-144x144.png')}}">
         <meta name="theme-color" content="#ffffff">
-        <link rel="apple-touch-icon" sizes="57x57" href="{{url_for('static', filename='images/favicon/apple-icon-57x57.png')}}">
-        <link rel="apple-touch-icon" sizes="60x60" href="{{url_for('static', filename='images/favicon/apple-icon-60x60.png')}}">
-        <link rel="apple-touch-icon" sizes="72x72" href="{{url_for('static', filename='images/favicon/apple-icon-72x72.png')}}">
-        <link rel="apple-touch-icon" sizes="76x76" href="{{url_for('static', filename='images/favicon/apple-icon-76x76.png')}}">
+        <link rel="apple-touch-icon" sizes="57x57"
+            href="{{url_for('static', filename='images/favicon/apple-icon-57x57.png')}}">
+        <link rel="apple-touch-icon" sizes="60x60"
+            href="{{url_for('static', filename='images/favicon/apple-icon-60x60.png')}}">
+        <link rel="apple-touch-icon" sizes="72x72"
+            href="{{url_for('static', filename='images/favicon/apple-icon-72x72.png')}}">
+        <link rel="apple-touch-icon" sizes="76x76"
+            href="{{url_for('static', filename='images/favicon/apple-icon-76x76.png')}}">
         <link rel="apple-touch-icon" sizes="114x114"
             href="{{url_for('static', filename='images/favicon/apple-icon-114x114.png')}}">
         <link rel="apple-touch-icon" sizes="120x120"
@@ -32,7 +38,8 @@
             href="{{url_for('static', filename='images/favicon/favicon-96x96.png')}}">
         <link rel="icon" type="image/png" sizes="16x16"
             href="{{url_for('static', filename='images/favicon/favicon-16x16.png')}}">
-        <link rel="shortcut icon" type="image/x-icon" href="{{url_for('static', filename='images/favicon/favicon.ico')}}">
+        <link rel="shortcut icon" type="image/x-icon"
+            href="{{url_for('static', filename='images/favicon/favicon.ico')}}">
         <link rel="manifest" href="{{url_for('static', filename='images/favicon/manifest.json')}}">
         {%- endblock metas %}
         {%- block head %}
@@ -50,55 +57,68 @@
         {%- endblock head %}
     </head>
     <body{% block body_attribs %}{% endblock body_attribs %}>
-    {% block body -%}
-    {% block navbar %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark" id="mainNavbar">
-        <div class="container">
-            <a class="navbar-brand" href="#">Label Designer</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarContent">
-                <ul class="navbar-nav ms-auto d-flex align-items-center" style="width: 100%;">
-                    <li class="nav-item">
-                        <a class="nav-link" href="https://github.com/DL6ER/brother_ql_web" target="_blank"><i class="fab fa-github"></i> Source code</a>
-                    </li>
-                    <li class="m-1 align-items-center">
-                        <button id="resetSettings" class="btn btn-danger btn-sm" title="Reset label"><span
-                                class="fas fa-trash"></span>
-                            Reset</button>
-                    </li>
-                    <li class="m-1 align-items-center">
-                        <button id="undoSettingsBtn" class="btn btn-warning btn-sm position-relative" disabled>
-                            <i class="fas fa-undo"></i>
-                            Undo
-                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
-                                <span id="undoCounter">0</span>
-                            <span class="visually-hidden">undo steps available</span>
-                        </span>
-                        </button>
-                    </li>
-                    <li class="m-1 align-items-center">
-                        <button id="openRepoBtn" class="btn btn-secondary" type="button">Repository</button>
-                    </li>
-                    <li class="nav-item d-flex align-items-center ms-auto me-3">
-                        <span class="nav-link pr-2 d-flex align-items-center gap-2 justify-content-end">
-                            <span class="fas fa-print" aria-hidden="true" id="printerIcon"></span>
-                            <label for="printer" class="form-label mb-0 me-2" style="font-size:0.9rem; color:var(--bs-body-color);">Printer:</label>
-                            <select id="printer" class="form-select form-select-sm" onchange="preview()" style="min-width:220px">
-                                <!-- populated dynamically -->
-                            </select>
-                        </span>
-                    </li>
-                    <li class="nav-item position-absolute end-0 top-0 mt-2 me-4" style="z-index: 1050;">
-                        <div id="darkModeToggle" style="cursor: pointer; font-size: 1.6em; color: #fff;" title="Toggle dark mode">
-                            <span id="darkModeIcon" style="transition: color 0.2s;"></span>
-                        </div>
-                    </li>
-                </ul>
+        {% block body -%}
+        {% block navbar %}
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark" id="mainNavbar">
+            <div class="container">
+                <a class="navbar-brand" href="#">Label Designer</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
+                    aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarContent">
+                    <ul class="navbar-nav ms-auto d-flex align-items-center" style="width: 100%;">
+                        <li class="nav-item">
+                            <a class="nav-link" href="https://github.com/DL6ER/brother_ql_web" target="_blank"><i
+                                    class="fab fa-github"></i> Source code</a>
+                        </li>
+                        <li class="m-1 align-items-center">
+                            <button id="printerPowerBtn" class="btn btn-outline-info btn-sm d-flex align-items-center"
+                                type="button" title="Toggle printer power">
+                                <span id="printerPowerIcon" class="fas fa-plug me-2"></span>
+                                <span id="printerPowerStatus">...</span>
+                            </button>
+                        </li>
+                        <li class="m-1 align-items-center">
+                            <button id="resetSettings" class="btn btn-danger btn-sm" title="Reset label"><span
+                                    class="fas fa-trash"></span>
+                                Reset</button>
+                        </li>
+                        <li class="m-1 align-items-center">
+                            <button id="undoSettingsBtn" class="btn btn-warning btn-sm position-relative" disabled>
+                                <i class="fas fa-undo"></i>
+                                Undo
+                                <span
+                                    class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
+                                    <span id="undoCounter">0</span>
+                                    <span class="visually-hidden">undo steps available</span>
+                                </span>
+                            </button>
+                        </li>
+                        <li class="m-1 align-items-center">
+                            <button id="openRepoBtn" class="btn btn-secondary" type="button">Repository</button>
+                        </li>
+                        <li class="nav-item d-flex align-items-center ms-auto me-3">
+                            <span class="nav-link pr-2 d-flex align-items-center gap-2 justify-content-end">
+                                <span class="fas fa-print" aria-hidden="true" id="printerIcon"></span>
+                                <label for="printer" class="form-label mb-0 me-2"
+                                    style="font-size:0.9rem; color:var(--bs-body-color);">Printer:</label>
+                                <select id="printer" class="form-select form-select-sm" onchange="preview()"
+                                    style="min-width:220px">
+                                    <!-- populated dynamically -->
+                                </select>
+                            </span>
+                        </li>
+                        <li class="nav-item position-absolute end-0 top-0 mt-2 me-4" style="z-index: 1050;">
+                            <div id="darkModeToggle" style="cursor: pointer; font-size: 1.6em; color: #fff;"
+                                title="Toggle dark mode">
+                                <span id="darkModeIcon" style="transition: color 0.2s;"></span>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
             </div>
-        </div>
-    </nav>
+        </nav>
         {%- endblock navbar %}
         {% block content -%}
         <div class="container">
@@ -107,19 +127,20 @@
         </div>
         {%- endblock content %}
 
-    {% block scripts %}
-    <script src="{{url_for('static', filename='js/bootstrap.bundle.min.js')}}"></script>
-    <script src="{{url_for('static', filename='js/jquery-3.7.1.min.js')}}"></script>
-    <script src="{{url_for('static', filename='js/dropzone-min.js')}}"></script>
-    <script src="{{url_for('static', filename='js/darkmode.js')}}"></script>
-    <script type="text/javascript">
-        {% block javascript %} {% endblock %}
-    </script>
-    <script src="{{url_for('static', filename='js/utils.js')}}"></script>
-    <script src="{{url_for('static', filename='js/main.js')}}"></script>
-    {%- endblock scripts %}
-    {%- endblock body %}
-    </body>
-{%- endblock html %}    
-</html>
-{% endblock doc -%}
+        {% block scripts %}
+        <script src="{{url_for('static', filename='js/bootstrap.bundle.min.js')}}"></script>
+        <script src="{{url_for('static', filename='js/jquery-3.7.1.min.js')}}"></script>
+        <script src="{{url_for('static', filename='js/dropzone-min.js')}}"></script>
+        <script src="{{url_for('static', filename='js/darkmode.js')}}"></script>
+        <script type="text/javascript">
+            {% block javascript %} {% endblock %}
+        </script>
+        <script src="{{url_for('static', filename='js/utils.js')}}"></script>
+        <script src="{{url_for('static', filename='js/main.js')}}"></script>
+        {%- endblock scripts %}
+        {%- endblock body %}
+        </body>
+        {%- endblock html %}
+
+        </html>
+        {% endblock doc -%}
