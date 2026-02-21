@@ -44,26 +44,32 @@ jobs:
         id: tags
         run: |
           TAGS=""
+          TAGNAME=""
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v && "${GITHUB_REF_PROTECTED}" == "true" ]]; then
-              # Release tag on main branch
               TAGS="ghcr.io/wieluk/brother-ql-web:latest,ghcr.io/wieluk/brother-ql-web:${GITHUB_REF_NAME}"
+              TAGNAME="latest"
             elif [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
               if [[ "${GITHUB_REF_NAME}" == "master" ]]; then
                 TAGS="ghcr.io/wieluk/brother-ql-web:latest"
+                TAGNAME="latest"
               elif [[ "${GITHUB_REF_NAME}" != "main" ]]; then
                 TAGS="ghcr.io/wieluk/brother-ql-web:${GITHUB_REF_NAME}"
+                TAGNAME="${GITHUB_REF_NAME}"
               fi
             fi
           elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
             BRANCH="${GITHUB_REF_NAME}"
             if [[ "$BRANCH" != "master" && "$BRANCH" != "main" && ! "$BRANCH" =~ ^v ]]; then
               TAGS="ghcr.io/wieluk/brother-ql-web:${BRANCH}"
+              TAGNAME="$BRANCH"
             elif [[ "$BRANCH" == "master" ]]; then
               TAGS="ghcr.io/wieluk/brother-ql-web:latest"
+              TAGNAME="latest"
             fi
           fi
           echo "tags=$TAGS" >> $GITHUB_OUTPUT
+          echo "tagname=$TAGNAME" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
         if: steps.tags.outputs.tags != ''
@@ -74,6 +80,25 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+
+      - name: Cleanup old image versions for tag
+        if: steps.tags.outputs.tags != ''
+        env:
+          GHCR_REPO: wieluk/brother-ql-web
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAGNAME: ${{ steps.tags.outputs.tagname }}
+        run: |
+          # Install gh CLI and jq
+          sudo apt-get update && sudo apt-get install -y gh jq
+          echo $GH_TOKEN | gh auth login --with-token
+          # Get all versions for the tag
+          VERSIONS=$(gh api "/orgs/wieluk/packages/container/brother-ql-web/versions" --paginate | jq -r ".[] | select(.metadata.container.tags[]? == \"$TAGNAME\") | .id")
+          # Keep only the latest version, delete the rest
+          KEEP=$(echo "$VERSIONS" | head -n1)
+          DELETE=$(echo "$VERSIONS" | tail -n +2)
+          for id in $DELETE; do
+            gh api -X DELETE "/orgs/wieluk/packages/container/brother-ql-web/versions/$id"
+          done
 
   cleanup-ghcr:
     if: github.event_name == 'delete' && github.event.ref_type == 'branch'
