@@ -36,6 +36,6 @@ jobs:
           file: Dockerfile
           push: true
           tags: |
-            ghcr.io/dl6er/brother-ql-web:latest
-            ghcr.io/dl6er/brother-ql-web:${{ github.ref_name }}
+            ghcr.io/wieluk/brother-ql-web:latest
+            ghcr.io/wieluk/brother-ql-web:${{ github.ref_name }}
           platforms: linux/amd64,linux/arm64
