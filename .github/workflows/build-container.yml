@@ -80,6 +80,8 @@ jobs:
           push: true
           tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Cleanup old image versions for tag
         if: steps.tags.outputs.tags != ''
