@@ -2,12 +2,23 @@ name: Build and Push release tag to GHCR.io
 
 on:
   push:
+    branches:
+      - '**'
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      build_branch:
+        description: 'Build image for current branch (not main/master or tag)'
+        required: false
+        default: ''
+  delete:
+    branches:
+      - '**'
 
 jobs:
   build-and-push:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -29,13 +40,61 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set Docker tags
+        id: tags
+        run: |
+          TAGS=""
+          if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
+            if [[ "${GITHUB_REF_TYPE}" == "tag" && "${GITHUB_REF_NAME}" =~ ^v && "${GITHUB_REF_PROTECTED}" == "true" ]]; then
+              # Release tag on main branch
+              TAGS="ghcr.io/wieluk/brother-ql-web:latest,ghcr.io/wieluk/brother-ql-web:${GITHUB_REF_NAME}"
+            elif [[ "${GITHUB_REF_TYPE}" == "branch" ]]; then
+              if [[ "${GITHUB_REF_NAME}" == "master" ]]; then
+                TAGS="ghcr.io/wieluk/brother-ql-web:latest"
+              elif [[ "${GITHUB_REF_NAME}" != "main" ]]; then
+                TAGS="ghcr.io/wieluk/brother-ql-web:${GITHUB_REF_NAME}"
+              fi
+            fi
+          elif [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            BRANCH="${GITHUB_REF_NAME}"
+            if [[ "$BRANCH" != "master" && "$BRANCH" != "main" && ! "$BRANCH" =~ ^v ]]; then
+              TAGS="ghcr.io/wieluk/brother-ql-web:${BRANCH}"
+            elif [[ "$BRANCH" == "master" ]]; then
+              TAGS="ghcr.io/wieluk/brother-ql-web:latest"
+            fi
+          fi
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
+        if: steps.tags.outputs.tags != ''
         uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           push: true
-          tags: |
-            ghcr.io/wieluk/brother-ql-web:latest
-            ghcr.io/wieluk/brother-ql-web:${{ github.ref_name }}
+          tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
+
+  cleanup-ghcr:
+    if: github.event_name == 'delete' && github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Delete GHCR image tag for deleted branch
+        env:
+          GHCR_REPO: ghcr.io/wieluk/brother-ql-web
+          BRANCH: ${{ github.event.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Deleting GHCR image tag for branch: $BRANCH"
+          # Install gh CLI
+          sudo apt-get update && sudo apt-get install -y gh
+          echo $GH_TOKEN | gh auth login --with-token
+          # Delete the tag (ignore errors if not found)
+          gh api -X DELETE \
+            "/orgs/wieluk/packages/container/brother-ql-web/versions" \
+            --paginate \
+            | jq -r '.[] | select(.metadata.container.tags[]? == env.BRANCH) | .id' \
+            | xargs -r -I{{}} gh api -X DELETE "/orgs/wieluk/packages/container/brother-ql-web/versions/{{}}"
