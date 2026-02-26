@@ -236,6 +236,24 @@ function formData(cut_once = false) {
         data['printer'] = printerSelect.value;
     }
 
+    // Include model of the selected printer so the server uses the correct
+    // raster settings (e.g. cutting support). Without this it falls back to
+    // the configured default model which is 'QL-500' — the only model that
+    // does NOT support cutting, causing cutting to silently do nothing.
+    const modelFromPrinter = (() => {
+        if (printerSelect && printerSelect.value && window.available_printers) {
+            const p = window.available_printers.find(p => p.path === printerSelect.value);
+            if (p && p.model && p.model !== 'Unknown') return p.model;
+        }
+        if (printer_status && printer_status.model && printer_status.model !== 'Unknown') {
+            return printer_status.model;
+        }
+        return null;
+    })();
+    if (modelFromPrinter) {
+        data['model'] = modelFromPrinter;
+    }
+
     return data;
 }
 
@@ -991,6 +1009,17 @@ function repoPrint(name) {
     const body = new URLSearchParams();
     body.append('name', name);
     if (printerSelect && printerSelect.value) body.append('printer', printerSelect.value);
+    const modelVal = (() => {
+        if (printerSelect && printerSelect.value && window.available_printers) {
+            const p = window.available_printers.find(p => p.path === printerSelect.value);
+            if (p && p.model && p.model !== 'Unknown') return p.model;
+        }
+        if (printer_status && printer_status.model && printer_status.model !== 'Unknown') {
+            return printer_status.model;
+        }
+        return null;
+    })();
+    if (modelVal) body.append('model', modelVal);
 
     fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body })
         .then(r => r.json())
