@@ -36,6 +36,10 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 
 ![Template support](./screenshots/image7.png)
 
+### UTF-8 symbol picker
+
+![UTF-8 symbol picker](./screenshots/image8.png)
+
 ## New Features
 
 - Automatic printer and label detection
