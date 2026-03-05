@@ -39,16 +39,17 @@ def verify_image(response_data: bytes, expected_image_path: str):
         f.write(response_data)
 
 
-def make_client(tmp_path):
+def make_client(tmp_path, empty_repo: bool = False) -> FlaskClient:
     app = create_app()
     # Bind app context
     app.app_context().push()
     app.config['TESTING'] = True
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
-    # point repository to temporary folder
-    repo_dir = tmp_path / 'label_repo'
-    app.config['LABEL_REPOSITORY_DIR'] = str(repo_dir)
-    os.makedirs(app.config['LABEL_REPOSITORY_DIR'], exist_ok=True)
+    if empty_repo:
+        # point repository to temporary folder
+        repo_dir = tmp_path / 'label_repo'
+        app.config['LABEL_REPOSITORY_DIR'] = str(repo_dir)
+        os.makedirs(app.config['LABEL_REPOSITORY_DIR'], exist_ok=True)
     return app.test_client()
 
 
