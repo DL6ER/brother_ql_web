@@ -2,28 +2,14 @@ import os
 import json
 import base64
 
-from flask.testing import FlaskClient
 from app.utils import fill_first_line_fields
 from test_labeldesigner_api import verify_image, make_client
 import pytest
 
 
-def _test_repository_save_sample_labels(label: str, client: FlaskClient):
-    # Copy sample label to repository
-    sample_label_path = os.path.join(
-        os.path.dirname(__file__), f'../labels/{label}.json'
-    )
-    with open(sample_label_path, 'r', encoding='utf-8') as f:
-        file = json.load(f)
-        file["name"] = f'{label}.json'
-    save_url = '/labeldesigner/api/repository/save'
-    resp = client.post(save_url, json=file)
-    assert resp.status_code == 200
-
-
 @pytest.mark.parametrize('label', ['EAN-Label', 'QR-Example', 'URGENT-Text'])
 def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
-    client = make_client(tmp_path)
+    client = make_client(tmp_path, empty_repo=True)
 
     # Load some label from file to use as test data
     sample_label_path = os.path.join(
@@ -117,7 +103,6 @@ def test_repository_save_requires_json_and_name(tmp_path):
 @pytest.mark.parametrize('label', ['EAN-Label', 'QR-Example'])
 def test_repository_print_success(tmp_path, label: str):
     client = make_client(tmp_path)
-    _test_repository_save_sample_labels(label, client)
 
     # Print the stored label (simulator)
     print_url = '/labeldesigner/api/repository/print'
@@ -134,7 +119,6 @@ def test_repository_print_success(tmp_path, label: str):
 def test_repository_print_wrong_label(tmp_path):
     client = make_client(tmp_path)
     label = 'URGENT-Text'
-    _test_repository_save_sample_labels(label, client)
 
     # Attempt to print to an invalid printer path
     print_url = '/labeldesigner/api/repository/print'
@@ -151,7 +135,7 @@ def test_repository_print_wrong_label(tmp_path):
 
 
 def test_save_image_restore_other_and_print(tmp_path):
-    client = make_client(tmp_path)
+    client = make_client(tmp_path, empty_repo=True)
 
     # Save another sample label to restore later
     sample_b_path = os.path.join(os.path.dirname(__file__), '../labels/EAN-Label.json')
@@ -225,3 +209,22 @@ def test_save_image_restore_other_and_print(tmp_path):
     assert resp.is_json
     data = resp.get_json()
     assert data.get('success') is True
+
+
+def test_repository_save_and_load_utf8_symbols(tmp_path):
+    client = make_client(tmp_path)
+    # Preview the stored label
+    preview_url = (
+        '/labeldesigner/api/repository/preview?'
+        'name=UTF-8_Symbols.json&return_format=base64'
+    )
+    resp = client.get(preview_url)
+    assert resp.status_code == 200
+    # Should return base64 text
+    b64 = resp.get_data()
+    # decode and check PNG header
+    decoded = base64.b64decode(b64)
+    assert decoded.startswith(b"\x89PNG\r\n\x1a\n")
+    # Verify image preview
+    verify_image(decoded, 'repo_test_UTF-8_Symbols.png')
+    assert resp.status_code == 200

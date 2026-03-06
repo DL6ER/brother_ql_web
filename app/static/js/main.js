@@ -855,6 +855,21 @@ function repoSaveCurrent() {
     try { payload = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); } catch (e) { payload = {}; }
     payload['name'] = name;
 
+    // Save text properties
+    try {
+        if (!payload.hasOwnProperty('text')) {
+            if (payload.hasOwnProperty('fontSettingsPerLine')) {
+                payload['text'] = payload['fontSettingsPerLine'];
+            } else if (window.fontSettingsPerLine) {
+                payload['text'] = window.fontSettingsPerLine;
+            } else if (typeof fontSettingsPerLine !== 'undefined') {
+                payload['text'] = fontSettingsPerLine;
+            } else {
+                payload['text'] = '[]';
+            }
+        }
+    } catch (e) { /* ignore */ }
+
     // If an image is present in Dropzone, encode it as base64 and include
     // it in the JSON payload so the server can accept pure JSON saves.
     function sendJsonPayload(p) {
