@@ -195,6 +195,17 @@ $(document).ready(function () {
     });
 });
 
+function getModelFromSelectedPrinter(printerSelect) {
+    if (printerSelect && printerSelect.value && window.available_printers) {
+        const p = window.available_printers.find(p => p.path === printerSelect.value);
+        if (p && p.model && p.model !== 'Unknown') return p.model;
+    }
+    if (printer_status && printer_status.model && printer_status.model !== 'Unknown') {
+        return printer_status.model;
+    }
+    return null;
+}
+
 function formData(cut_once = false) {
     data = {
         text: JSON.stringify(fontSettingsPerLine),
@@ -234,6 +245,10 @@ function formData(cut_once = false) {
     const printerSelect = document.getElementById('printer');
     if (printerSelect && printerSelect.value) {
         data['printer'] = printerSelect.value;
+        const modelFromPrinter = getModelFromSelectedPrinter(printerSelect);
+        if (modelFromPrinter) {
+            data['model'] = modelFromPrinter;
+        }
     }
 
     return data;
@@ -1006,6 +1021,8 @@ function repoPrint(name) {
     const body = new URLSearchParams();
     body.append('name', name);
     if (printerSelect && printerSelect.value) body.append('printer', printerSelect.value);
+    const modelVal = getModelFromSelectedPrinter(printerSelect);
+    if (modelVal) body.append('model', modelVal);
 
     fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body })
         .then(r => r.json())
