@@ -17,6 +17,7 @@ services:
     volumes:
       - ./labels:/app/labels
       - /etc/timezone:/etc/timezone:ro
+    network_mode: host # needed for network printer scanning
 #    command: >
 #      --model QL-800
 #      --default-label-size 62

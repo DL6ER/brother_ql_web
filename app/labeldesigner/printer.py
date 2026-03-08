@@ -11,6 +11,12 @@ from brother_ql.models import ALL_MODELS
 
 logger = logging.getLogger(__name__)
 
+# Experimentally identified MAC address prefixes for Brother network printers
+# (may not be exhaustive)
+BROTHER_MAC_ADDRESS_PREFIXES = [
+    "ac:f2:3c",  # Brother QL-810W
+]
+
 
 class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
@@ -154,7 +160,7 @@ def get_ptr_status(config: Config):
             now = time.time()
             # Refresh cache every 10 seconds
             if now - _last_scan_ts > 10:
-                logger.debug('Auto-detecting printers: scanning /dev/usb/lp0..lp10')
+                logger.debug('Auto-detecting printers: scanning local USB and network')
                 found_list = []
                 for i in range(0, 11):
                     dev = f"/dev/usb/lp{i}"
@@ -164,12 +170,32 @@ def get_ptr_status(config: Config):
                     try:
                         printer = get_printer(spec)
                         printer_state = get_status(printer)
-                        # Ensure the path is set
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))
                     except Exception:
                         logger.debug('Device %s exists but is not a compatible printer or failed to query', dev, exc_info=True)
+
+                # scan ARP table for network printers with known Brother MAC
+                # address prefixes
+                try:
+                    with open('/proc/net/arp', 'r') as arp_file:
+                        for line in arp_file.readlines()[1:]:  # skip header line
+                            parts = line.split()
+                            if len(parts) < 4:
+                                continue
+                            ip, _, _, mac, _, _ = parts
+                            if any(mac.startswith(prefix) for prefix in BROTHER_MAC_ADDRESS_PREFIXES):
+                                device_specifier = f"tcp://{ip}"
+                                printer = SIMULATOR_PRINTER.copy()
+                                printer['path'] = device_specifier
+                                printer['phase_type'] = 'Network Printer'
+                                printer['status_type'] = 'Network Printer'
+                                found_list.append(printer)
+                                logger.debug('Found network printer candidate at %s -> %s', device_specifier, printer.get('model'))
+                except Exception:
+                    logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
+
                 _cached_printers = found_list
                 _last_scan_ts = now
             # Prepare response: include list of printers and a top-level status for the first one (compatibility)
