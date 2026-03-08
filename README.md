@@ -145,6 +145,7 @@ services:
     ports:
       - "8013:8013"
     privileged: true
+    network_mode: host
     volumes:
       - /dev/usb:/dev/usb
       - ./labels:/app/labels
