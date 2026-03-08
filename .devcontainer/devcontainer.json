@@ -30,6 +30,7 @@
         "-e",
         "PRINTER_MODEL=QL-800",
         "-v /dev/usb",
-        "--privileged"
+        "--privileged",
+        "--network=host"
     ]
 }

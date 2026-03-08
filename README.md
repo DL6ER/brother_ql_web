@@ -42,7 +42,7 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 
 ## New Features
 
-- Automatic printer and label detection
+- Automatic printer and label detection (limited detection for network printers, see below)
 - Multi-printer support
 - Convenient label repository (save, load, edit and print labels easily)
 - Support for more printers via `brother_ql-inventree` (**new**)
@@ -174,6 +174,14 @@ All in all, the web server offers:
 
 -   a web GUI allowing you to print your labels, and
 -   an API.
+
+### Network printer support
+
+Network printers are supported but with some limitations regarding automatic detection and status queries. The printer status is always shown as "Network Printer" for network printers as they do not support the usual USB-based status queries. Automatic detection of network printers is done by scanning the ARP table for devices with known Brother MAC address prefixes, which may not be exhaustive. If you have a Brother network printer that is not detected automatically, you can still add it manually by specifying its IP address in the printer configuration (e.g., `tcp://<IP_ADDRESS>`). Please also open an issue if you have a Brother network printer that is not detected automatically so that we can integrate detection for this model.
+
+### API
+
+All functionality of the web interface is also available via a REST API. Currently, the API is not documented in a separate documentation but can be explored using the web interface when the container is running.
 
 ### Contributing / Development
 
