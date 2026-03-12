@@ -1115,7 +1115,7 @@ class TestLabelDesignerAPI:
     @pytest.mark.parametrize('fit', ['fit', 'no_fit'])
     @pytest.mark.parametrize('orientation', ['standard', 'rotated'])
     @pytest.mark.parametrize('label_size', ["12", "62", "62x29", "62x100", "d12"])
-    def test_print_pdf_all_permutations(self, client: FlaskClient, label_size, orientation, fit, crop):
+    def test_print_pdf_all_permutations(self, client: FlaskClient, label_size, orientation, fit):
         """PDF printing for endless and die-cut labels.
 
         Uses tests/images/TestPrint.pdf and checks both orientations
@@ -1128,7 +1128,6 @@ class TestLabelDesignerAPI:
         data['orientation'] = orientation
         data['image_mode'] = 'grayscale'
         data['image_fit'] = '1' if fit == 'fit' else '0'
-        data['image_crop'] = '1' if crop else '0'
 
         my_file = FileStorage(
             stream=open(pdf_path, 'rb'),
