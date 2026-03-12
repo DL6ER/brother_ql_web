@@ -117,7 +117,7 @@ def test_repository_print_success(tmp_path, label: str):
 
 
 def test_repository_print_wrong_label(tmp_path):
-    client = make_client(tmp_path)
+    client = make_client(tmp_path, model='QL-500')
     label = 'URGENT-Text'
 
     # Attempt to print to an invalid printer path

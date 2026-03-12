@@ -39,12 +39,14 @@ def verify_image(response_data: bytes, expected_image_path: str):
         f.write(response_data)
 
 
-def make_client(tmp_path, empty_repo: bool = False) -> FlaskClient:
+def make_client(tmp_path, empty_repo: bool = False, model: Union[str, None] = None) -> FlaskClient:
     app = create_app()
     # Bind app context
     app.app_context().push()
     app.config['TESTING'] = True
     app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB
+    if model:
+        app.config['PRINTER_MODEL'] = model
     if empty_repo:
         # point repository to temporary folder
         repo_dir = tmp_path / 'label_repo'
@@ -449,6 +451,31 @@ class TestLabelDesignerAPI:
 
     def test_image_highres_fit(self, client: FlaskClient):
         self.run_image_test(client, high_res=True, fit=True)
+
+    @pytest.mark.parametrize('fit', [True, False])
+    @pytest.mark.parametrize('rotation', [0, 90, 180, 270])
+    def test_image_crop(self, client: FlaskClient, fit, rotation):
+        data = EXAMPLE_FORMDATA.copy()
+        image_path = "tests/fixtures/_demo_image_simple.png"
+        my_file = FileStorage(
+            stream=open(image_path, "rb"),
+            filename=os.path.basename(image_path),
+            content_type="image/png",
+        )
+        data['print_type'] = 'image'
+        data['image'] = my_file
+        data['image_mode'] = 'grayscale'
+        data['image_fit'] = '1' if fit else '0'
+        data['image_crop'] = '1'
+        data['image_rotation'] = rotation
+        response = client.post('/labeldesigner/api/preview', data=data)
+
+        # Should work
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        verify_image(response.data, f'image_crop_{"fit" if fit else "nofit"}_{rotation}.png')
 
     def test_generate_template(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -1088,7 +1115,7 @@ class TestLabelDesignerAPI:
     @pytest.mark.parametrize('fit', ['fit', 'no_fit'])
     @pytest.mark.parametrize('orientation', ['standard', 'rotated'])
     @pytest.mark.parametrize('label_size', ["12", "62", "62x29", "62x100", "d12"])
-    def test_print_pdf_all_permutations(self, client: FlaskClient, label_size, orientation, fit):
+    def test_print_pdf_all_permutations(self, client: FlaskClient, label_size, orientation, fit, crop):
         """PDF printing for endless and die-cut labels.
 
         Uses tests/images/TestPrint.pdf and checks both orientations
@@ -1101,6 +1128,7 @@ class TestLabelDesignerAPI:
         data['orientation'] = orientation
         data['image_mode'] = 'grayscale'
         data['image_fit'] = '1' if fit == 'fit' else '0'
+        data['image_crop'] = '1' if crop else '0'
 
         my_file = FileStorage(
             stream=open(pdf_path, 'rb'),

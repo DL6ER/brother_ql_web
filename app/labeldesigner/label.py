@@ -2,7 +2,7 @@ from .enums import LabelContent, LabelOrientation, LabelType
 import os
 import uuid
 from qrcode import QRCode, constants
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageChops
 import logging
 import barcode
 from barcode.writer import ImageWriter
@@ -48,6 +48,7 @@ class SimpleLabel:
         qr_size: int = 10,
         qr_correction: str = 'L',
         image_fit: bool = False,
+        image_crop: bool = False,
         image_scaling_factor: float = 100.0,
         image_rotation: int = 0,
         image: Optional[Union[Image.Image, None]] = None,
@@ -86,6 +87,7 @@ class SimpleLabel:
         self.qr_correction = qr_correction
         self._image = image
         self._image_fit = image_fit
+        self._image_crop = image_crop
         self._image_scaling_factor = image_scaling_factor
         self._image_rotation = image_rotation
         self._border_thickness = border_thickness
@@ -242,9 +244,17 @@ class SimpleLabel:
 
         # Resize image to fit if image_fit is True
         if img is not None:
+            if self._image_crop:
+                img = self._crop_image_to_content(img)
+
             # First rotate the image if requested
             if self._image_rotation != 0 and self._image_rotation != 360:
                 img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
+
+            # Rotation with expand=True may add an empty border around content.
+            if self._image_crop:
+                img = self._crop_image_to_content(img)
+
             # Resize image to fit if image_fit is True
             if self._image_fit:
                 # Calculate the maximum allowed dimensions
@@ -383,6 +393,29 @@ class SimpleLabel:
             # Draw (rounded) rectangle
             draw.rounded_rectangle(rect, radius=self._border_roundness, outline=self._border_color, width=self._border_thickness)
         return imgResult
+
+    @staticmethod
+    def _crop_image_to_content(img: Image.Image) -> Image.Image:
+        """Trim uniform border/background from an image.
+
+        The background color is inferred from the top-left pixel to support
+        white as well as non-white backgrounds.
+        """
+        if img.width <= 1 or img.height <= 1:
+            return img
+
+        if 'A' in img.getbands():
+            alpha_bbox = img.getchannel('A').getbbox()
+            if alpha_bbox is not None:
+                return img.crop(alpha_bbox)
+
+        background_color = img.getpixel((0, 0))
+        background = Image.new(img.mode, img.size, background_color)
+        diff = ImageChops.difference(img, background)
+        bbox = diff.getbbox()
+        if bbox is None:
+            return img
+        return img.crop(bbox)
 
     def _generate_barcode(self):
         barcode_generator = barcode.get_barcode_class(self.barcode_type)
