@@ -72,6 +72,7 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 - Auto-fit images onto the labels to avoid cropping
 - Arbitrary scaling of images with interpolation
 - Arbitrary rotation of images with interpolation
+- Automatic crop of images to the actual content to avoid unnecessary white space
 - Support for TODO list creation (tickable checkboxes)
 - Allow text together with images
 - Print text as QR Code or barcode

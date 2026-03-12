@@ -222,6 +222,7 @@ function formData(cut_once = false) {
         image_bw_threshold: parseInt($('#image_bw_threshold').val(), 10) || 0,
         image_mode: $('input[name=image_mode]:checked').val(),
         image_fit: $('#image_fit').is(':checked') ? 1 : 0,
+        image_crop: $('#image_crop').is(':checked') ? 1 : 0,
         print_count: parseInt($('#print_count').val(), 10) || 0,
         log_level: $('#log_level').val(),
         cut_once: cut_once ? 1 : 0,
