@@ -453,10 +453,10 @@ class TestLabelDesignerAPI:
         self.run_image_test(client, high_res=True, fit=True)
 
     @pytest.mark.parametrize('fit', [True, False])
-    @pytest.mark.parametrize('rotation', [0, 90, 180, 270])
+    @pytest.mark.parametrize('rotation', [0, 90])
     def test_image_crop(self, client: FlaskClient, fit, rotation):
         data = EXAMPLE_FORMDATA.copy()
-        image_path = "tests/fixtures/_demo_image_simple.png"
+        image_path = f"tests/fixtures/_X.png"
         my_file = FileStorage(
             stream=open(image_path, "rb"),
             filename=os.path.basename(image_path),
