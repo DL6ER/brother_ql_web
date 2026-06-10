@@ -12,6 +12,10 @@ from brother_ql.models import ALL_MODELS
 
 SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
 
+# Maximum number of labels to rasterize and send in a single batch.
+# Sending too many labels at once can cause printer timeouts/failures.
+BATCH_SIZE = 5
+
 logger = logging.getLogger(__name__)
 
 # Experimentally identified MAC address prefixes for Brother network printers
@@ -35,14 +39,13 @@ class PrinterQueue:
             'high_res': high_res
         })
 
-    def process_queue(self) -> str:
-        if not self._print_queue:
-            logger.warning("Print queue is empty.")
-            return "Print queue is empty."
+    def _rasterize_entries(self, entries):
+        """Rasterize a list of queue entries into a BrotherQLRaster and
+        return ``(qlr, generated_images)``."""
         qlr = BrotherQLRaster(self.model)
-        is_simulation = isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']
         generated_images = []
-        for entry in self._print_queue:
+        is_simulation = isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']
+        for entry in entries:
             label = entry['label']
             cut = entry['cut']
             high_res = entry['high_res']
@@ -64,21 +67,27 @@ class PrinterQueue:
                 dpi_600=high_res,
                 rotate=rotate
             )
-        self._print_queue.clear()
+        return qlr, generated_images
+
+    def _send_raster(self, qlr, generated_images, batch_index=0) -> str:
+        """Send rasterized data to the printer or simulator.
+        Returns an empty string on success, or an error message."""
         try:
             # Simulator: pretend we sent data, save labels as PNG, and return success
-            if is_simulation:
-                logger.info('Simulated sending %d bytes to simulator printer', len(qlr.data))
+            if isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']:
+                logger.info('Simulated sending %d bytes to simulator printer (batch %d)',
+                            len(qlr.data), batch_index)
                 os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
                 ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
                 for i, img in enumerate(generated_images):
-                    path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_{i}.png')
+                    path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_b{batch_index}_{i}.png')
                     img.save(path, format='PNG')
                     logger.info('Saved simulated label to %s', path)
                 return ""
 
             network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
-            logger.info("Sending data to printer at %s", self.device_specifier)
+            logger.info("Sending %d bytes to printer at %s (batch %d)",
+                        len(qlr.data), self.device_specifier, batch_index)
             info = send(qlr.data, self.device_specifier)
             logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
             if network_printer:
@@ -88,11 +97,32 @@ class PrinterQueue:
             if info.get('did_print') and info.get('ready_for_next_job'):
                 logger.info('Label printed successfully and printer is ready for next job')
                 return ""
-            logger.warning("Failed to print label")
-            return "Failed to print label"
+            logger.warning("Failed to print label (batch %d)", batch_index)
+            return f"Failed to print label (batch {batch_index})"
         except Exception as e:
-            logger.exception("Exception during sending to printer: %s", e)
-            return "Exception during sending to printer: " + str(e)
+            logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
+            return f"Exception during sending to printer (batch {batch_index}): {e}"
+
+    def process_queue(self) -> str:
+        if not self._print_queue:
+            logger.warning("Print queue is empty.")
+            return "Print queue is empty."
+
+        total = len(self._print_queue)
+        entries = list(self._print_queue)
+        self._print_queue.clear()
+
+        # Split into batches to avoid printer timeouts on large jobs
+        for batch_index, start in enumerate(range(0, total, BATCH_SIZE)):
+            batch = entries[start:start + BATCH_SIZE]
+            logger.info('Processing batch %d (%d labels, %d/%d)',
+                        batch_index, len(batch), start + len(batch), total)
+            qlr, generated_images = self._rasterize_entries(batch)
+            status = self._send_raster(qlr, generated_images, batch_index)
+            if status:
+                return status
+
+        return ""
 
 
 def get_printer(printer_identifier=None, backend_identifier=None):
