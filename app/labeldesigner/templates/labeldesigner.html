@@ -27,7 +27,7 @@
                             <select class="form-control form-select" id="label_size" onChange="preview()" data-default="{{default_label_size}}">
                                 {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}"
                                     data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size==label_size[0]
-                                    %}selected{% endif %}>{{label_size[1]}}</option>{% endfor %}
+                                    %}selected{% endif %}>{{label_size[1]}}{% if debug %} ({{label_size[4][0]}}x{{label_size[4][1]}}px){% endif %}</option>{% endfor %}
                             </select>
                             <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
                             <div id="labelMismatch" class="form-text text-danger" style="display: none;">Label size mismatch detected!</div>

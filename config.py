@@ -37,3 +37,8 @@ class Config(object):
     LABEL_REPOSITORY_DIR = os.path.join(basedir, 'labels')
 
     FONT_FOLDER = ''
+
+    # Webhook print endpoint password. The webhook is disabled when empty.
+    # Generate a secure password with:
+    #   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+    WEBHOOK_PASSWORD = os.environ.get('WEBHOOK_PASSWORD', '')
