@@ -12,9 +12,10 @@ from brother_ql.models import ALL_MODELS
 
 SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
 
-# Maximum number of labels to rasterize and send in a single batch.
+# Default maximum number of labels to rasterize and send in a single batch.
 # Sending too many labels at once can cause printer timeouts/failures.
-BATCH_SIZE = 5
+# Override via PRINT_BATCH_SIZE environment variable or Flask config.
+DEFAULT_BATCH_SIZE = 5
 
 logger = logging.getLogger(__name__)
 
@@ -103,18 +104,23 @@ class PrinterQueue:
             logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
             return f"Exception during sending to printer (batch {batch_index}): {e}"
 
-    def process_queue(self) -> str:
+    def process_queue(self, batch_size: int = 0) -> str:
         if not self._print_queue:
             logger.warning("Print queue is empty.")
             return "Print queue is empty."
+
+        if batch_size < 1:
+            batch_size = int(os.environ.get('PRINT_BATCH_SIZE', DEFAULT_BATCH_SIZE))
+        if batch_size < 1:
+            batch_size = DEFAULT_BATCH_SIZE
 
         total = len(self._print_queue)
         entries = list(self._print_queue)
         self._print_queue.clear()
 
         # Split into batches to avoid printer timeouts on large jobs
-        for batch_index, start in enumerate(range(0, total, BATCH_SIZE)):
-            batch = entries[start:start + BATCH_SIZE]
+        for batch_index, start in enumerate(range(0, total, batch_size), start=1):
+            batch = entries[start:start + batch_size]
             logger.info('Processing batch %d (%d labels, %d/%d)',
                         batch_index, len(batch), start + len(batch), total)
             qlr, generated_images = self._rasterize_entries(batch)
