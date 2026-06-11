@@ -1,6 +1,7 @@
 import logging
 import os
 import time
+import datetime
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from brother_ql.backends.helpers import get_status
@@ -8,6 +9,8 @@ from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
+
+SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,8 @@ class PrinterQueue:
             logger.warning("Print queue is empty.")
             return "Print queue is empty."
         qlr = BrotherQLRaster(self.model)
+        is_simulation = isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']
+        generated_images = []
         for entry in self._print_queue:
             label = entry['label']
             cut = entry['cut']
@@ -46,6 +51,8 @@ class PrinterQueue:
             else:
                 rotate = 'auto'
             img = label.generate(rotate=False)
+            if is_simulation:
+                generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
             create_label(
                 qlr,
@@ -59,9 +66,15 @@ class PrinterQueue:
             )
         self._print_queue.clear()
         try:
-            # Simulator: pretend we sent data and return success
-            if isinstance(self.device_specifier, str) and (self.device_specifier in ['simulation', '?']):
+            # Simulator: pretend we sent data, save labels as PNG, and return success
+            if is_simulation:
                 logger.info('Simulated sending %d bytes to simulator printer', len(qlr.data))
+                os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
+                ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+                for i, img in enumerate(generated_images):
+                    path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_{i}.png')
+                    img.save(path, format='PNG')
+                    logger.info('Saved simulated label to %s', path)
                 return ""
 
             network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
