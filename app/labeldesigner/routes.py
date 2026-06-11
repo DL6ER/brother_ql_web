@@ -774,7 +774,7 @@ def webhook_print():
 
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        return make_response(jsonify({'success': False, 'message': 'Invalid request parameters'}), 400)
 
     # Collect images from request
     pil_images = []
@@ -809,7 +809,7 @@ def webhook_print():
 
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': f'Failed to read images: {e}'}), 400)
+        return make_response(jsonify({'success': False, 'message': 'Failed to read images'}), 400)
 
     if not pil_images:
         return make_response(jsonify({'success': False, 'message': 'No images provided'}), 400)
@@ -834,7 +834,7 @@ def webhook_print():
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        return make_response(jsonify({'success': False, 'message': 'Failed to print labels'}), 400)
 
     result = {
         'success': len(status) == 0,
