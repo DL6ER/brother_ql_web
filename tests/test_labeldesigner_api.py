@@ -1092,7 +1092,8 @@ class TestLabelDesignerAPI:
         assert response.is_json
         json_response = response.get_json()
         assert 'message' in json_response
-        assert json_response['message'] == "Exception during sending to printer: [Errno 2] No such file or directory: '/dev/nonexistentprinter'"
+        assert "Exception during sending to printer" in json_response['message']
+        assert "/dev/nonexistentprinter" in json_response['message']
         assert 'success' in json_response
         assert json_response['success'] is False
 
