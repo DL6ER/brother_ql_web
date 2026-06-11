@@ -78,7 +78,7 @@ class PrinterQueue:
                 logger.info('Simulated sending %d bytes to simulator printer (batch %d)',
                             len(qlr.data), batch_index)
                 os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
-                ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
+                ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S_%f')
                 for i, img in enumerate(generated_images):
                     path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_b{batch_index}_{i}.png')
                     img.save(path, format='PNG')
