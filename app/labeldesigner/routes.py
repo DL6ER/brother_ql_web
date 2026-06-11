@@ -1,4 +1,5 @@
 import os
+import hmac
 import base64
 import logging
 import barcode
@@ -478,14 +479,6 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
         'code_text': d.get('code_text', '').strip(),
     }
 
-    def get_label_dimensions(label_size: str, high_res: bool = False):
-        dimensions = next((label.dots_printable for label in ALL_LABELS if label.identifier == label_size), None)
-        if dimensions is None:
-            raise LookupError("Unknown label_size")
-        if high_res:
-            return [2 * dimensions[0], 2 * dimensions[1]]
-        return dimensions
-
     def get_uploaded_image(image: FileStorage) -> Image.Image:
         name, ext = os.path.splitext(image.filename)
         ext = ext.lower()
@@ -540,7 +533,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
     else:
         label_type = LabelType.ROUND_DIE_CUT_LABEL
 
-    width, height = get_label_dimensions(context['label_size'], context['high_res'])
+    width, height = _get_label_dimensions(context['label_size'], context['high_res'])
     if height > width:
         width, height = height, width
     if label_orientation == LabelOrientation.ROTATED:
@@ -664,7 +657,7 @@ def _scale_image_to_label(img: Image.Image, label_size: str, orientation: str,
         # For die-cut labels, fit within both dimensions
         scale = min(width / img_width, height / img_height)
 
-    new_size = (int(img_width * scale), int(img_height * scale))
+    new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
     return img.resize(new_size, Image.Resampling.LANCZOS)
 
 
@@ -672,6 +665,8 @@ def _scale_image_to_label(img: Image.Image, label_size: str, orientation: str,
 def webhook_print():
     """
     Webhook endpoint for external services to print images directly.
+
+    URL: POST /labeldesigner/api/webhook/print
 
     Accepts multiple images via multipart form-data or JSON with base64-encoded
     images. Each image is scaled to fit the target label dimensions and printed
@@ -722,16 +717,18 @@ def webhook_print():
     if not webhook_password:
         return make_response(jsonify({'success': False, 'message': 'Webhook is not enabled'}), 403)
 
+    # Parse JSON body once (only when content type indicates JSON, not for multipart)
+    jdata = request.get_json(silent=True) or {}
+
     # Authenticate: accept password via Authorization Bearer token, query param, or JSON field
     provided = (request.headers.get('Authorization', '').removeprefix('Bearer ').strip()
                 or request.values.get('password', '')
-                or (request.get_json(force=True, silent=True) or {}).get('password', ''))
-    if not provided or provided != webhook_password:
+                or jdata.get('password', ''))
+    if not provided or not hmac.compare_digest(provided, webhook_password):
         return make_response(jsonify({'success': False, 'message': 'Unauthorized'}), 401)
 
     try:
         # Merge parameters from query/form and JSON body (query/form takes precedence)
-        jdata = request.get_json(force=True, silent=True) or {}
         def _param(key, default):
             return request.values.get(key) or jdata.get(key) or default
 

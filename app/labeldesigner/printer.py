@@ -70,7 +70,7 @@ class PrinterQueue:
             if is_simulation:
                 logger.info('Simulated sending %d bytes to simulator printer', len(qlr.data))
                 os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
-                ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                ts = datetime.datetime.utcnow().strftime('%Y%m%d_%H%M%S_%f')
                 for i, img in enumerate(generated_images):
                     path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_{i}.png')
                     img.save(path, format='PNG')
