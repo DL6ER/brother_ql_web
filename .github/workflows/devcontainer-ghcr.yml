@@ -37,5 +37,5 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: ghcr.io/dl6er/brother-ql-web:latest
+          tags: ghcr.io/merlindawizard/brother-ql-web:latest
           platforms: linux/amd64,linux/arm64
