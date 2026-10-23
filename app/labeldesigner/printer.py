@@ -4,7 +4,7 @@ import time
 import datetime
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
-from brother_ql.backends.helpers import get_status
+from brother_ql.reader import interpret_response
 from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
@@ -153,6 +153,29 @@ def get_printer(printer_identifier=None, backend_identifier=None):
     BrotherQLBackend = be["backend_class"]
     printer = BrotherQLBackend(printer_identifier)
     return printer
+
+
+def get_status(printer, timeout: float = 2.0):
+    """Request and parse the printer status.
+
+    brother_ql's own helper reads only twice, 10 ms apart, but printers such
+    as the QL-1100 need ~100 ms to answer and return empty reads until then.
+    Poll until the full 32-byte response arrives or the timeout expires.
+    """
+    try:
+        printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
+        data = b''
+        deadline = time.time() + timeout
+        while len(data) < 32 and time.time() < deadline:
+            data += printer.read(32 - len(data)) or b''
+            if len(data) < 32:
+                time.sleep(0.02)
+        return interpret_response(data)
+    finally:
+        try:
+            printer.dispose()
+        except Exception:
+            logger.debug('Failed to release printer after status query', exc_info=True)
 
 
 _last_scan_ts = 0
