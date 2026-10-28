@@ -55,7 +55,6 @@ class ExclusiveUsbPrinter:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(linux_kernel, 'BrotherQLBackendLinuxKernel', ExclusiveUsbPrinter)
-    monkeypatch.setattr(printer, 'LOCK_DIR', str(tmp_path))
     monkeypatch.setattr(printer, '_status_cache', {})
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
@@ -88,8 +87,7 @@ def test_print_during_status_query(client, monkeypatch):
     assert response.get_json() == {'success': True}
 
 
-def test_device_lock_is_exclusive(tmp_path, monkeypatch):
-    monkeypatch.setattr(printer, 'LOCK_DIR', str(tmp_path))
+def test_device_lock_is_exclusive():
     with printer.device_lock(DEVICE) as first:
         assert first
         with printer.device_lock(DEVICE, blocking=False) as second:

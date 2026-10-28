@@ -12,7 +12,6 @@ from PIL import Image, ImageChops, ImageOps
 from werkzeug.datastructures import FileStorage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
-from app.labeldesigner import printer as printer_module
 from app.labeldesigner.enums import LabelContent
 from app.labeldesigner.routes import create_label_from_request
 
@@ -1230,8 +1229,7 @@ def test_print_requires_post(tmp_path):
     assert response.status_code == 405
 
 
-def test_cross_origin_requests_are_rejected(tmp_path, monkeypatch):
-    monkeypatch.setattr(printer_module, 'SIMULATED_LABELS_DIR', str(tmp_path))
+def test_cross_origin_requests_are_rejected(tmp_path):
     client = make_client(tmp_path)
     url = '/labeldesigner/api/print'
     # Form posted to the printer by another website

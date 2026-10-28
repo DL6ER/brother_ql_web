@@ -52,9 +52,15 @@ def device_lock(device_specifier: str, blocking: bool = True):
     processes. Yields whether the lock was acquired."""
     fd = None
     if fcntl is not None:
+        # The device specifier comes from the request, make sure the lock file
+        # stays inside LOCK_DIR
         name = re.sub(r'[^A-Za-z0-9_.-]', '_', device_specifier)
+        lock_dir = os.path.normpath(LOCK_DIR)
+        path = os.path.normpath(os.path.join(lock_dir, f'brother_ql_web_{name}.lock'))
+        if not path.startswith(lock_dir + os.sep):
+            raise ValueError(f'Invalid printer: {device_specifier}')
         try:
-            fd = os.open(os.path.join(LOCK_DIR, f'brother_ql_web_{name}.lock'), os.O_RDONLY | os.O_CREAT, 0o666)
+            fd = os.open(path, os.O_RDONLY | os.O_CREAT, 0o666)
         except OSError as e:
             logger.warning('Cannot open lock file for %s, locking within this process only: %s', device_specifier, e)
 
