@@ -36,6 +36,18 @@ class Config(object):
 
     LABEL_REPOSITORY_DIR = os.path.join(basedir, 'labels')
 
+    # Environment variables label templates may insert via {{env:<var>}}
+    # (comma-separated). All other variables are replaced by an empty string,
+    # otherwise anyone with access to the preview could read secrets like
+    # WEBHOOK_PASSWORD.
+    LABEL_TEMPLATE_ENV_VARS = os.environ.get('LABEL_TEMPLATE_ENV_VARS', '')
+
+    # Maximum number of labels a single print request may produce
+    PRINT_MAX_COUNT = int(os.environ.get('PRINT_MAX_COUNT', 100))
+
+    # Maximum size of a request (uploaded images, JSON payloads) in bytes
+    MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 32 * 1024 * 1024))
+
     FONT_FOLDER = ''
 
     # Webhook print endpoint password. The webhook is disabled when empty.

@@ -107,8 +107,8 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 - `{{datetime:<format>}}` — Inserts the current date and time, e.g. `%H:%M:%S %d.%m.%Y` (see [strftime](https://strftime.org/)).
 - `{{uuid}}` — Inserts a random UUID (Universally Unique Identifier).
 - `{{short-uuid}}` — Inserts a shortened version of a UUID.
-- `{{env:<var>}}` — Inserts the value of the environment variable `<var>`.
-- `{{random[:<len>][:shift]}}` — Inserts a random string of optional length `<len>` (defaulting to 64). The optional `shift` parameter can be used to shift the random string around to fill gaps.
+- `{{env:<var>}}` - Inserts the value of the environment variable `<var>`. Only variables listed in `LABEL_TEMPLATE_ENV_VARS` are inserted (comma-separated, e.g. `LABEL_TEMPLATE_ENV_VARS=ROOM,DEPARTMENT`), all others stay empty so that nobody can read secrets of the server through a label.
+- `{{random[:<len>][:shift]}}` - Inserts a random string of optional length `<len>` (defaulting to 64, at most 10000). The optional `shift` parameter can be used to shift the random string around to fill gaps.
 
 ## Docker Compose
 
@@ -185,6 +185,15 @@ Network printers are supported but with some limitations regarding automatic det
 
 All functionality of the web interface is also available via a REST API. Currently, the API is not documented in a separate documentation but can be explored using the web interface when the container is running.
 
+Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request.
+
+A request can select a printer with the `printer` parameter. Accepted are the configured printer, `simulation`, USB printers (`file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`) and network printers on the raw printing port 9100 (`tcp://<host>`).
+
+The following environment variables limit what a single request may do:
+
+- `PRINT_MAX_COUNT` - maximum number of labels per print request (default: `100`)
+- `MAX_CONTENT_LENGTH` - maximum size of a request in bytes, e.g. for uploaded images (default: 32 MB)
+
 ### Contributing / Development
 
 To contribute to this project, follow these steps:
@@ -197,7 +206,11 @@ To contribute to this project, follow these steps:
    cd brother_ql_web
    ```
 
-2. Make your changes and test them locally, preferably inside the convenient devcontainer.
+2. Make your changes and test them locally, preferably inside the convenient devcontainer. Run the tests with:
+   ```bash
+   pip install -r requirements-dev.txt
+   pytest
+   ```
 
 3. Submit a pull request with a clear description of your changes.
 

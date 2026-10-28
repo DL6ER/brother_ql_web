@@ -1,7 +1,11 @@
 import logging
 import os
+import re
 import time
 import datetime
+import tempfile
+import threading
+import contextlib
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from brother_ql.backends.helpers import get_status
@@ -9,6 +13,11 @@ from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
+
+try:
+    import fcntl
+except ImportError:  # Not available on Windows
+    fcntl = None
 
 SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
 
@@ -24,6 +33,56 @@ logger = logging.getLogger(__name__)
 BROTHER_MAC_ADDRESS_PREFIXES = [
     "ac:f2:3c",  # Brother QL-810W
 ]
+
+# Directory for the lock files serializing access to the printer devices
+LOCK_DIR = tempfile.gettempdir()
+
+_fallback_locks = {}
+_fallback_locks_guard = threading.Lock()
+_status_cache = {}
+
+
+@contextlib.contextmanager
+def device_lock(device_specifier: str, blocking: bool = True):
+    """Serialize access to a printer device.
+
+    The kernel allows only one open handle per USB printer, so a status query
+    during a print job (or the other way round) fails with "Device or resource
+    busy". A lock file is used so that this also works across several worker
+    processes. Yields whether the lock was acquired."""
+    fd = None
+    if fcntl is not None:
+        name = re.sub(r'[^A-Za-z0-9_.-]', '_', device_specifier)
+        try:
+            fd = os.open(os.path.join(LOCK_DIR, f'brother_ql_web_{name}.lock'), os.O_RDONLY | os.O_CREAT, 0o666)
+        except OSError as e:
+            logger.warning('Cannot open lock file for %s, locking within this process only: %s', device_specifier, e)
+
+    if fd is None:
+        with _fallback_locks_guard:
+            lock = _fallback_locks.setdefault(device_specifier, threading.Lock())
+        acquired = lock.acquire(blocking)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                lock.release()
+        return
+
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
+            acquired = True
+        except BlockingIOError:
+            acquired = False
+        yield acquired
+    finally:
+        # Closing the file releases the lock
+        os.close(fd)
+
+
+def is_simulation(device_specifier) -> bool:
+    return isinstance(device_specifier, str) and device_specifier in ['simulation', '?']
 
 
 class PrinterQueue:
@@ -45,7 +104,7 @@ class PrinterQueue:
         return ``(qlr, generated_images)``."""
         qlr = BrotherQLRaster(self.model)
         generated_images = []
-        is_simulation = isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']
+        simulation = is_simulation(self.device_specifier)
         for entry in entries:
             label = entry['label']
             cut = entry['cut']
@@ -55,7 +114,7 @@ class PrinterQueue:
             else:
                 rotate = 'auto'
             img = label.generate(rotate=False)
-            if is_simulation:
+            if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
             create_label(
@@ -75,7 +134,7 @@ class PrinterQueue:
         Returns an empty string on success, or an error message."""
         try:
             # Simulator: pretend we sent data, save labels as PNG, and return success
-            if isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']:
+            if is_simulation(self.device_specifier):
                 logger.info('Simulated sending %d bytes to simulator printer (batch %d)',
                             len(qlr.data), batch_index)
                 os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
@@ -118,15 +177,19 @@ class PrinterQueue:
         entries = list(self._print_queue)
         self._print_queue.clear()
 
-        # Split into batches to avoid printer timeouts on large jobs
-        for batch_index, start in enumerate(range(0, total, batch_size), start=1):
-            batch = entries[start:start + batch_size]
-            logger.info('Processing batch %d (%d labels, %d/%d)',
-                        batch_index, len(batch), start + len(batch), total)
-            qlr, generated_images = self._rasterize_entries(batch)
-            status = self._send_raster(qlr, generated_images, batch_index)
-            if status:
-                return status
+        # Hold the device for the whole job so that neither status queries nor
+        # other jobs get in between the batches
+        lock = contextlib.nullcontext() if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
+        with lock:
+            # Split into batches to avoid printer timeouts on large jobs
+            for batch_index, start in enumerate(range(0, total, batch_size), start=1):
+                batch = entries[start:start + batch_size]
+                logger.info('Processing batch %d (%d labels, %d/%d)',
+                            batch_index, len(batch), start + len(batch), total)
+                qlr, generated_images = self._rasterize_entries(batch)
+                status = self._send_raster(qlr, generated_images, batch_index)
+                if status:
+                    return status
 
         return ""
 
@@ -153,6 +216,26 @@ def get_printer(printer_identifier=None, backend_identifier=None):
     BrotherQLBackend = be["backend_class"]
     printer = BrotherQLBackend(printer_identifier)
     return printer
+
+
+def query_status(device_specifier: str) -> dict:
+    """Query the printer status without waiting for a running print job. While
+    a job holds the device, the last known status is returned instead."""
+    with device_lock(device_specifier, blocking=False) as acquired:
+        if acquired:
+            printer = get_printer(device_specifier)
+            state = get_status(printer)
+            # Release the device before giving up the lock
+            del printer
+            _status_cache[device_specifier] = state
+            return dict(state)
+    logger.debug('Printer %s is busy, returning last known status', device_specifier)
+    return dict(_status_cache.get(device_specifier, {
+        'errors': [],
+        'model': 'Unknown',
+        'status_type': 'Busy',
+        'phase_type': 'Printing state',
+    }))
 
 
 _last_scan_ts = 0
@@ -217,8 +300,7 @@ def get_ptr_status(config: Config):
                         continue
                     spec = f"file://{dev}"
                     try:
-                        printer = get_printer(spec)
-                        printer_state = get_status(printer)
+                        printer_state = query_status(spec)
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))
@@ -252,7 +334,7 @@ def get_ptr_status(config: Config):
             sim = SIMULATOR_PRINTER.copy()
             printers = list(_cached_printers)
             # append simulator if not present
-            if not any(p.get('path') == 'simulator' for p in printers):
+            if not any(p.get('path') == 'simulation' for p in printers):
                 printers.append(sim)
             if printers:
                 # Use first detected printer as default top-level status for backward compatibility
@@ -284,8 +366,7 @@ def get_ptr_status(config: Config):
             status['selected'] = device_specifier
             return status
         else:
-            printer = get_printer(device_specifier)
-            printer_state = get_status(printer)
+            printer_state = query_status(device_specifier)
             for key, value in printer_state.items():
                 status[key] = value
         # Always include simulator in returned printers list

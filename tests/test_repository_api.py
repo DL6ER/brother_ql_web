@@ -1,7 +1,9 @@
+import io
 import os
 import json
 import base64
 
+from PIL import Image
 from app.utils import fill_first_line_fields
 from test_labeldesigner_api import verify_image, make_client
 import pytest
@@ -228,3 +230,76 @@ def test_repository_save_and_load_utf8_symbols(tmp_path):
     # Verify image preview
     verify_image(decoded, 'repo_test_UTF-8_Symbols.png')
     assert resp.status_code == 200
+
+
+TEXT = [{'font': 'DejaVu Sans,Book', 'text': 'x', 'size': '40'}]
+SAVE_URL = '/labeldesigner/api/repository/save'
+
+
+def _png_b64(color: str) -> str:
+    buffer = io.BytesIO()
+    Image.new('RGB', (40, 40), color).save(buffer, 'PNG')
+    return base64.b64encode(buffer.getvalue()).decode('ascii')
+
+
+def test_repository_images_are_stored_per_label(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    for name, color in (('Alpha', 'red'), ('Beta', 'blue')):
+        resp = client.post(SAVE_URL, json={'name': name, 'label_size': '62', 'print_type': 'image', 'text': TEXT,
+                                           'image_data': _png_b64(color), 'image_mime': 'image/png', 'image_name': 'logo.png'})
+        assert resp.status_code == 200
+
+    # Each label keeps its own image although both uploads were named logo.png
+    for name, color in (('Alpha', (255, 0, 0)), ('Beta', (0, 0, 255))):
+        loaded = client.get(f'/labeldesigner/api/repository/load?name={name}.json').get_json()
+        image = Image.open(io.BytesIO(base64.b64decode(loaded['image_data']))).convert('RGB')
+        assert image.getpixel((0, 0)) == color
+
+    # Deleting a label removes its image, but no other files
+    with open(os.path.join(repo, 'Alpha_image_backup.json'), 'w') as fh:
+        fh.write('{}')
+    resp = client.post('/labeldesigner/api/repository/delete', json={'name': 'Alpha.json'})
+    assert resp.get_json().get('success') is True
+    assert sorted(os.listdir(repo)) == ['Alpha_image_backup.json', 'Beta.json', 'Beta_image.png']
+
+
+def test_repository_list_skips_broken_files(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    with open(os.path.join(repo, 'broken.json'), 'w') as fh:
+        fh.write('{not json')
+    with open(os.path.join(repo, 'list.json'), 'w') as fh:
+        fh.write('[1, 2]')
+    assert client.post(SAVE_URL, json={'name': 'good', 'label_size': '62', 'text': TEXT}).status_code == 200
+
+    resp = client.get('/labeldesigner/api/repository/list')
+    assert resp.status_code == 200
+    assert [f['name'] for f in resp.get_json()['files']] == ['good.json']
+
+
+def test_repository_pdf_image_is_used(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    pdf = io.BytesIO()
+    Image.new('RGB', (200, 100), 'black').save(pdf, 'PDF')
+    resp = client.post(SAVE_URL, json={'name': 'pdf', 'label_size': '62', 'print_type': 'image', 'image_mode': 'grayscale',
+                                       'image_fit': '1', 'text': [], 'image_mime': 'application/pdf',
+                                       'image_data': base64.b64encode(pdf.getvalue()).decode('ascii')})
+    assert resp.status_code == 200
+
+    resp = client.get('/labeldesigner/api/repository/preview?name=pdf.json')
+    assert resp.status_code == 200
+    preview = Image.open(io.BytesIO(resp.data)).convert('L')
+    # The black 2:1 PDF page is fitted to the label width
+    assert preview.height > 200
+    assert preview.getextrema()[0] == 0
+
+
+def test_repository_save_accepts_text_as_json_string(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    resp = client.post(SAVE_URL, json={'name': 'string', 'label_size': '62', 'text': json.dumps(TEXT)})
+    assert resp.status_code == 200
+
+    resp = client.get('/labeldesigner/api/repository/load?name=string.json')
+    assert resp.status_code == 200
+    assert json.loads(resp.get_json()['text']) == TEXT

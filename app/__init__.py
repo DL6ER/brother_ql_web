@@ -9,28 +9,29 @@ import os
 import sys
 import argparse
 
-from flask import Flask
+from flask import Flask, current_app
 from brother_ql.models import ALL_MODELS
 
 from . import fonts
 from config import Config
 
-FONTS = None
+# Settings that can be overridden by environment variables. They take
+# precedence over the config files, command-line arguments (see parse_args)
+# take precedence over them.
+ENV_OVERRIDES = ('PRINTER_MODEL', 'PRINTER_PRINTER', 'LABEL_DEFAULT_SIZE', 'LABEL_DEFAULT_ORIENTATION')
 
 
 def create_app(config_class=Config) -> Flask:
-    global FONTS
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
     app.config.from_pyfile('application.py', silent=True)
+    for key in ENV_OVERRIDES:
+        if key in os.environ:
+            app.config[key] = os.environ[key]
 
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 
-    FONTS = init_fonts(app)
-
-    # Only parse command-line arguments if not running under pytest
-    if not any('pytest' in arg for arg in sys.argv[0:1]):
-        parse_args(app)
+    app.extensions['fonts'] = init_fonts(app)
 
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)
@@ -56,18 +57,25 @@ def init_fonts(app: Flask):
     return FONTS
 
 
-def parse_args(app):
+def get_fonts() -> fonts.Fonts:
+    """Return the fonts of the current application."""
+    return current_app.extensions['fonts']
+
+
+def parse_args(app, argv=None):
+    """Apply command-line arguments to the app config. Only called by run.py,
+    WSGI servers like gunicorn pass their own arguments."""
     models = [model.identifier for model in ALL_MODELS]
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--default-label-size', default=os.getenv('LABEL_DEFAULT_SIZE', app.config['LABEL_DEFAULT_SIZE']),
+    parser.add_argument('--default-label-size', default=app.config['LABEL_DEFAULT_SIZE'],
                         help='Label size inserted in your printer. Defaults to 62.')
-    parser.add_argument('--default-orientation', default=os.getenv('LABEL_DEFAULT_ORIENTATION', app.config['LABEL_DEFAULT_ORIENTATION']), choices=('standard', 'rotated'),
+    parser.add_argument('--default-orientation', default=app.config['LABEL_DEFAULT_ORIENTATION'], choices=('standard', 'rotated'),
                         help='Label orientation, defaults to "standard". To turn your text by 90°, state "rotated".')
-    parser.add_argument('--model', default=os.getenv('PRINTER_MODEL', app.config['PRINTER_MODEL']), choices=models,
+    parser.add_argument('--model', default=app.config['PRINTER_MODEL'], choices=models,
                         help='The model of your printer (default: QL-500)')
-    parser.add_argument('printer', nargs='?', default=os.environ.get('PRINTER_PRINTER', app.config['PRINTER_PRINTER']),
+    parser.add_argument('printer', nargs='?', default=app.config['PRINTER_PRINTER'],
                         help='String descriptor for the printer to use (like tcp://192.168.0.23:9100 or file:///dev/usb/lp0), may be left out to use auto-detection.')
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if args.printer:
         app.config['PRINTER_PRINTER'] = args.printer

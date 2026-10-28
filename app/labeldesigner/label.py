@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 # Constants
 WARNING_TEXT_LENGTH = 500
 DEFAULT_RANDOM_LENGTH = 64
+MAX_RANDOM_LENGTH = 10_000
+MAX_IMAGE_SCALING_FACTOR = 500.0
 DEFAULT_FONT_SIZE = 12
 FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
 
@@ -60,6 +62,7 @@ class SimpleLabel:
         counter: int = 0,
         red_support: bool = False,
         code_text: str = '',
+        template_env_vars: frozenset = frozenset(),
     ):
         """Initialize a SimpleLabel object."""
         # Input validation
@@ -71,6 +74,8 @@ class SimpleLabel:
             raise ValueError("QR size must be positive.")
         if image_scaling_factor <= 0:
             raise ValueError("Image scaling factor must be > 0.")
+        if image_scaling_factor > MAX_IMAGE_SCALING_FACTOR:
+            raise ValueError(f"Image scaling factor must not exceed {MAX_IMAGE_SCALING_FACTOR:g}.")
         if image_rotation < 0 or image_rotation > 360:
             raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
@@ -98,6 +103,7 @@ class SimpleLabel:
         self._timestamp = timestamp
         self._red_support = red_support
         self._code_text = code_text
+        self._template_env_vars = template_env_vars
 
     @property
     def label_content(self):
@@ -205,9 +211,14 @@ class SimpleLabel:
                 ui = uuid.UUID(int=random.getrandbits(128))
                 text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
 
-            # Replace {{env:<var>}} with the value of the environment variable var
+            # Replace {{env:<var>}} with the value of the environment variable
+            # var. Only explicitly allowed variables are inserted, others could
+            # leak secrets into the preview.
             def env_replacer(match):
                 var_name = match.group(1)
+                if var_name not in self._template_env_vars:
+                    logger.warning(f"Environment variable {var_name} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
+                    return ""
                 return os.getenv(var_name, "")
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
 
@@ -216,6 +227,8 @@ class SimpleLabel:
             # shorthand for ":shift"
             def random_replacer(match):
                 length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
+                if length > MAX_RANDOM_LENGTH:
+                    raise ValueError(f"Random text length must not exceed {MAX_RANDOM_LENGTH}")
                 if match.group(2):
                     line['shift'] = True
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
@@ -285,7 +298,7 @@ class SimpleLabel:
                         # Both dimensions are considered for standard label
                         scale = min(max_width / img_width, max_height / img_height)
                 logger.debug(f"Scaling image by factor: {scale}")
-                new_size = (int(img_width * scale), int(img_height * scale))
+                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 # Update image dimensions
@@ -295,7 +308,7 @@ class SimpleLabel:
                 img_width, img_height = img.size
                 scale = self._image_scaling_factor / 100.0
                 logger.debug(f"Manual image scaling factor: {scale}")
-                new_size = (int(img_width * scale), int(img_height * scale))
+                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 img_width, img_height = img.size

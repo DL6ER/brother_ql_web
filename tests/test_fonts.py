@@ -1,3 +1,4 @@
+import os
 import unittest
 from app.fonts import Fonts
 import json
@@ -40,6 +41,26 @@ class TestFonts(unittest.TestCase):
         font_styles = self.fonts.fontlist()
         expected_font_styles = read_testfile('font_list', font_styles)
         self.assertEqual(font_styles, expected_font_styles)
+
+
+def test_font_folder_is_scanned(monkeypatch):
+    scanned = []
+    monkeypatch.setattr(os.path, 'isdir', lambda path: scanned.append(path) or False)
+    Fonts(logging.getLogger('TestFonts'), additional_path='/opt/myfonts')
+    assert '/opt/myfonts' in scanned
+    assert '/' not in scanned
+
+
+def test_no_fonts_found(monkeypatch):
+    monkeypatch.setattr(os.path, 'isdir', lambda path: False)
+    fonts = Fonts(logging.getLogger('TestFonts'))
+    assert not fonts.fonts_available()
+
+
+def test_missing_default_font_is_replaced():
+    fonts = Fonts(logging.getLogger('TestFonts'), default_family='No Such Font', default_style='Book')
+    family, style = fonts.get_default_font()
+    assert style in fonts.fonts.get(family, {})
 
 
 if __name__ == '__main__':

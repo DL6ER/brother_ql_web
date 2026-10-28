@@ -1,3 +1,14 @@
+// Escape text before inserting it into HTML. Messages and label metadata can
+// contain markup coming from stored labels or the server.
+function escapeHtml(value) {
+        return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+}
+
 // Credits: https://stackoverflow.com/a/71177790/2087442
 // Modified to parse nested JSON-encoded string objects
 function flattenObject(obj) {
