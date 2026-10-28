@@ -114,5 +114,8 @@ venv.bak/
 # idea
 .idea/*
 
+# VS Code
+.vscode/
+
 # Simulated label output
 simulated_labels/
