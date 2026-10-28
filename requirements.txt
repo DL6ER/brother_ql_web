@@ -10,10 +10,10 @@ Jinja2==3.1.6
 MarkupSafe==3.0.3
 packbits==0.6
 pdf2image==1.17.0
-pillow==12.3.0
+pillow==13.0.0
 python-barcode==0.16.1
 pyusb==1.3.1
 fonttools==4.63.0
 qrcode==8.2
 visitor==0.1.3
-Werkzeug==3.1.8
+Werkzeug==3.1.9
