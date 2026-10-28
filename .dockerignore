@@ -1,0 +1,13 @@
+# Only send what the image needs to the build context, so that other files in
+# the working directory (virtual environments, test output, personal files)
+# never end up in the image
+*
+!app/
+!instance/
+!labels/
+!config.py
+!run.py
+!wsgi.py
+!requirements.txt
+!LICENSE
+**/__pycache__
