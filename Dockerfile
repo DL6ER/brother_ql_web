@@ -52,5 +52,11 @@ RUN apk add --no-cache \
 
 COPY . /app
 
+# Commit and build time shown in the label designer, passed in by the image
+# workflow. They come last, so that a new commit keeps the cached layers.
+ARG GIT_COMMIT=""
+ARG BUILD_DATE=""
+ENV GIT_COMMIT=$GIT_COMMIT BUILD_DATE=$BUILD_DATE
+
 EXPOSE 8013
 ENTRYPOINT ["python3", "run.py"]

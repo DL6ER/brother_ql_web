@@ -14,6 +14,7 @@ from flask import Flask, current_app
 from brother_ql.models import ALL_MODELS
 
 from . import fonts
+from .build_info import get_build_info
 from config import Config
 
 
@@ -69,6 +70,12 @@ def create_app(config_class=Config) -> Flask:
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 
     app.extensions['fonts'] = init_fonts(app)
+
+    build = get_build_info()
+
+    @app.context_processor
+    def inject_build_info():
+        return {'build': build}
 
     from app.main import bp as main_bp
     app.register_blueprint(main_bp)

@@ -58,3 +58,29 @@ def test_invalid_environment_values(monkeypatch, key, value):
     monkeypatch.setenv(key, value)
     with pytest.raises(ValueError, match=f'Invalid value for the environment variable {key}'):
         create_app()
+
+
+def test_navbar_shows_commit_and_build_time(monkeypatch):
+    monkeypatch.setenv('GIT_COMMIT', '1c0ea1aba5f663c8534b3d44cad4e0ed2af47397')
+    monkeypatch.setenv('BUILD_DATE', '2026-10-29T02:37:05Z')
+    html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
+    assert 'href="https://github.com/DL6ER/brother_ql_web/commit/1c0ea1aba5f663c8534b3d44cad4e0ed2af47397"' in html
+    assert '>1c0ea1a, 2026-10-29 02:37 UTC</a>' in html
+
+
+def test_build_info_falls_back_to_the_checkout(monkeypatch):
+    from app import build_info
+    monkeypatch.setenv('GIT_COMMIT', '')
+    monkeypatch.setenv('BUILD_DATE', '')
+    monkeypatch.setattr(build_info, '_checkout_commit', lambda: 'ca2bac4')
+    assert build_info.get_build_info() == {'commit': 'ca2bac4', 'date': ''}
+
+
+@pytest.mark.parametrize('commit, date', [('not a commit', 'yesterday'), ('', '')])
+def test_navbar_without_build_info(monkeypatch, commit, date):
+    from app import build_info
+    monkeypatch.setenv('GIT_COMMIT', commit)
+    monkeypatch.setenv('BUILD_DATE', date)
+    monkeypatch.setattr(build_info, '_checkout_commit', lambda: '')
+    html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
+    assert 'id="buildInfo"' not in html

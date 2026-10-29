@@ -167,6 +167,14 @@ cd brother_ql_web
 docker compose build
 ```
 
+The navbar shows the commit and build time of the image, so you can see which version is running (please add it when you report an issue). Images built locally only show them when you pass them in:
+
+```bash
+docker compose build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+```
+
+When the app runs from a git checkout (e.g. in the devcontainer or with `python3 run.py`), the commit of the checkout is shown.
+
 ### Usage
 
 Once it's running, access the web interface by opening the page with your browser.
