@@ -1,10 +1,18 @@
 # Only send what the image needs to the build context, so that other files in
-# the working directory (virtual environments, test output, personal files)
-# never end up in the image
+# the working directory never end up in the image: virtual environments, test
+# output, instance/ with local settings like WEBHOOK_PASSWORD, and personal
+# labels (docker-compose.yml mounts the labels folder from here). Only the
+# sample labels are included.
 *
 !app/
-!instance/
-!labels/
+!labels/EAN-Label.json
+!labels/Kopie-vorab.json
+!labels/Kopie-vorab_image.png
+!labels/QR-Example.json
+!labels/TODO-List.json
+!labels/Template-Example.json
+!labels/URGENT-Text.json
+!labels/UTF-8_Symbols.json
 !config.py
 !run.py
 !wsgi.py

@@ -7,6 +7,7 @@ import logging
 import barcode
 from barcode.writer import ImageWriter
 import datetime
+import functools
 import math
 import re
 import random
@@ -34,7 +35,8 @@ DEFAULT_FONT_SIZE = 12
 # Pillow refuses to open images with more than twice this number of pixels,
 # so uploaded images above MAX_LABEL_PIXELS are rejected right when decoding
 Image.MAX_IMAGE_PIXELS = MAX_LABEL_PIXELS // 2
-FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
+# Environment variables that were not allowed in a template, logged only once
+_REFUSED_ENV_VARS: set = set()
 
 
 def check_image_size(width: int, height: int) -> None:
@@ -238,7 +240,10 @@ class SimpleLabel:
             def env_replacer(match):
                 var_name = match.group(1)
                 if var_name not in self._template_env_vars:
-                    logger.warning(f"Environment variable {var_name} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
+                    # Previews are rendered on every change, log only once
+                    if var_name not in _REFUSED_ENV_VARS:
+                        _REFUSED_ENV_VARS.add(var_name)
+                        logger.warning(f"Environment variable {var_name} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
                     return ""
                 return os.getenv(var_name, "")
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
@@ -632,13 +637,14 @@ class SimpleLabel:
 
     def _get_font(self, font_path: str, size: int) -> ImageFont.FreeTypeFont:
         """Get a font object, using cache for performance."""
-        key = (font_path, size)
-        if key in FONT_CACHE:
-            return FONT_CACHE[key]
         try:
-            font = ImageFont.truetype(font_path, int(size))
-            FONT_CACHE[key] = font
-            return font
+            return _load_font(font_path, int(size))
         except Exception as e:
             logger.error(f"Failed to load font '{font_path}' with size {size}: {e}")
             return ImageFont.load_default()
+
+
+# Bounded, requests can ask for any number of sizes
+@functools.lru_cache(maxsize=256)
+def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(font_path, size)

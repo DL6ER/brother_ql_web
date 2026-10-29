@@ -1,6 +1,7 @@
 import os
 import re
 import hmac
+import uuid
 import base64
 import logging
 import barcode
@@ -16,6 +17,7 @@ from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
+from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
@@ -147,24 +149,35 @@ def _remove_repo_images(repo: str, base: str, keep: str | None = None):
 def _repo_path(repo: str, name: str) -> str:
     """Path of a file in the label repository. The callers sanitize the
     names, this makes sure that no path leaves the repository anyway."""
-    repo = os.path.normpath(repo)
-    path = os.path.normpath(os.path.join(repo, name))
-    if not path.startswith(repo + os.sep):
+    path = safe_join(repo, name)
+    if path is None:
         raise ValueError(f'Invalid file name: {name}')
     return path
+
+
+def _stage_file(directory: str, content: bytes) -> str:
+    """Write content to a new hidden file with a unique name in directory, so
+    that concurrent saves do not write into the same temporary file."""
+    tmp_path = os.path.join(directory, f'.{uuid.uuid4().hex}.tmp')
+    fd = os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+    try:
+        with os.fdopen(fd, 'wb') as fh:
+            fh.write(content)
+    except BaseException:
+        os.remove(tmp_path)
+        raise
+    return tmp_path
 
 
 def _write_atomically(path: str, content: bytes):
     """Write a file so that it either has the old or the new content, also
     when writing fails part way through (e.g. disk full)."""
-    tmp_path = path + '.tmp'
+    tmp_path = _stage_file(os.path.dirname(path), content)
     try:
-        with open(tmp_path, 'wb') as fh:
-            fh.write(content)
         os.replace(tmp_path, path)
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    except BaseException:
+        os.remove(tmp_path)
+        raise
 
 
 def _json_body() -> dict:
@@ -244,14 +257,17 @@ def repo_save():
             text = json.loads(text)
         data['text'] = text
 
+        # The image file is always named after the label, a name chosen by
+        # the client could overwrite or refer to images of other labels
         base = os.path.splitext(filename)[0]
+        own_images = {base + '_image' + ext for ext in REPO_IMAGE_EXTENSIONS.values()}
+        image_name = None
         if image_bytes is not None:
             ext = REPO_IMAGE_EXTENSIONS.get(data.get('image_mime', 'image/png'), '.png')
-            # The image file is always named after the label, a name chosen
-            # by the client could overwrite images of other labels
             image_name = base + '_image' + ext
-            _write_atomically(_repo_path(repo, image_name), image_bytes)
             data['image'] = image_name
+        elif data.get('image') not in own_images:
+            data.pop('image', None)
 
         # Remove raw image data from JSON before saving
         if 'image_data' in data:
@@ -262,12 +278,19 @@ def repo_save():
             if key in data:
                 del data[key]
 
-        # Finally, save the JSON file
-        _write_atomically(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
-        # Only now that the label refers to the new image, remove images
-        # stored with another file type before
-        if image_bytes is not None:
-            _remove_repo_images(repo, base, keep=image_name)
+        # Finally, save the JSON file. The new image is written beforehand but
+        # only put in place once the label was saved, and images stored with
+        # another file type before are removed after that.
+        staged_image = _stage_file(repo, image_bytes) if image_bytes is not None else None
+        try:
+            _write_atomically(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+            if staged_image is not None:
+                os.replace(staged_image, _repo_path(repo, image_name))
+                staged_image = None
+                _remove_repo_images(repo, base, keep=image_name)
+        finally:
+            if staged_image is not None:
+                os.remove(staged_image)
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
@@ -412,6 +435,9 @@ def repo_print():
         print_count = _check_print_count(int(request.values.get('print_count') or data.get('print_count') or 1))
         cut_once = int(request.values.get('cut_once') or data.get('cut_once') or 0) == 1
         high_res = int(request.values.get('high_res') or data.get('high_res') or 0) != 0
+        # The label and its image have to be generated with the resolution
+        # it is printed with
+        data['high_res'] = high_res
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': str(e)}), 400)
@@ -551,7 +577,11 @@ def create_printer_from_request(request: Request):
     )
 
 
-def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image: Image.Image | None = None):
+# Default for create_label_from_request(): load the image from the request
+_LOAD_IMAGE = object()
+
+
+def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
@@ -632,7 +662,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
-    if image is None:
+    if image is _LOAD_IMAGE:
         image = load_label_image(d, files)
 
     return SimpleLabel(

@@ -198,6 +198,10 @@ Text lines are limited to 10000 characters (100000 per label) after the template
 
 The log level is set with the `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, default: `WARNING`).
 
+All environment variables mentioned here take precedence over settings in `instance/application.py`. An invalid value stops the server at startup with a message naming the variable.
+
+Print jobs and status queries of a printer are serialized, so they do not get in each other's way. Address each printer in one way only (e.g. always `file:///dev/usb/lp0` or always `usb://0x04f9:0x209b`), the two cannot be recognized as the same device.
+
 ### Contributing / Development
 
 To contribute to this project, follow these steps:

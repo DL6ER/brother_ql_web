@@ -14,6 +14,7 @@ from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
+from werkzeug.security import safe_join
 
 try:
     import fcntl
@@ -46,13 +47,22 @@ LOCK_DIR = tempfile.gettempdir()
 # printer before it gives up
 DEVICE_LOCK_TIMEOUT = 10
 
+# Seconds a status query waits for the printer. A bit longer than a status
+# query itself may take, so that two queries do not get in each other's way.
+# If the printer is still locked after that, a print job is running.
+STATUS_LOCK_TIMEOUT = 2.5
+BUSY_STATUS_TYPE = 'Printing'
+
 _fallback_locks = {}
 _fallback_locks_guard = threading.Lock()
 _status_cache = {}
 
 
 def _lock_key(device_specifier: str) -> str:
-    """The same key for every spelling of a device that requests may use."""
+    """The same key for every spelling of a device that requests may use.
+    A printer addressed both as usb://<vendor>:<product> and as
+    /dev/usb/lp<N> cannot be recognized as the same device without asking
+    it, so it should be addressed in one way only."""
     key = device_specifier.strip()
     if key.startswith('file://'):
         key = key[len('file://'):]
@@ -76,20 +86,19 @@ def _private_lock_dir() -> str:
 
 
 def _lock_slot(key: str) -> str:
-    """Map a device to one of 256 lock slots. Requests can name any number of
+    """Map a device to one of 4096 lock slots. Requests can name any number of
     devices, the slots keep the number of lock files bounded. Two devices
-    sharing a slot are merely serialized."""
-    return hashlib.sha256(key.encode()).hexdigest()[:2]
+    sharing a slot (unlikely with a handful of printers) are serialized."""
+    return hashlib.sha256(key.encode()).hexdigest()[:3]
 
 
 def _open_lock_file(slot: str):
     if fcntl is None:
         return None
     try:
-        lock_dir = _private_lock_dir()
-        path = os.path.normpath(os.path.join(lock_dir, f'printer-{slot}.lock'))
-        if not path.startswith(lock_dir + os.sep):
-            raise ValueError(f'Invalid lock file: {path}')
+        path = safe_join(_private_lock_dir(), f'printer-{slot}.lock')
+        if path is None:
+            raise ValueError(f'Invalid lock slot: {slot}')
         return os.open(path, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     except OSError as e:
         logger.warning('Cannot open lock file, locking within this process only: %s', e)
@@ -334,7 +343,7 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     """Query the printer status without waiting for a running print job. While
     a job holds the device, the last known status is returned instead."""
     key = _lock_key(device_specifier)
-    with device_lock(device_specifier, timeout=0) as acquired:
+    with device_lock(device_specifier, timeout=STATUS_LOCK_TIMEOUT) as acquired:
         if acquired:
             printer = get_printer(device_specifier)
             try:
@@ -348,7 +357,7 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     # Model and media from the last query, but the state of a running job:
     # errors or the idle state from before the job no longer apply
     state = dict(_status_cache.get(key, {'model': default_model, 'media_width': None, 'media_length': 0}))
-    state.update({'errors': [], 'status_type': 'Printing', 'phase_type': 'Printing state'})
+    state.update({'errors': [], 'status_type': BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
     return state
 
 
@@ -442,7 +451,10 @@ def get_ptr_status(config: Config):
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
 
                 _cached_printers = found_list
-                _last_scan_ts = now
+                # A printer busy with a job is scanned again with the next
+                # query instead of being shown as printing for 10 s
+                busy = any(p.get('status_type') == BUSY_STATUS_TYPE for p in found_list)
+                _last_scan_ts = 0 if busy else now
             # Prepare response: include list of printers and a top-level status for the first one (compatibility)
             # Ensure simulator printer is always present
             sim = SIMULATOR_PRINTER.copy()

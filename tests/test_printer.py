@@ -56,6 +56,8 @@ class ExclusiveUsbPrinter:
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(linux_kernel, 'BrotherQLBackendLinuxKernel', ExclusiveUsbPrinter)
     monkeypatch.setattr(printer, '_status_cache', {})
+    # Tests holding the device lock should not wait for the status long
+    monkeypatch.setattr(printer, 'STATUS_LOCK_TIMEOUT', 0.2)
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
     return client
@@ -157,7 +159,9 @@ def test_lock_files_are_bounded(tmp_path):
     for i in range(300):
         with printer.device_lock(f'tcp://printer-{i}.example', timeout=0):
             pass
-    assert len(list((tmp_path / f'brother_ql_web-{os.getuid()}').iterdir())) <= 256
+    assert len(list((tmp_path / f'brother_ql_web-{os.getuid()}').iterdir())) <= 300
+    # However many devices requests name, there are at most 4096 lock files
+    assert len({printer._lock_slot(f'tcp://printer-{i}.example') for i in range(50000)}) <= 4096
 
 
 def test_device_lock_without_flock_support(monkeypatch):
@@ -180,3 +184,32 @@ def test_status_during_print_does_not_show_old_state(client):
     assert status['errors'] == []
     assert status['status_type'] == 'Printing'
     assert status['media_width'] == 62
+
+
+def test_overlapping_status_queries(client, monkeypatch):
+    monkeypatch.setattr(printer, 'STATUS_LOCK_TIMEOUT', 2.5)
+    monkeypatch.setattr(ExclusiveUsbPrinter, 'status_seconds', 0.5)
+    result = {}
+    thread = threading.Thread(target=lambda: result.update(first=client.application.test_client().get('/labeldesigner/api/printer_status').get_json()))
+    thread.start()
+    time.sleep(0.1)
+    second = client.get('/labeldesigner/api/printer_status').get_json()
+    thread.join()
+    # Neither query is mistaken for a running print job
+    assert result['first']['status_type'] == second['status_type'] == 'Reply to status request'
+
+
+def test_busy_printer_is_scanned_again(client, monkeypatch):
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, 'exists', lambda path: path == '/dev/usb/lp0' or real_exists(path))
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    client.application.config['PRINTER_PRINTER'] = '?'
+
+    def lp0(status):
+        return next(p for p in status['printers'] if p['path'] == DEVICE)
+
+    with printer.device_lock(DEVICE):
+        assert lp0(client.get('/labeldesigner/api/printer_status').get_json())['status_type'] == 'Printing'
+    # Right after the job the printer is queried again instead of the cached busy state
+    assert lp0(client.get('/labeldesigner/api/printer_status').get_json())['status_type'] == 'Reply to status request'

@@ -1,13 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import re
 from PIL import Image
 from io import BytesIO
 from typing import BinaryIO
 from PIL.ImageOps import colorize
 from flask import current_app
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, pdfinfo_from_bytes
 from werkzeug.datastructures import FileStorage
 from app import get_fonts
+from app.labeldesigner.label import check_image_size
 
 
 def convert_image_to_bw(image: Image.Image, threshold: int) -> Image.Image:
@@ -43,8 +45,17 @@ def imgfile_to_image(file: FileStorage | BinaryIO) -> Image.Image:
 
 
 def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int) -> Image.Image:
+    data = read_file(file)
+    # Check the page size before rendering. Pillow's pixel limit only applies
+    # after pdftoppm rendered the whole page into memory, and a tiny PDF can
+    # declare a huge page.
+    match = re.match(r'([\d.]+) x ([\d.]+)', str(pdfinfo_from_bytes(data).get('Page size', '')))
+    if not match:
+        raise ValueError("Cannot read the page size of the PDF")
+    width_pt, height_pt = (float(value) for value in match.groups())
+    check_image_size(width_pt / 72 * dpi, height_pt / 72 * dpi)
     # Only the first page is used, rendering all pages could exhaust the memory
-    return convert_from_bytes(read_file(file), dpi=dpi, first_page=1, last_page=1)[0]
+    return convert_from_bytes(data, dpi=dpi, first_page=1, last_page=1)[0]
 
 
 def image_to_png_bytes(im: Image.Image) -> bytes:

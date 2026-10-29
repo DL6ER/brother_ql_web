@@ -7,6 +7,7 @@ This is a web service to print labels on Brother QL label printers.
 
 import os
 import sys
+import logging
 import argparse
 
 from flask import Flask, current_app
@@ -15,20 +16,48 @@ from brother_ql.models import ALL_MODELS
 from . import fonts
 from config import Config
 
-# Settings that can be overridden by environment variables. They take
-# precedence over the config files, command-line arguments (see parse_args)
-# take precedence over them.
-ENV_OVERRIDES = ('PRINTER_MODEL', 'PRINTER_PRINTER', 'LABEL_DEFAULT_SIZE', 'LABEL_DEFAULT_ORIENTATION')
+
+def _host_list(value: str) -> list[str] | None:
+    return [host.strip() for host in value.split(',') if host.strip()] or None
+
+
+def _log_level(value: str) -> str:
+    level = value.strip().upper()
+    if level not in logging.getLevelNamesMapping():
+        raise ValueError(level)
+    return level
+
+
+# Settings that can be overridden by environment variables of the same name,
+# with the function converting the value. They take precedence over the
+# config files, command-line arguments (see parse_args) take precedence over
+# them.
+ENV_OVERRIDES = {
+    'PRINTER_MODEL': str,
+    'PRINTER_PRINTER': str,
+    'LABEL_DEFAULT_SIZE': str,
+    'LABEL_DEFAULT_ORIENTATION': str,
+    'LOG_LEVEL': _log_level,
+    'TRUSTED_HOSTS': _host_list,
+    'LABEL_TEMPLATE_ENV_VARS': str,
+    'PRINT_MAX_COUNT': int,
+    'MAX_CONTENT_LENGTH': int,
+    'WEBHOOK_PASSWORD': str,
+}
 
 
 def create_app(config_class=Config) -> Flask:
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_class)
     app.config.from_pyfile('application.py', silent=True)
-    for key in ENV_OVERRIDES:
+    for key, convert in ENV_OVERRIDES.items():
         # Empty variables (e.g. PRINTER_PRINTER= in a compose file) keep the default
-        if os.environ.get(key):
-            app.config[key] = os.environ[key]
+        value = os.environ.get(key)
+        if value:
+            try:
+                app.config[key] = convert(value)
+            except ValueError:
+                raise ValueError(f'Invalid value for the environment variable {key}: {value!r}') from None
 
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))
 

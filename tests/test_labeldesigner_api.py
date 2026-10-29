@@ -1529,3 +1529,49 @@ def test_simulator_keeps_only_the_newest_labels(tmp_path, monkeypatch):
     data['print_count'] = '3'
     assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
     assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2
+
+
+def test_pdf_with_huge_page_is_refused_before_rendering(tmp_path, monkeypatch):
+    import app.utils
+    monkeypatch.setattr(app.utils, 'convert_from_bytes', lambda *args, **kwargs: pytest.fail('PDF was rendered'))
+    client = make_client(tmp_path)
+    buffer = io.BytesIO()
+    # 200 pixels at 1 dpi declare a page of 200 x 200 inches
+    Image.new('L', (200, 200), 'white').save(buffer, 'PDF', resolution=1)
+    buffer.seek(0)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': FileStorage(stream=buffer, filename='huge.pdf')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Label is too large')
+
+
+def test_text_label_is_not_loaded_again_for_every_copy(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    calls = []
+    original = routes.load_label_image
+    monkeypatch.setattr(routes, 'load_label_image', lambda *args: calls.append(args) or original(*args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_count'] = '3'
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+    assert len(calls) == 1
+
+
+def test_font_cache_is_bounded():
+    from app.labeldesigner import label
+    path = create_app().extensions['fonts'].get_path('DejaVu Sans,Book')
+    label._load_font.cache_clear()
+    for size in ['40', '040', '0040']:
+        label.SimpleLabel()._get_font(path, size)
+    assert label._load_font.cache_info().currsize == 1
+    assert label._load_font.cache_info().maxsize == 256
+
+
+def test_refused_env_variable_is_logged_once(tmp_path, caplog):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{env:ROOM_FOR_LOG_TEST}}', 'size': '40'}])
+    for _ in range(3):
+        assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert sum('ROOM_FOR_LOG_TEST' in record.getMessage() for record in caplog.records) == 1

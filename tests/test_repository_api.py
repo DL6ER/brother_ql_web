@@ -342,3 +342,61 @@ def test_repository_save_failure_keeps_label_consistent(tmp_path, monkeypatch):
     with open(os.path.join(repo, 'Alpha.json')) as fh:
         assert json.load(fh)['image'] == 'Alpha_image.png'
     assert os.path.exists(os.path.join(repo, 'Alpha_image.png'))
+
+
+def test_repository_save_failure_keeps_image_of_same_type(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    label = {'name': 'Alpha', 'label_size': '62', 'text': TEXT, 'image_mime': 'image/png'}
+    assert client.post(SAVE_URL, json={**label, 'image_data': _png_b64('red')}).status_code == 200
+    with open(os.path.join(repo, 'Alpha_image.png'), 'rb') as fh:
+        stored = fh.read()
+
+    def failing_write(path, content):
+        raise OSError('No space left on device')
+    monkeypatch.setattr(routes, '_write_atomically', failing_write)
+    assert client.post(SAVE_URL, json={**label, 'image_data': _png_b64('blue')}).status_code == 500
+    with open(os.path.join(repo, 'Alpha_image.png'), 'rb') as fh:
+        assert fh.read() == stored
+    # No temporary files are left behind
+    assert sorted(os.listdir(repo)) == ['Alpha.json', 'Alpha_image.png']
+
+
+def test_repository_label_cannot_use_image_of_other_label(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    assert client.post(SAVE_URL, json={'name': 'Beta', 'label_size': '62', 'text': TEXT, 'image_data': _png_b64('blue'), 'image_mime': 'image/png'}).status_code == 200
+    assert client.post(SAVE_URL, json={'name': 'Alpha', 'label_size': '62', 'text': TEXT, 'image': 'Beta_image.png'}).status_code == 200
+    loaded = client.get('/labeldesigner/api/repository/load?name=Alpha.json').get_json()
+    assert 'image' not in loaded and 'image_data' not in loaded
+
+
+def test_concurrent_saves_keep_label_readable(tmp_path):
+    import threading
+    client = make_client(tmp_path, empty_repo=True)
+    errors = []
+
+    def save(color):
+        for _ in range(10):
+            resp = client.application.test_client().post(SAVE_URL, json={'name': 'Alpha', 'label_size': '62', 'text': TEXT, 'image_data': _png_b64(color), 'image_mime': 'image/png'})
+            if resp.status_code != 200:
+                errors.append(resp.status_code)
+    threads = [threading.Thread(target=save, args=(color,)) for color in ('red', 'blue')]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == []
+    assert client.get('/labeldesigner/api/repository/load?name=Alpha.json').status_code == 200
+
+
+def test_repository_print_uses_requested_resolution(tmp_path, monkeypatch):
+    from app.labeldesigner import printer
+    queued = []
+    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False: queued.append((label._width, high_res)))
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    client = make_client(tmp_path)
+    resp = client.post('/labeldesigner/api/repository/print', data={'name': 'QR-Example.json', 'high_res': '1'})
+    assert resp.get_json() == {'success': True}
+    # The labels are generated with the 600 dpi width they are printed with
+    assert queued and all(entry == (1392, True) for entry in queued)

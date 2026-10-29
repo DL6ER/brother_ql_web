@@ -1,6 +1,9 @@
 import sys
 
+import pytest
+
 from app import create_app, parse_args
+from config import Config
 
 
 def test_create_app_ignores_command_line(monkeypatch):
@@ -38,3 +41,20 @@ def test_command_line_overrides_environment(monkeypatch):
 
 def test_request_size_is_limited():
     assert create_app().config['MAX_CONTENT_LENGTH'] == 32 * 1024 * 1024
+
+
+def test_environment_overrides_instance_config(monkeypatch):
+    class InstanceConfig(Config):
+        PRINT_MAX_COUNT = 100
+    monkeypatch.setenv('PRINT_MAX_COUNT', '500')
+    monkeypatch.setenv('TRUSTED_HOSTS', 'labels.local, 192.168.0.10')
+    app = create_app(InstanceConfig)
+    assert app.config['PRINT_MAX_COUNT'] == 500
+    assert app.config['TRUSTED_HOSTS'] == ['labels.local', '192.168.0.10']
+
+
+@pytest.mark.parametrize('key, value', [('PRINT_MAX_COUNT', 'abc'), ('LOG_LEVEL', 'verbose')])
+def test_invalid_environment_values(monkeypatch, key, value):
+    monkeypatch.setenv(key, value)
+    with pytest.raises(ValueError, match=f'Invalid value for the environment variable {key}'):
+        create_app()
