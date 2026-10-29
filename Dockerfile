@@ -10,8 +10,22 @@ WORKDIR /app
 # changes
 COPY ./requirements.txt /app/requirements.txt
 
-RUN if [ $TARGETARCH == "arm" ]; then \
-    apk update --no-cache && \
+# Pillow has to be built from source on 32-bit ARM. Everything happens in a
+# single layer, otherwise removing the compilers again would not make the
+# image any smaller.
+RUN apk add --no-cache \
+    git \
+    ttf-dejavu \
+    ttf-liberation \
+    ttf-droid \
+    ttf-freefont \
+    font-terminus \
+    font-inconsolata \
+    font-dejavu \
+    font-noto \
+    poppler-utils \
+    bash && \
+    if [ "$TARGETARCH" = "arm" ]; then \
     apk add --no-cache \
     # Build dependencies for Pillow
     gcc \
@@ -29,25 +43,9 @@ RUN if [ $TARGETARCH == "arm" ]; then \
     libimagequant-dev \
     libxcb-dev \
     openjpeg-dev \
-    bash \
-    ; fi
-
-RUN apk update --no-cache && \
-    apk add --no-cache \
-    git \
-    ttf-dejavu \
-    ttf-liberation \
-    ttf-droid \
-    ttf-freefont \
-    font-terminus \
-    font-inconsolata \
-    font-dejavu \
-    font-noto \
-    poppler-utils \
-    bash && \
-    pip3 install -r requirements.txt
-
-RUN if [ $TARGETARCH == "arm" ]; then \
+    ; fi && \
+    pip3 install --no-cache-dir -r requirements.txt && \
+    if [ "$TARGETARCH" = "arm" ]; then \
         # Clean up build dependencies to reduce image size
         apk del gcc musl-dev \
     ; fi

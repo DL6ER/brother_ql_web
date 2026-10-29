@@ -107,8 +107,8 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 - `{{datetime:<format>}}` — Inserts the current date and time, e.g. `%H:%M:%S %d.%m.%Y` (see [strftime](https://strftime.org/)).
 - `{{uuid}}` — Inserts a random UUID (Universally Unique Identifier).
 - `{{short-uuid}}` — Inserts a shortened version of a UUID.
-- `{{env:<var>}}` — Inserts the value of the environment variable `<var>`.
-- `{{random[:<len>][:shift]}}` — Inserts a random string of optional length `<len>` (defaulting to 64). The optional `shift` parameter can be used to shift the random string around to fill gaps.
+- `{{env:<var>}}` - Inserts the value of the environment variable `<var>`. Only variables listed in `LABEL_TEMPLATE_ENV_VARS` are inserted (comma-separated, e.g. `LABEL_TEMPLATE_ENV_VARS=ROOM,DEPARTMENT`), all others stay empty so that nobody can read secrets of the server through a label.
+- `{{random[:<len>][:shift]}}` - Inserts a random string of optional length `<len>` (defaulting to 64, at most 10000). The optional `shift` parameter can be used to shift the random string around to fill gaps.
 
 ## Docker Compose
 
@@ -185,6 +185,23 @@ Network printers are supported but with some limitations regarding automatic det
 
 All functionality of the web interface is also available via a REST API. Currently, the API is not documented in a separate documentation but can be explored using the web interface when the container is running.
 
+Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request. To also protect against DNS rebinding, set `TRUSTED_HOSTS` to the host names you use to open the label designer (comma-separated, e.g. `TRUSTED_HOSTS=labels.local,192.168.0.10`). Requests for other host names are refused then.
+
+A request can select a printer with the `printer` parameter. Accepted are the configured printer, `simulation`, USB printers (`file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`) and network printers on the raw printing port 9100 (`tcp://<host>`).
+
+The following environment variables limit what a single request may do:
+
+- `PRINT_MAX_COUNT` - maximum number of labels per print request (default: `100`)
+- `MAX_CONTENT_LENGTH` - maximum size of a request in bytes, e.g. for uploaded images (default: 32 MB)
+
+Text lines are limited to 10000 characters (100000 per label) after the templates are filled in, and barcodes to 1000 characters. Labels and uploaded images may have at most 64 million pixels, which is enough for a 62 mm wide label of about 2 m length at 600 dpi. Of PDFs only the first page is used. The simulator keeps the 100 newest labels in `simulated_labels`.
+
+The log level is set with the `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, default: `WARNING`).
+
+All environment variables mentioned here take precedence over settings in `instance/application.py`. An invalid value stops the server at startup with a message naming the variable.
+
+Print jobs and status queries of a printer are serialized, so they do not get in each other's way. Address each printer in one way only (e.g. always `file:///dev/usb/lp0` or always `usb://0x04f9:0x209b`), the two cannot be recognized as the same device.
+
 ### Contributing / Development
 
 To contribute to this project, follow these steps:
@@ -197,7 +214,11 @@ To contribute to this project, follow these steps:
    cd brother_ql_web
    ```
 
-2. Make your changes and test them locally, preferably inside the convenient devcontainer.
+2. Make your changes and test them locally, preferably inside the convenient devcontainer. Run the tests with:
+   ```bash
+   pip install -r requirements-dev.txt
+   pytest
+   ```
 
 3. Submit a pull request with a clear description of your changes.
 

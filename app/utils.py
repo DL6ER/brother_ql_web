@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 
+import re
 from PIL import Image
-from io import BufferedReader, BytesIO
+from io import BytesIO
+from typing import BinaryIO
 from PIL.ImageOps import colorize
 from flask import current_app
-from pdf2image import convert_from_bytes
+from pdf2image import convert_from_bytes, pdfinfo_from_bytes
 from werkzeug.datastructures import FileStorage
-from app import FONTS, init_fonts
+from app import get_fonts
+from app.labeldesigner.label import check_image_size
 
 
 def convert_image_to_bw(image: Image.Image, threshold: int) -> Image.Image:
@@ -29,22 +32,30 @@ def convert_image_to_red_and_black(image: Image.Image,
                     blackpoint=blackpoint, whitepoint=whitepoint, midpoint=redpoint)
 
 
-def imgfile_to_image(file: FileStorage | BufferedReader) -> Image.Image:
-    s = BytesIO()
-    if isinstance(file, BufferedReader):
-        s.write(file.read())
-    else:
-        file.save(s)
-    im = Image.open(s)
-    return im
+def read_file(file: FileStorage | BinaryIO) -> bytes:
+    """Read the whole file. Starts at the beginning so that the same upload
+    can be read again, e.g. once for every label of a print job."""
+    stream = file.stream if isinstance(file, FileStorage) else file
+    stream.seek(0)
+    return stream.read()
 
 
-def pdffile_to_image(file: FileStorage, dpi: int) -> Image.Image:
-    s = BytesIO()
-    file.save(s)
-    s.seek(0)
-    im = convert_from_bytes(s.read(), dpi=dpi)[0]
-    return im
+def imgfile_to_image(file: FileStorage | BinaryIO) -> Image.Image:
+    return Image.open(BytesIO(read_file(file)))
+
+
+def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int) -> Image.Image:
+    data = read_file(file)
+    # Check the page size before rendering. Pillow's pixel limit only applies
+    # after pdftoppm rendered the whole page into memory, and a tiny PDF can
+    # declare a huge page.
+    match = re.match(r'([\d.]+) x ([\d.]+)', str(pdfinfo_from_bytes(data).get('Page size', '')))
+    if not match:
+        raise ValueError("Cannot read the page size of the PDF")
+    width_pt, height_pt = (float(value) for value in match.groups())
+    check_image_size(width_pt / 72 * dpi, height_pt / 72 * dpi)
+    # Only the first page is used, rendering all pages could exhaust the memory
+    return convert_from_bytes(data, dpi=dpi, first_page=1, last_page=1)[0]
 
 
 def image_to_png_bytes(im: Image.Image) -> bytes:
@@ -55,23 +66,20 @@ def image_to_png_bytes(im: Image.Image) -> bytes:
 
 
 def fill_first_line_fields(text, data: dict):
-    global FONTS
-    if FONTS is None:
-        FONTS = init_fonts(current_app)
+    fonts = get_fonts()
     # Restore zeroth line font settings or use defaults
     if len(text) > 0:
         data['font_size'] = str(text[0].get('size', current_app.config['LABEL_DEFAULT_FONT_SIZE']))
         data['font_inverted'] = True if text[0].get('inverted', 0) else False
-        data['font'] = text[0].get('font', FONTS.get_default_font()[0])
+        data['font'] = text[0].get('font', fonts.get_default_font()[0])
         data['font_align'] = text[0].get('align', 'left')
         data['font_checkbox'] = True if text[0].get('checkbox', 0) else False
         data['font_color'] = text[0].get('color', 'black')
-        data['font_inverted'] = True if text[0].get('inverted', 0) else False
         data['line_spacing'] = str(text[0].get('line_spacing', current_app.config['LABEL_DEFAULT_LINE_SPACING']))
     else:
         data['font_size'] = str(current_app.config['LABEL_DEFAULT_FONT_SIZE'])
         data['font_inverted'] = False
-        data['font'] = FONTS.get_default_font()[0]
+        data['font'] = fonts.get_default_font()[0]
         data['font_align'] = 'left'
         data['font_checkbox'] = False
         data['font_color'] = 'black'

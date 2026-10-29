@@ -1,5 +1,4 @@
 import os
-import random
 import logging
 from fontTools.ttLib import TTFont
 from collections import defaultdict
@@ -10,22 +9,24 @@ class Fonts:
                  logger: logging.Logger,
                  default_family: str = 'DejaVu Serif',
                  default_style: str = 'Book',
-                 additional_path: str = ''):
+                 additional_path: str | list[str] = ''):
         self.fonts = defaultdict(dict)
         self.default_family = default_family
         self.default_style = default_style
         self.additional_path = additional_path
 
         # Scan for TTF/OTF fonts using pure Python (fontTools).
-        # :param additional_path: Directory to search in addition to
-        #     common system font paths.
+        # :param additional_path: Directory (or list of directories) to search
+        #     in addition to common system font paths.
         search_paths = [
             '/usr/share/fonts', '/usr/local/share/fonts', os.path.expanduser('~/.fonts'),
             os.path.expanduser('~/.local/share/fonts'), '/Library/Fonts', '/System/Library/Fonts',
             'C:\\Windows\\Fonts'
         ]
-        if len(additional_path) > 0:
-            search_paths.extend(additional_path)
+        # FONT_FOLDER may be a single folder or a list of folders
+        if isinstance(additional_path, str):
+            additional_path = [additional_path] if additional_path else []
+        search_paths.extend(additional_path or [])
 
         font_exts = ('.ttf', '.otf')
         for base_path in search_paths:
@@ -69,15 +70,19 @@ class Fonts:
                     # Remove the child
                     del self.fonts[other_family]
 
-        # Check if the default family/style is available, if not, pick an
-        # available random one
+        # Check if the default family/style is available, if not, pick the
+        # first available one. The choice must not be random, otherwise every
+        # worker process of a WSGI server could end up with another default.
         if default_family in self.fonts and default_style in self.fonts[default_family]:
             logger.debug(f"Selected the following default font: {default_family}")
-        else:
-            logger.warning('Could not find any of the default fonts. Choosing a random one.')
-            family = random.choice(list(self.fonts.keys()))
-            style = random.choice(list(self.fonts[family].keys()))
-            logger.warning(f'The default font is now set to: {family} ({style})')
+        elif self.fonts:
+            logger.warning('Could not find any of the default fonts. Choosing the first available one.')
+            fontlist = self.fontlist()
+            # Prefer another style of the configured family
+            first = next((f for f in fontlist if f['family'] == default_family), fontlist[0])
+            self.default_family = first['family']
+            self.default_style = first['styles'][0]
+            logger.warning(f'The default font is now set to: {self.default_family} ({self.default_style})')
 
     def get_default_font(self):
         """Return the default font family and style."""

@@ -2,15 +2,19 @@ import io
 import os
 import sys
 import json
+import base64
 import random
 import pytest
 import unicodedata
 from typing import Union
 from datetime import datetime
 from flask.testing import FlaskClient
+from PIL import Image, ImageChops, ImageOps
 from werkzeug.datastructures import FileStorage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
+from app.labeldesigner.enums import LabelContent
+from app.labeldesigner.routes import create_label_from_request
 
 UPDATE_IMAGES = False
 EXAMPLE_FORMDATA = {
@@ -19,6 +23,12 @@ EXAMPLE_FORMDATA = {
     'orientation': 'standard',
     'print_count': '1',
     'cut_once': '0',
+    # Margins and border the reference images were created with
+    'margin_top': '12',
+    'margin_bottom': '12',
+    'margin_left': '20',
+    'margin_right': '20',
+    'border_thickness': '1',
 }
 
 
@@ -33,8 +43,9 @@ def verify_image(response_data: bytes, expected_image_path: str):
             with open(failed_image_path, 'wb') as f:
                 f.write(response_data)
             raise AssertionError("Generated image does not match expected image")
+        return
 
-    # Write image into file
+    # Write image into file (missing reference image or UPDATE_IMAGES)
     with open('tests/images/' + expected_image_path, 'wb') as f:
         f.write(response_data)
 
@@ -1086,14 +1097,14 @@ class TestLabelDesignerAPI:
     # Test printing to an invalid printer path
     def test_print_label_invalid_printer(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
-        data['printer'] = '/dev/nonexistentprinter'
+        data['printer'] = '/dev/usb/lp99'
         response = client.post('/labeldesigner/api/print', data=data)
         assert response.status_code == 400
         assert response.is_json
         json_response = response.get_json()
         assert 'message' in json_response
         assert "Exception during sending to printer" in json_response['message']
-        assert "/dev/nonexistentprinter" in json_response['message']
+        assert "/dev/usb/lp99" in json_response['message']
         assert 'success' in json_response
         assert json_response['success'] is False
 
@@ -1145,6 +1156,248 @@ class TestLabelDesignerAPI:
         verify_image(response.data, f'pdf_printing_{ls}_{rot}_{fit}.png')
 
 
+TEXT = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Test', 'size': '40', 'align': 'center'}])
+
+
+def _upload(image: Image.Image, filename: str) -> FileStorage:
+    buffer = io.BytesIO()
+    if filename.endswith('.pdf'):
+        image.save(buffer, 'PDF', resolution=150)
+    else:
+        image.save(buffer, 'PNG')
+    buffer.seek(0)
+    return FileStorage(stream=buffer, filename=filename)
+
+
+def _red_square() -> Image.Image:
+    image = Image.new('RGB', (300, 150), 'white')
+    image.paste(Image.new('RGB', (200, 100), (255, 0, 0)), (50, 25))
+    return image
+
+
+def test_env_template_only_inserts_allowed_variables(tmp_path, monkeypatch):
+    client = make_client(tmp_path)
+    monkeypatch.setenv('LABEL_ROOM', 'Lab 1')
+    monkeypatch.setenv('LABEL_SECRET', 'secret')
+    client.application.config['LABEL_TEMPLATE_ENV_VARS'] = 'LABEL_ROOM'
+    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{env:LABEL_ROOM}}|{{env:LABEL_SECRET}}', 'size': '40'}])
+    with client.application.test_request_context():
+        label = create_label_from_request({'text': text})
+    label.process_templates()
+    assert label.text[0]['text'] == 'Lab 1|'
+
+
+def test_random_template_length_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{random:10001}}', 'size': '40'}])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Random text length must not exceed 10000'
+
+
+def test_image_scaling_factor_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image_fit': '0', 'image_scaling_factor': '501',
+                 'image': _upload(Image.new('RGB', (100, 100), 'black'), 'black.png')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Image scaling factor must not exceed 500.'
+
+
+def test_image_fit_never_scales_to_zero_pixels(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image_fit': '1',
+                 'image': _upload(Image.new('RGB', (5000, 3), 'black'), 'wide.png')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+
+
+def test_print_count_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_count'] = str(client.application.config['PRINT_MAX_COUNT'] + 1)
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == f"print_count must not exceed {client.application.config['PRINT_MAX_COUNT']}"
+
+
+def test_print_requires_post(tmp_path):
+    client = make_client(tmp_path)
+    response = client.get('/labeldesigner/api/print', query_string=EXAMPLE_FORMDATA)
+    assert response.status_code == 405
+
+
+def test_cross_origin_requests_are_rejected(tmp_path):
+    client = make_client(tmp_path)
+    url = '/labeldesigner/api/print'
+    # Form posted to the printer by another website
+    response = client.post(url, data=EXAMPLE_FORMDATA, headers={'Origin': 'http://evil.example'})
+    assert response.status_code == 403
+    # The label designer itself
+    response = client.post(url, data=EXAMPLE_FORMDATA, headers={'Origin': 'http://localhost'})
+    assert response.status_code == 200
+    # The label designer behind a reverse proxy that changes the Host header
+    response = client.post(url, data=EXAMPLE_FORMDATA, headers={'Origin': 'https://labels.example', 'X-Requested-With': 'XMLHttpRequest'})
+    assert response.status_code == 200
+    # Scripts and other clients without Origin header
+    response = client.post(url, data=EXAMPLE_FORMDATA)
+    assert response.status_code == 200
+
+
+def test_requests_cannot_change_log_level(tmp_path):
+    client = make_client(tmp_path)
+    level = client.application.logger.level
+    data = EXAMPLE_FORMDATA.copy()
+    data['log_level'] = 'CRITICAL'
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert client.application.logger.level == level
+
+
+@pytest.mark.parametrize('filename, save_format', [('image.png', 'PNG'), ('image.pdf', 'PDF')])
+def test_print_uploaded_image_several_times(tmp_path, filename, save_format):
+    client = make_client(tmp_path)
+    buffer = io.BytesIO()
+    _red_square().save(buffer, save_format)
+    buffer.seek(0)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'print_count': '3', 'image': FileStorage(stream=buffer, filename=filename)})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 200
+    assert response.get_json() == {'success': True}
+
+
+def test_text_limit_applies_after_templates(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    # Each template is allowed, together they exceed the line limit
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{random:1000}}' * 11, 'size': '40'}])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 413
+    assert response.get_json()['message'] == 'Text is too long'
+    # Many lines below the line limit exceed the total limit
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{random:10000}}', 'size': '40'}] * 11)
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 413
+    assert response.get_json()['message'] == 'Text is too long'
+
+
+@pytest.mark.parametrize('extra', [
+    {'print_type': 'qrcode', 'qrcode_size': '5000', 'text': TEXT},
+    {'print_type': 'image', 'image_fit': '0', 'image_scaling_factor': '500'},
+])
+def test_label_size_is_limited(tmp_path, extra):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update(extra)
+    if extra['print_type'] == 'image':
+        data['image'] = _upload(Image.new('L', (2000, 2000), 'black'), 'big.png')
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Label is too large')
+
+
+def test_trusted_hosts(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['TRUSTED_HOSTS'] = ['labels.local']
+    # A page using DNS rebinding reaches the server under its own host name
+    assert client.get('/labeldesigner/', base_url='http://evil.example').status_code == 400
+    assert client.get('/labeldesigner/', base_url='http://labels.local:8013').status_code == 200
+
+
+def test_webhook_accepts_pdf_in_json(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    buffer = io.BytesIO()
+    _red_square().save(buffer, 'PDF')
+    payload = {'password': 'secret', 'images': [{'data': base64.b64encode(buffer.getvalue()).decode('ascii'), 'mime': 'application/pdf'}]}
+    response = client.post('/labeldesigner/api/webhook/print', json=payload)
+    assert response.status_code == 200
+    assert response.get_json() == {'success': True, 'count': 1}
+
+
+def test_webhook_authentication(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    url = '/labeldesigner/api/webhook/print'
+    # Wrong passwords are refused, including ones with non-ASCII characters
+    assert client.post(url, headers={'Authorization': 'Bearer pässwort'}).status_code == 401
+    # The password is not accepted in the URL, it would end up in access logs
+    assert client.post(url + '?password=secret').status_code == 401
+    # Header, form field and JSON body are accepted (no images sent, though)
+    for kwargs in ({'headers': {'Authorization': 'Bearer secret'}}, {'data': {'password': 'secret'}}, {'json': {'password': 'secret'}}):
+        response = client.post(url, **kwargs)
+        assert response.status_code == 400
+        assert response.get_json()['message'] == 'No images provided'
+
+
+def test_red_and_black_image_mode(tmp_path):
+    client = make_client(tmp_path)
+    with client.application.test_request_context():
+        label = create_label_from_request({'label_size': '62red', 'print_type': 'image', 'image_mode': 'red_and_black'})
+    assert label.label_content == LabelContent.IMAGE_RED_BLACK
+
+
+@pytest.mark.parametrize('image_mode', ['red_and_black', 'colored'])
+def test_pdf_upload_keeps_red(tmp_path, image_mode):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'label_size': '62red', 'print_type': 'image', 'image_mode': image_mode, 'image_fit': '1',
+                 'image': _upload(_red_square(), 'red.pdf')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    red, green, _ = Image.open(io.BytesIO(response.data)).convert('RGB').split()
+    assert ImageChops.subtract(red, green).getextrema()[1] > 60
+
+
+def test_pdf_upload_uses_high_res_dpi(tmp_path):
+    client = make_client(tmp_path)
+    widths = []
+    for high_res in ('0', '1'):
+        data = EXAMPLE_FORMDATA.copy()
+        data.update({'print_type': 'image', 'image_mode': 'grayscale', 'image_fit': '0', 'border_thickness': '0',
+                     'high_res': high_res, 'image': _upload(_red_square(), 'red.pdf')})
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        bbox = ImageOps.invert(Image.open(io.BytesIO(response.data)).convert('L')).getbbox()
+        widths.append(bbox[2] - bbox[0])
+    # Same physical size, so twice the pixels at 600 dpi
+    assert widths[1] >= 1.9 * widths[0]
+
+
+def test_api_defaults_match_label_designer(tmp_path):
+    client = make_client(tmp_path)
+    config = client.application.config
+    implicit = client.post('/labeldesigner/api/preview', data={'label_size': '62', 'text': TEXT})
+    explicit = client.post('/labeldesigner/api/preview', data={
+        'label_size': '62',
+        'text': TEXT,
+        'border_thickness': '0',
+        'margin_top': config['LABEL_DEFAULT_MARGIN_TOP'],
+        'margin_bottom': config['LABEL_DEFAULT_MARGIN_BOTTOM'],
+        'margin_left': config['LABEL_DEFAULT_MARGIN_LEFT'],
+        'margin_right': config['LABEL_DEFAULT_MARGIN_RIGHT'],
+    })
+    assert implicit.status_code == explicit.status_code == 200
+    assert implicit.data == explicit.data
+
+
+@pytest.mark.parametrize('device', ['file://{target}', '{target}', 'tcp://127.0.0.1:6379'])
+def test_print_rejects_unsupported_printer_devices(tmp_path, device):
+    client = make_client(tmp_path)
+    target = tmp_path / 'important.json'
+    target.write_text('{"keep": true}')
+    data = EXAMPLE_FORMDATA.copy()
+    data['printer'] = device.format(target=target)
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == f"Unsupported printer: {data['printer']}"
+    assert target.read_text() == '{"keep": true}'
+
+
 class FakeSlowPrinter:
     """Printer that returns empty reads before answering, like the QL-1100."""
 
@@ -1188,3 +1441,147 @@ class TestPrinterStatus:
         printer = FakeSlowPrinter(empty_reads=10**6, response=b'')
         with pytest.raises(TimeoutError):
             get_status(printer, timeout=0.1)
+
+
+def test_barcode_length_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'qrcode', 'barcode_type': 'code128', 'code_text': 'A' * 1001})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Barcode value must not exceed 1000 characters'
+
+
+def test_uploaded_image_is_decoded_once_per_job(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    calls = []
+    original = routes.open_image
+    monkeypatch.setattr(routes, 'open_image', lambda *args: calls.append(args) or original(*args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'print_count': '3', 'image': _upload(_red_square(), 'red.png')})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.get_json() == {'success': True}
+    assert len(calls) == 1
+
+
+def test_pdf_upload_renders_first_page_only(tmp_path, monkeypatch):
+    import app.utils
+    calls = []
+    original = app.utils.convert_from_bytes
+    monkeypatch.setattr(app.utils, 'convert_from_bytes', lambda data, **kwargs: calls.append(kwargs) or original(data, **kwargs))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': _upload(_red_square(), 'red.pdf')})
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert calls[0]['first_page'] == 1 and calls[0]['last_page'] == 1
+
+
+@pytest.mark.parametrize('size, extra', [
+    # Refused when decoding
+    ((8200, 8000), {}),
+    # Small enough, but not when rotated by 45 degrees
+    ((16000, 2000), {'image_rotation': '45', 'image_fit': '0'}),
+])
+def test_large_images_are_refused(tmp_path, size, extra):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': _upload(Image.new('L', size, 'white'), 'large.png'), **extra})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    message = response.get_json()['message']
+    assert 'exceeds limit' in message or message.startswith('Label is too large')
+
+
+def test_webhook_image_count_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    client.application.config['PRINT_MAX_COUNT'] = 2
+    image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image] * 3})
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Too many images, at most 2 per request'
+
+
+def test_webhook_refuses_images_too_large_for_the_label(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    # Scaled to the label width, this thin image would get 69 million pixels high
+    image = base64.b64encode(_upload(Image.new('L', (1, 100000), 'black'), 'thin.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image]})
+    assert response.status_code == 400
+
+
+def test_printer_device_with_trailing_newline_is_refused(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['printer'] = '/dev/usb/lp0\n'
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Unsupported printer')
+
+
+def test_simulator_keeps_only_the_newest_labels(tmp_path, monkeypatch):
+    from app.labeldesigner import printer
+    monkeypatch.setattr(printer, 'MAX_SIMULATED_LABELS', 2)
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_count'] = '3'
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+    assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2
+
+
+def test_pdf_with_huge_page_is_refused_before_rendering(tmp_path, monkeypatch):
+    import app.utils
+    monkeypatch.setattr(app.utils, 'convert_from_bytes', lambda *args, **kwargs: pytest.fail('PDF was rendered'))
+    client = make_client(tmp_path)
+    buffer = io.BytesIO()
+    # 200 pixels at 1 dpi declare a page of 200 x 200 inches
+    Image.new('L', (200, 200), 'white').save(buffer, 'PDF', resolution=1)
+    buffer.seek(0)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': FileStorage(stream=buffer, filename='huge.pdf')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Label is too large')
+
+
+def test_text_label_is_not_loaded_again_for_every_copy(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    calls = []
+    original = routes.load_label_image
+    monkeypatch.setattr(routes, 'load_label_image', lambda *args: calls.append(args) or original(*args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_count'] = '3'
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+    assert len(calls) == 1
+
+
+def test_font_cache_is_bounded():
+    from app.labeldesigner import label
+    path = create_app().extensions['fonts'].get_path('DejaVu Sans,Book')
+    label._load_font.cache_clear()
+    for size in ['40', '040', '0040']:
+        label.SimpleLabel()._get_font(path, size)
+    assert label._load_font.cache_info().currsize == 1
+    assert label._load_font.cache_info().maxsize == 256
+
+
+def test_refused_env_variable_is_logged_once(tmp_path, caplog):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{env:ROOM_FOR_LOG_TEST}}', 'size': '40'}])
+    for _ in range(3):
+        assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert sum('ROOM_FOR_LOG_TEST' in record.getMessage() for record in caplog.records) == 1
+
+
+def test_refused_env_variables_are_bounded(tmp_path, monkeypatch):
+    from app.labeldesigner import label
+    monkeypatch.setattr(label, '_REFUSED_ENV_VARS', set())
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'size': '10', 'text': ''.join(f'{{{{env:X{i}}}}}' for i in range(500))}])
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert len(label._REFUSED_ENV_VARS) == label._MAX_REFUSED_ENV_VARS

@@ -7,6 +7,8 @@ import logging
 import barcode
 from barcode.writer import ImageWriter
 import datetime
+import functools
+import math
 import re
 import random
 import string
@@ -17,9 +19,32 @@ logger = logging.getLogger(__name__)
 
 # Constants
 WARNING_TEXT_LENGTH = 500
+MAX_TEXT_LENGTH = 10_000
+MAX_TOTAL_TEXT_LENGTH = 100_000
 DEFAULT_RANDOM_LENGTH = 64
+MAX_RANDOM_LENGTH = 10_000
+MAX_IMAGE_SCALING_FACTOR = 500.0
+# Upper limit for the label and every image created on the way, enough for a
+# 62 mm wide label of about 2 m length at 600 dpi
+MAX_LABEL_PIXELS = 64_000_000
+# Barcode values are rendered before the label size is known, a long value
+# would create a huge image. 1000 characters are far more than a label holds.
+MAX_BARCODE_LENGTH = 1000
 DEFAULT_FONT_SIZE = 12
-FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+# Pillow refuses to open images with more than twice this number of pixels,
+# so uploaded images above MAX_LABEL_PIXELS are rejected right when decoding
+Image.MAX_IMAGE_PIXELS = MAX_LABEL_PIXELS // 2
+# Environment variables that were not allowed in a template, logged only once.
+# Bounded, the names come from the requests.
+_REFUSED_ENV_VARS: set = set()
+_MAX_REFUSED_ENV_VARS = 100
+
+
+def check_image_size(width: int, height: int) -> None:
+    """Refuse to create images that would exhaust the memory."""
+    if width * height > MAX_LABEL_PIXELS:
+        raise ValueError(f"Label is too large ({int(width)} x {int(height)} pixels)")
 
 
 class SimpleLabel:
@@ -60,6 +85,7 @@ class SimpleLabel:
         counter: int = 0,
         red_support: bool = False,
         code_text: str = '',
+        template_env_vars: frozenset = frozenset(),
     ):
         """Initialize a SimpleLabel object."""
         # Input validation
@@ -71,6 +97,8 @@ class SimpleLabel:
             raise ValueError("QR size must be positive.")
         if image_scaling_factor <= 0:
             raise ValueError("Image scaling factor must be > 0.")
+        if image_scaling_factor > MAX_IMAGE_SCALING_FACTOR:
+            raise ValueError(f"Image scaling factor must not exceed {MAX_IMAGE_SCALING_FACTOR:g}.")
         if image_rotation < 0 or image_rotation > 360:
             raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
@@ -98,6 +126,7 @@ class SimpleLabel:
         self._timestamp = timestamp
         self._red_support = red_support
         self._code_text = code_text
+        self._template_env_vars = template_env_vars
 
     @property
     def label_content(self):
@@ -174,8 +203,10 @@ class SimpleLabel:
     def process_templates(self) -> None:
         """Process and replace templates in the text lines."""
         self.text = copy.deepcopy(self.input_text)
+        total_length = 0
         for line in self.text:
             text_val = line.get('text', '')
+            random_length = 0
             if len(text_val) > WARNING_TEXT_LENGTH:
                 logger.warning(
                     f"Text line is very long (> {WARNING_TEXT_LENGTH} characters), "
@@ -205,9 +236,18 @@ class SimpleLabel:
                 ui = uuid.UUID(int=random.getrandbits(128))
                 text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
 
-            # Replace {{env:<var>}} with the value of the environment variable var
+            # Replace {{env:<var>}} with the value of the environment variable
+            # var. Only explicitly allowed variables are inserted, others could
+            # leak secrets into the preview.
             def env_replacer(match):
                 var_name = match.group(1)
+                if var_name not in self._template_env_vars:
+                    # Previews are rendered on every change, log only once
+                    if var_name not in _REFUSED_ENV_VARS and len(_REFUSED_ENV_VARS) < _MAX_REFUSED_ENV_VARS:
+                        _REFUSED_ENV_VARS.add(var_name)
+                        # repr() so that a name cannot add lines to the log
+                        logger.warning(f"Environment variable {var_name!r} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
+                    return ""
                 return os.getenv(var_name, "")
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
 
@@ -215,12 +255,23 @@ class SimpleLabel:
             # length <len> and shifting instruction. ":s" is accepted as
             # shorthand for ":shift"
             def random_replacer(match):
+                nonlocal random_length
                 length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
+                if length > MAX_RANDOM_LENGTH:
+                    raise ValueError(f"Random text length must not exceed {MAX_RANDOM_LENGTH}")
+                # Many short templates must not add up to a huge line either
+                random_length += length
+                if random_length > MAX_TEXT_LENGTH:
+                    raise ValueError("Text is too long")
                 if match.group(2):
                     line['shift'] = True
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
             text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(s(hift)?))?\}\}", random_replacer, text_val)
 
+            # The limits apply to the text after expanding the templates
+            total_length += len(text_val)
+            if len(text_val) > MAX_TEXT_LENGTH or total_length > MAX_TOTAL_TEXT_LENGTH:
+                raise ValueError("Text is too long")
             line['text'] = text_val
 
     def generate(self, rotate: bool = False):
@@ -249,6 +300,10 @@ class SimpleLabel:
 
             # First rotate the image if requested
             if self._image_rotation != 0 and self._image_rotation != 360:
+                # expand=True enlarges the canvas to fit the rotated image
+                angle = math.radians(self._image_rotation)
+                cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+                check_image_size(img.width * cos + img.height * sin, img.width * sin + img.height * cos)
                 img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
 
             # Rotation with expand=True may add an empty border around content.
@@ -285,8 +340,9 @@ class SimpleLabel:
                         # Both dimensions are considered for standard label
                         scale = min(max_width / img_width, max_height / img_height)
                 logger.debug(f"Scaling image by factor: {scale}")
-                new_size = (int(img_width * scale), int(img_height * scale))
+                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
+                check_image_size(*new_size)
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 # Update image dimensions
                 img_width, img_height = img.size
@@ -295,8 +351,9 @@ class SimpleLabel:
                 img_width, img_height = img.size
                 scale = self._image_scaling_factor / 100.0
                 logger.debug(f"Manual image scaling factor: {scale}")
-                new_size = (int(img_width * scale), int(img_height * scale))
+                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
+                check_image_size(*new_size)
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 img_width, img_height = img.size
         else:
@@ -359,6 +416,7 @@ class SimpleLabel:
         height = max(int(height), 1)
 
         logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
+        check_image_size(width, height)
         imgResult = Image.new('RGB', (int(width), int(height)), 'white')
 
         if img is not None:
@@ -424,6 +482,8 @@ class SimpleLabel:
         else:
             # Take value from the first line of text
             value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
+        if len(value) > MAX_BARCODE_LENGTH:
+            raise ValueError(f"Barcode value must not exceed {MAX_BARCODE_LENGTH} characters")
         my_barcode = barcode_generator(value, writer=ImageWriter())
         return my_barcode.render()
 
@@ -441,6 +501,7 @@ class SimpleLabel:
             text = "\n".join(line.get('text', '') for line in self.text)
         qr.add_data(text.encode("utf-8-sig"))
         qr.make(fit=True)
+        check_image_size(qr.modules_count * self._qr_size, qr.modules_count * self._qr_size)
         fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'
         qr_img = qr.make_image(fill_color=fill_color, back_color="white")
         return qr_img
@@ -579,13 +640,14 @@ class SimpleLabel:
 
     def _get_font(self, font_path: str, size: int) -> ImageFont.FreeTypeFont:
         """Get a font object, using cache for performance."""
-        key = (font_path, size)
-        if key in FONT_CACHE:
-            return FONT_CACHE[key]
         try:
-            font = ImageFont.truetype(font_path, int(size))
-            FONT_CACHE[key] = font
-            return font
+            return _load_font(font_path, int(size))
         except Exception as e:
             logger.error(f"Failed to load font '{font_path}' with size {size}: {e}")
             return ImageFont.load_default()
+
+
+# Bounded, requests can ask for any number of sizes
+@functools.lru_cache(maxsize=256)
+def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont:
+    return ImageFont.truetype(font_path, size)

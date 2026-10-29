@@ -224,7 +224,6 @@ function formData(cut_once = false) {
         image_fit: $('#image_fit').is(':checked') ? 1 : 0,
         image_crop: $('#image_crop').is(':checked') ? 1 : 0,
         print_count: parseInt($('#print_count').val(), 10) || 0,
-        log_level: $('#log_level').val(),
         cut_once: cut_once ? 1 : 0,
         border_thickness: parseInt($('#border_thickness').val(), 10) || 0,
         border_roundness: parseInt($('#border_roundness').val(), 10) || 0,
@@ -352,9 +351,9 @@ function setStatus(data, what = null) {
     let status = data.status || '';
     let message = data.message || '';
     let errors = data?.errors || [];
-    let extra_info = message ? ':<br />' + message : '';
+    let extra_info = message ? ':<br />' + escapeHtml(message) : '';
     if (errors.length > 0) {
-        extra_info += '<br />' + errors.join('<br />');
+        extra_info += '<br />' + errors.map(escapeHtml).join('<br />');
     }
 
     // Default: clear status
@@ -464,6 +463,16 @@ new Dropzone("#image-dropzone", {
         $.each(fd, function (key, value) {
             data.append(key, value);
         });
+    },
+
+    error: function (file, response) {
+        // Show the error and queue the file again, Dropzone would otherwise
+        // never send it again until it is removed and added anew
+        const message = response && typeof response === 'object' ? response.message : response;
+        setStatus({ type: dropZoneMode, status: 'error', message: message });
+        if (file.accepted) {
+            file.status = Dropzone.QUEUED;
+        }
     },
 
     success: function (file, response) {
@@ -818,15 +827,15 @@ function renderRepoList(files) {
                     <div class="d-flex gap-3 align-items-center">
                         <img class="repo-thumb" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
                         <div>
-                            <strong class="repo-name">${f.name}</strong><br/>
-                            <small class="text-muted">${new Date(f.mtime * 1000).toLocaleString()} — ${f.size} bytes</small><br/>
-                            <small class="text-muted">Label size: ${f.label_size ? f.label_size : 'unknown'}</small>
+                            <strong class="repo-name">${escapeHtml(f.name)}</strong><br/>
+                            <small class="text-muted">${new Date(f.mtime * 1000).toLocaleString()} - ${escapeHtml(f.size)} bytes</small><br/>
+                            <small class="text-muted">Label size: ${f.label_size ? escapeHtml(f.label_size) : 'unknown'}</small>
                         </div>
                     </div>
                     <div class="btn-group">
-                        <button class="btn btn-sm btn-outline-success repo-load" data-name="${f.name}">Load</button>
-                        <button class="btn btn-sm btn-outline-primary repo-print" data-name="${f.name}">Print</button>
-                        <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${f.name}">Delete</button>
+                        <button class="btn btn-sm btn-outline-success repo-load" data-name="${escapeHtml(f.name)}">Load</button>
+                        <button class="btn btn-sm btn-outline-primary repo-print" data-name="${escapeHtml(f.name)}">Print</button>
+                        <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${escapeHtml(f.name)}">Delete</button>
                     </div>
                 </div>`
         );
@@ -891,7 +900,7 @@ function repoSaveCurrent() {
     function sendJsonPayload(p) {
         fetch(url_for_repo_save, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             body: JSON.stringify(p)
         }).then(r => r.json())
             .then(resp => {
@@ -987,7 +996,7 @@ function repoLoad(name) {
 }
 
 function repoDelete(name) {
-    fetch(url_for_repo_delete + '?name=' + encodeURIComponent(name), { method: 'POST' })
+    fetch(url_for_repo_delete + '?name=' + encodeURIComponent(name), { method: 'POST', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
         .then(r => r.json())
         .then(resp => {
             if (resp && resp.success) {
@@ -1025,7 +1034,7 @@ function repoPrint(name) {
     const modelVal = getModelFromSelectedPrinter(printerSelect);
     if (modelVal) body.append('model', modelVal);
 
-    fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body: body })
+    fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body: body })
         .then(r => r.json())
         .then(resp => {
             if (resp && resp.success) {

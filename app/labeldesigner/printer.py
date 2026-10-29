@@ -1,7 +1,12 @@
 import logging
 import os
+import stat
 import time
+import hashlib
 import datetime
+import tempfile
+import threading
+import contextlib
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from brother_ql.reader import interpret_response
@@ -9,8 +14,18 @@ from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
+from werkzeug.security import safe_join
+
+try:
+    import fcntl
+except ImportError:  # Not available on Windows
+    fcntl = None
 
 SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
+
+# Number of simulated labels kept in SIMULATED_LABELS_DIR, older ones are
+# deleted so that printing to the simulator cannot fill up the disk
+MAX_SIMULATED_LABELS = 100
 
 # Default maximum number of labels to rasterize and send in a single batch.
 # Sending too many labels at once can cause printer timeouts/failures.
@@ -24,6 +39,136 @@ logger = logging.getLogger(__name__)
 BROTHER_MAC_ADDRESS_PREFIXES = [
     "ac:f2:3c",  # Brother QL-810W
 ]
+
+# Base directory for the lock files serializing access to the printer devices
+LOCK_DIR = tempfile.gettempdir()
+
+# Seconds a print job waits for another job or a status query to release the
+# printer before it gives up
+DEVICE_LOCK_TIMEOUT = 10
+
+# Seconds a status query waits for the printer. A bit longer than a status
+# query itself may take, so that two queries do not get in each other's way.
+# If the printer is still locked after that, a print job is running.
+STATUS_LOCK_TIMEOUT = 2.5
+BUSY_STATUS_TYPE = 'Printing'
+
+_fallback_locks = {}
+_fallback_locks_guard = threading.Lock()
+_status_cache = {}
+
+
+def _lock_key(device_specifier: str) -> str:
+    """The same key for every spelling of a device that requests may use.
+    A printer addressed both as usb://<vendor>:<product> and as
+    /dev/usb/lp<N> cannot be recognized as the same device without asking
+    it, so it should be addressed in one way only."""
+    key = device_specifier.strip()
+    if key.startswith('file://'):
+        key = key[len('file://'):]
+    elif key.startswith(('tcp://', 'usb://')):
+        key = key.lower()
+        if key.startswith('tcp://') and ':' not in key[len('tcp://'):]:
+            key += ':9100'
+    return key
+
+
+def _private_lock_dir() -> str:
+    """Directory for the lock files that only this user can access. In a
+    shared directory like /tmp other users could hold the locks or leave files
+    behind that this user cannot open."""
+    path = os.path.join(LOCK_DIR, f'brother_ql_web-{os.getuid()}')
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    info = os.lstat(path)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise PermissionError(f'{path} is not a private directory')
+    return os.path.normpath(path)
+
+
+def _lock_slot(key: str) -> str:
+    """Map a device to one of 4096 lock slots. Requests can name any number of
+    devices, the slots keep the number of lock files bounded. Two devices
+    sharing a slot (unlikely with a handful of printers) are serialized."""
+    return hashlib.sha256(key.encode()).hexdigest()[:3]
+
+
+def _open_lock_file(slot: str):
+    if fcntl is None:
+        return None
+    try:
+        path = safe_join(_private_lock_dir(), f'printer-{slot}.lock')
+        if path is None:
+            raise ValueError(f'Invalid lock slot: {slot}')
+        return os.open(path, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        logger.warning('Cannot open lock file, locking within this process only: %s', e)
+        return None
+
+
+def _flock(fd: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+
+@contextlib.contextmanager
+def device_lock(device_specifier: str, timeout: float | None = None):
+    """Serialize access to a printer device.
+
+    The kernel allows only one open handle per USB printer, so a status query
+    during a print job (or the other way round) fails with "Device or resource
+    busy". A lock file is used so that this also works across several worker
+    processes. Waits at most timeout seconds (default DEVICE_LOCK_TIMEOUT,
+    0 = do not wait) and yields whether the lock was acquired."""
+    if timeout is None:
+        timeout = DEVICE_LOCK_TIMEOUT
+    slot = _lock_slot(_lock_key(device_specifier))
+    fd = _open_lock_file(slot)
+    if fd is not None:
+        try:
+            acquired = _flock(fd, timeout)
+        except OSError as e:
+            # e.g. ENOLCK on file systems without flock() support
+            logger.warning('Cannot lock lock file, locking within this process only: %s', e)
+            os.close(fd)
+            fd = None
+
+    if fd is None:
+        with _fallback_locks_guard:
+            lock = _fallback_locks.setdefault(slot, threading.Lock())
+        acquired = lock.acquire(timeout=timeout) if timeout > 0 else lock.acquire(blocking=False)
+        try:
+            yield acquired
+        finally:
+            if acquired:
+                lock.release()
+        return
+
+    try:
+        yield acquired
+    finally:
+        # Closing the file releases the lock
+        os.close(fd)
+
+
+def is_simulation(device_specifier) -> bool:
+    return isinstance(device_specifier, str) and device_specifier in ['simulation', '?']
+
+
+def _prune_simulated_labels():
+    # The names start with a timestamp, so sorting by name sorts by age
+    labels = sorted((entry for entry in os.scandir(SIMULATED_LABELS_DIR) if entry.name.endswith('.png')), key=lambda entry: entry.name)
+    for entry in labels[:-MAX_SIMULATED_LABELS]:
+        try:
+            os.remove(entry.path)
+        except OSError:
+            logger.debug('Failed to remove simulated label %s', entry.path, exc_info=True)
 
 
 class PrinterQueue:
@@ -45,7 +190,7 @@ class PrinterQueue:
         return ``(qlr, generated_images)``."""
         qlr = BrotherQLRaster(self.model)
         generated_images = []
-        is_simulation = isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']
+        simulation = is_simulation(self.device_specifier)
         for entry in entries:
             label = entry['label']
             cut = entry['cut']
@@ -55,7 +200,7 @@ class PrinterQueue:
             else:
                 rotate = 'auto'
             img = label.generate(rotate=False)
-            if is_simulation:
+            if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
             create_label(
@@ -75,7 +220,7 @@ class PrinterQueue:
         Returns an empty string on success, or an error message."""
         try:
             # Simulator: pretend we sent data, save labels as PNG, and return success
-            if isinstance(self.device_specifier, str) and self.device_specifier in ['simulation', '?']:
+            if is_simulation(self.device_specifier):
                 logger.info('Simulated sending %d bytes to simulator printer (batch %d)',
                             len(qlr.data), batch_index)
                 os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
@@ -84,6 +229,7 @@ class PrinterQueue:
                     path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_b{batch_index}_{i}.png')
                     img.save(path, format='PNG')
                     logger.info('Saved simulated label to %s', path)
+                _prune_simulated_labels()
                 return ""
 
             network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
@@ -118,15 +264,24 @@ class PrinterQueue:
         entries = list(self._print_queue)
         self._print_queue.clear()
 
-        # Split into batches to avoid printer timeouts on large jobs
-        for batch_index, start in enumerate(range(0, total, batch_size), start=1):
-            batch = entries[start:start + batch_size]
-            logger.info('Processing batch %d (%d labels, %d/%d)',
-                        batch_index, len(batch), start + len(batch), total)
-            qlr, generated_images = self._rasterize_entries(batch)
-            status = self._send_raster(qlr, generated_images, batch_index)
-            if status:
-                return status
+        # Hold the device for the whole job so that neither status queries nor
+        # other jobs get in between the batches
+        lock = contextlib.nullcontext(True) if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
+        with lock as acquired:
+            if not acquired:
+                logger.warning('Printer %s is busy with another job', self.device_specifier)
+                return "Printer is busy with another print job, please try again"
+            # Split into batches to avoid printer timeouts on large jobs. Each
+            # batch is rasterized right before it is sent, so only one batch
+            # is kept in memory at a time.
+            for batch_index, start in enumerate(range(0, total, batch_size), start=1):
+                batch = entries[start:start + batch_size]
+                logger.info('Processing batch %d (%d labels, %d/%d)',
+                            batch_index, len(batch), start + len(batch), total)
+                qlr, generated_images = self._rasterize_entries(batch)
+                status = self._send_raster(qlr, generated_images, batch_index)
+                if status:
+                    return status
 
         return ""
 
@@ -172,6 +327,38 @@ def get_status(printer, timeout: float = 2.0):
     if len(data) < 32:
         raise TimeoutError(f"No complete status response within {timeout} s")
     return interpret_response(data)
+
+
+def _release(printer):
+    """Close the printer handle right away, also when the status query failed
+    and a traceback still references the printer. The backend closes the
+    handle again when the object is garbage collected, which would close an
+    unrelated file if the descriptor number was reused in the meantime, so
+    that second close is turned into a no-op."""
+    printer.dispose()
+    printer.dispose = lambda: None
+
+
+def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
+    """Query the printer status without waiting for a running print job. While
+    a job holds the device, the last known status is returned instead."""
+    key = _lock_key(device_specifier)
+    with device_lock(device_specifier, timeout=STATUS_LOCK_TIMEOUT) as acquired:
+        if acquired:
+            printer = get_printer(device_specifier)
+            try:
+                state = get_status(printer)
+            finally:
+                # Release the device before giving up the lock
+                _release(printer)
+            _status_cache[key] = state
+            return dict(state)
+    logger.debug('Printer %s is busy, returning last known status', device_specifier)
+    # Model and media from the last query, but the state of a running job:
+    # errors or the idle state from before the job no longer apply
+    state = dict(_status_cache.get(key, {'model': default_model, 'media_width': None, 'media_length': 0}))
+    state.update({'errors': [], 'status_type': BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
+    return state
 
 
 _last_scan_ts = 0
@@ -236,8 +423,7 @@ def get_ptr_status(config: Config):
                         continue
                     spec = f"file://{dev}"
                     try:
-                        printer = get_printer(spec)
-                        printer_state = get_status(printer)
+                        printer_state = query_status(spec, default_model)
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))
@@ -265,13 +451,16 @@ def get_ptr_status(config: Config):
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
 
                 _cached_printers = found_list
-                _last_scan_ts = now
+                # A printer busy with a job is scanned again with the next
+                # query instead of being shown as printing for 10 s
+                busy = any(p.get('status_type') == BUSY_STATUS_TYPE for p in found_list)
+                _last_scan_ts = 0 if busy else now
             # Prepare response: include list of printers and a top-level status for the first one (compatibility)
             # Ensure simulator printer is always present
             sim = SIMULATOR_PRINTER.copy()
             printers = list(_cached_printers)
             # append simulator if not present
-            if not any(p.get('path') == 'simulator' for p in printers):
+            if not any(p.get('path') == 'simulation' for p in printers):
                 printers.append(sim)
             if printers:
                 # Use first detected printer as default top-level status for backward compatibility
@@ -303,8 +492,7 @@ def get_ptr_status(config: Config):
             status['selected'] = device_specifier
             return status
         else:
-            printer = get_printer(device_specifier)
-            printer_state = get_status(printer)
+            printer_state = query_status(device_specifier, default_model)
             for key, value in printer_state.items():
                 status[key] = value
         # Always include simulator in returned printers list
