@@ -144,6 +144,16 @@ def _remove_repo_images(repo: str, base: str, keep: str | None = None):
                 current_app.logger.exception(f'Failed to remove associated image {path}')
 
 
+def _repo_path(repo: str, name: str) -> str:
+    """Path of a file in the label repository. The callers sanitize the
+    names, this makes sure that no path leaves the repository anyway."""
+    repo = os.path.normpath(repo)
+    path = os.path.normpath(os.path.join(repo, name))
+    if not path.startswith(repo + os.sep):
+        raise ValueError(f'Invalid file name: {name}')
+    return path
+
+
 def _write_atomically(path: str, content: bytes):
     """Write a file so that it either has the old or the new content, also
     when writing fails part way through (e.g. disk full)."""
@@ -212,7 +222,6 @@ def repo_save():
     if not filename.lower().endswith('.json'):
         filename = filename + '.json'
     repo = _get_repo_dir()
-    path = os.path.join(repo, filename)
 
     # Accept JSON image payloads that include raw base64 image data in
     # fields `image_data` (base64 string), `image_mime` and optional
@@ -240,8 +249,9 @@ def repo_save():
             ext = REPO_IMAGE_EXTENSIONS.get(data.get('image_mime', 'image/png'), '.png')
             # The image file is always named after the label, a name chosen
             # by the client could overwrite images of other labels
-            data['image'] = base + '_image' + ext
-            _write_atomically(os.path.join(repo, data['image']), image_bytes)
+            image_name = base + '_image' + ext
+            _write_atomically(_repo_path(repo, image_name), image_bytes)
+            data['image'] = image_name
 
         # Remove raw image data from JSON before saving
         if 'image_data' in data:
@@ -253,11 +263,11 @@ def repo_save():
                 del data[key]
 
         # Finally, save the JSON file
-        _write_atomically(path, json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+        _write_atomically(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
         # Only now that the label refers to the new image, remove images
         # stored with another file type before
         if image_bytes is not None:
-            _remove_repo_images(repo, base, keep=data['image'])
+            _remove_repo_images(repo, base, keep=image_name)
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
