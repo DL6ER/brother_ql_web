@@ -21,6 +21,13 @@ def _host_list(value: str) -> list[str] | None:
     return [host.strip() for host in value.split(',') if host.strip()] or None
 
 
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number < 1:
+        raise ValueError(value)
+    return number
+
+
 def _log_level(value: str) -> str:
     level = value.strip().upper()
     if level not in logging.getLevelNamesMapping():
@@ -40,8 +47,8 @@ ENV_OVERRIDES = {
     'LOG_LEVEL': _log_level,
     'TRUSTED_HOSTS': _host_list,
     'LABEL_TEMPLATE_ENV_VARS': str,
-    'PRINT_MAX_COUNT': int,
-    'MAX_CONTENT_LENGTH': int,
+    'PRINT_MAX_COUNT': _positive_int,
+    'MAX_CONTENT_LENGTH': _positive_int,
     'WEBHOOK_PASSWORD': str,
 }
 

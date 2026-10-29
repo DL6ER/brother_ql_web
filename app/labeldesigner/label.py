@@ -35,8 +35,10 @@ DEFAULT_FONT_SIZE = 12
 # Pillow refuses to open images with more than twice this number of pixels,
 # so uploaded images above MAX_LABEL_PIXELS are rejected right when decoding
 Image.MAX_IMAGE_PIXELS = MAX_LABEL_PIXELS // 2
-# Environment variables that were not allowed in a template, logged only once
+# Environment variables that were not allowed in a template, logged only once.
+# Bounded, the names come from the requests.
 _REFUSED_ENV_VARS: set = set()
+_MAX_REFUSED_ENV_VARS = 100
 
 
 def check_image_size(width: int, height: int) -> None:
@@ -241,9 +243,10 @@ class SimpleLabel:
                 var_name = match.group(1)
                 if var_name not in self._template_env_vars:
                     # Previews are rendered on every change, log only once
-                    if var_name not in _REFUSED_ENV_VARS:
+                    if var_name not in _REFUSED_ENV_VARS and len(_REFUSED_ENV_VARS) < _MAX_REFUSED_ENV_VARS:
                         _REFUSED_ENV_VARS.add(var_name)
-                        logger.warning(f"Environment variable {var_name} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
+                        # repr() so that a name cannot add lines to the log
+                        logger.warning(f"Environment variable {var_name!r} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
                     return ""
                 return os.getenv(var_name, "")
             text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)

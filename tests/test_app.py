@@ -53,7 +53,7 @@ def test_environment_overrides_instance_config(monkeypatch):
     assert app.config['TRUSTED_HOSTS'] == ['labels.local', '192.168.0.10']
 
 
-@pytest.mark.parametrize('key, value', [('PRINT_MAX_COUNT', 'abc'), ('LOG_LEVEL', 'verbose')])
+@pytest.mark.parametrize('key, value', [('PRINT_MAX_COUNT', 'abc'), ('PRINT_MAX_COUNT', '-1'), ('MAX_CONTENT_LENGTH', '0'), ('LOG_LEVEL', 'verbose')])
 def test_invalid_environment_values(monkeypatch, key, value):
     monkeypatch.setenv(key, value)
     with pytest.raises(ValueError, match=f'Invalid value for the environment variable {key}'):

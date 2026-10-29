@@ -1575,3 +1575,13 @@ def test_refused_env_variable_is_logged_once(tmp_path, caplog):
     for _ in range(3):
         assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
     assert sum('ROOM_FOR_LOG_TEST' in record.getMessage() for record in caplog.records) == 1
+
+
+def test_refused_env_variables_are_bounded(tmp_path, monkeypatch):
+    from app.labeldesigner import label
+    monkeypatch.setattr(label, '_REFUSED_ENV_VARS', set())
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'size': '10', 'text': ''.join(f'{{{{env:X{i}}}}}' for i in range(500))}])
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert len(label._REFUSED_ENV_VARS) == label._MAX_REFUSED_ENV_VARS
