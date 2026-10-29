@@ -303,3 +303,18 @@ def test_repository_save_accepts_text_as_json_string(tmp_path):
     resp = client.get('/labeldesigner/api/repository/load?name=string.json')
     assert resp.status_code == 200
     assert json.loads(resp.get_json()['text']) == TEXT
+
+
+def test_repository_save_keeps_image_on_invalid_data(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    label = {'name': 'Alpha', 'label_size': '62', 'text': TEXT, 'image_mime': 'image/png'}
+    assert client.post(SAVE_URL, json={**label, 'image_data': _png_b64('red')}).status_code == 200
+    with open(os.path.join(repo, 'Alpha_image.png'), 'rb') as fh:
+        stored = fh.read()
+
+    resp = client.post(SAVE_URL, json={**label, 'image_data': 'not base64!'})
+    assert resp.status_code == 400
+    assert resp.get_json()['message'] == 'Invalid image data'
+    with open(os.path.join(repo, 'Alpha_image.png'), 'rb') as fh:
+        assert fh.read() == stored

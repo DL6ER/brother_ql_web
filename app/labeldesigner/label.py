@@ -17,11 +17,22 @@ logger = logging.getLogger(__name__)
 
 # Constants
 WARNING_TEXT_LENGTH = 500
+MAX_TEXT_LENGTH = 10_000
+MAX_TOTAL_TEXT_LENGTH = 100_000
 DEFAULT_RANDOM_LENGTH = 64
 MAX_RANDOM_LENGTH = 10_000
 MAX_IMAGE_SCALING_FACTOR = 500.0
+# Upper limit for the label and every image created on the way, enough for a
+# 62 mm wide label of about 2 m length at 600 dpi
+MAX_LABEL_PIXELS = 64_000_000
 DEFAULT_FONT_SIZE = 12
 FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def check_image_size(width: int, height: int) -> None:
+    """Refuse to create images that would exhaust the memory."""
+    if width * height > MAX_LABEL_PIXELS:
+        raise ValueError(f"Label is too large ({int(width)} x {int(height)} pixels)")
 
 
 class SimpleLabel:
@@ -180,8 +191,10 @@ class SimpleLabel:
     def process_templates(self) -> None:
         """Process and replace templates in the text lines."""
         self.text = copy.deepcopy(self.input_text)
+        total_length = 0
         for line in self.text:
             text_val = line.get('text', '')
+            random_length = 0
             if len(text_val) > WARNING_TEXT_LENGTH:
                 logger.warning(
                     f"Text line is very long (> {WARNING_TEXT_LENGTH} characters), "
@@ -226,14 +239,23 @@ class SimpleLabel:
             # length <len> and shifting instruction. ":s" is accepted as
             # shorthand for ":shift"
             def random_replacer(match):
+                nonlocal random_length
                 length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
                 if length > MAX_RANDOM_LENGTH:
                     raise ValueError(f"Random text length must not exceed {MAX_RANDOM_LENGTH}")
+                # Many short templates must not add up to a huge line either
+                random_length += length
+                if random_length > MAX_TEXT_LENGTH:
+                    raise ValueError("Text is too long")
                 if match.group(2):
                     line['shift'] = True
                 return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
             text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(s(hift)?))?\}\}", random_replacer, text_val)
 
+            # The limits apply to the text after expanding the templates
+            total_length += len(text_val)
+            if len(text_val) > MAX_TEXT_LENGTH or total_length > MAX_TOTAL_TEXT_LENGTH:
+                raise ValueError("Text is too long")
             line['text'] = text_val
 
     def generate(self, rotate: bool = False):
@@ -300,6 +322,7 @@ class SimpleLabel:
                 logger.debug(f"Scaling image by factor: {scale}")
                 new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
+                check_image_size(*new_size)
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 # Update image dimensions
                 img_width, img_height = img.size
@@ -310,6 +333,7 @@ class SimpleLabel:
                 logger.debug(f"Manual image scaling factor: {scale}")
                 new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
+                check_image_size(*new_size)
                 img = img.resize(new_size, Image.Resampling.LANCZOS)
                 img_width, img_height = img.size
         else:
@@ -372,6 +396,7 @@ class SimpleLabel:
         height = max(int(height), 1)
 
         logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
+        check_image_size(width, height)
         imgResult = Image.new('RGB', (int(width), int(height)), 'white')
 
         if img is not None:
@@ -454,6 +479,7 @@ class SimpleLabel:
             text = "\n".join(line.get('text', '') for line in self.text)
         qr.add_data(text.encode("utf-8-sig"))
         qr.make(fit=True)
+        check_image_size(qr.modules_count * self._qr_size, qr.modules_count * self._qr_size)
         fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'
         qr_img = qr.make_image(fill_color=fill_color, back_color="white")
         return qr_img

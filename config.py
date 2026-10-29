@@ -4,13 +4,18 @@ Adjust your settings in 'instance/application.py'
 """
 
 import os
-import logging
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 class Config(object):
     DEBUG = False
-    LOG_LEVEL = logging.WARNING
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'WARNING').upper()
+
+    # Host names the label designer is reached by (comma-separated, e.g.
+    # "labels.local,192.168.0.10"). Requests for other hosts are refused,
+    # which protects against DNS rebinding attacks. All hosts are accepted
+    # when empty.
+    TRUSTED_HOSTS = [host.strip() for host in os.environ.get('TRUSTED_HOSTS', '').split(',') if host.strip()] or None
 
     SERVER_PORT = 8013
     SERVER_HOST = '0.0.0.0'

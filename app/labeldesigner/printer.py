@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import stat
 import time
 import datetime
 import tempfile
@@ -34,40 +35,89 @@ BROTHER_MAC_ADDRESS_PREFIXES = [
     "ac:f2:3c",  # Brother QL-810W
 ]
 
-# Directory for the lock files serializing access to the printer devices
+# Base directory for the lock files serializing access to the printer devices
 LOCK_DIR = tempfile.gettempdir()
+
+# Seconds a print job waits for another job or a status query to release the
+# printer before it gives up
+DEVICE_LOCK_TIMEOUT = 10
 
 _fallback_locks = {}
 _fallback_locks_guard = threading.Lock()
 _status_cache = {}
 
 
+def _lock_key(device_specifier: str) -> str:
+    """The same key for every spelling of a device that requests may use."""
+    key = device_specifier.strip()
+    if key.startswith('file://'):
+        key = key[len('file://'):]
+    elif key.startswith(('tcp://', 'usb://')):
+        key = key.lower()
+        if key.startswith('tcp://') and ':' not in key[len('tcp://'):]:
+            key += ':9100'
+    return key
+
+
+def _private_lock_dir() -> str:
+    """Directory for the lock files that only this user can access. In a
+    shared directory like /tmp other users could hold the locks or leave files
+    behind that this user cannot open."""
+    path = os.path.join(LOCK_DIR, f'brother_ql_web-{os.getuid()}')
+    os.makedirs(path, mode=0o700, exist_ok=True)
+    info = os.lstat(path)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+        raise PermissionError(f'{path} is not a private directory')
+    return os.path.normpath(path)
+
+
+def _open_lock_file(key: str):
+    if fcntl is None:
+        return None
+    try:
+        lock_dir = _private_lock_dir()
+        # The device specifier comes from the request, make sure the lock file
+        # stays inside the lock directory
+        name = re.sub(r'[^A-Za-z0-9_.-]', '_', key)
+        path = os.path.normpath(os.path.join(lock_dir, f'{name}.lock'))
+        if not path.startswith(lock_dir + os.sep):
+            raise ValueError(f'Invalid printer: {key}')
+        return os.open(path, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as e:
+        logger.warning('Cannot open lock file for %s, locking within this process only: %s', key, e)
+        return None
+
+
+def _flock(fd: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
+
 @contextlib.contextmanager
-def device_lock(device_specifier: str, blocking: bool = True):
+def device_lock(device_specifier: str, timeout: float | None = None):
     """Serialize access to a printer device.
 
     The kernel allows only one open handle per USB printer, so a status query
     during a print job (or the other way round) fails with "Device or resource
     busy". A lock file is used so that this also works across several worker
-    processes. Yields whether the lock was acquired."""
-    fd = None
-    if fcntl is not None:
-        # The device specifier comes from the request, make sure the lock file
-        # stays inside LOCK_DIR
-        name = re.sub(r'[^A-Za-z0-9_.-]', '_', device_specifier)
-        lock_dir = os.path.normpath(LOCK_DIR)
-        path = os.path.normpath(os.path.join(lock_dir, f'brother_ql_web_{name}.lock'))
-        if not path.startswith(lock_dir + os.sep):
-            raise ValueError(f'Invalid printer: {device_specifier}')
-        try:
-            fd = os.open(path, os.O_RDONLY | os.O_CREAT, 0o666)
-        except OSError as e:
-            logger.warning('Cannot open lock file for %s, locking within this process only: %s', device_specifier, e)
+    processes. Waits at most timeout seconds (default DEVICE_LOCK_TIMEOUT,
+    0 = do not wait) and yields whether the lock was acquired."""
+    if timeout is None:
+        timeout = DEVICE_LOCK_TIMEOUT
+    key = _lock_key(device_specifier)
+    fd = _open_lock_file(key)
 
     if fd is None:
         with _fallback_locks_guard:
-            lock = _fallback_locks.setdefault(device_specifier, threading.Lock())
-        acquired = lock.acquire(blocking)
+            lock = _fallback_locks.setdefault(key, threading.Lock())
+        acquired = lock.acquire(timeout=timeout) if timeout > 0 else lock.acquire(blocking=False)
         try:
             yield acquired
         finally:
@@ -76,12 +126,7 @@ def device_lock(device_specifier: str, blocking: bool = True):
         return
 
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX if blocking else fcntl.LOCK_EX | fcntl.LOCK_NB)
-            acquired = True
-        except BlockingIOError:
-            acquired = False
-        yield acquired
+        yield _flock(fd, timeout)
     finally:
         # Closing the file releases the lock
         os.close(fd)
@@ -183,16 +228,24 @@ class PrinterQueue:
         entries = list(self._print_queue)
         self._print_queue.clear()
 
+        # Split into batches to avoid printer timeouts on large jobs. All
+        # batches are rasterized first, so the printer is not blocked while
+        # the labels are generated.
+        batches = []
+        for start in range(0, total, batch_size):
+            batch = entries[start:start + batch_size]
+            logger.info('Rasterizing batch %d (%d labels, %d/%d)',
+                        len(batches) + 1, len(batch), start + len(batch), total)
+            batches.append(self._rasterize_entries(batch))
+
         # Hold the device for the whole job so that neither status queries nor
         # other jobs get in between the batches
-        lock = contextlib.nullcontext() if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
-        with lock:
-            # Split into batches to avoid printer timeouts on large jobs
-            for batch_index, start in enumerate(range(0, total, batch_size), start=1):
-                batch = entries[start:start + batch_size]
-                logger.info('Processing batch %d (%d labels, %d/%d)',
-                            batch_index, len(batch), start + len(batch), total)
-                qlr, generated_images = self._rasterize_entries(batch)
+        lock = contextlib.nullcontext(True) if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
+        with lock as acquired:
+            if not acquired:
+                logger.warning('Printer %s is busy with another job', self.device_specifier)
+                return "Printer is busy with another print job, please try again"
+            for batch_index, (qlr, generated_images) in enumerate(batches, start=1):
                 status = self._send_raster(qlr, generated_images, batch_index)
                 if status:
                     return status
@@ -243,23 +296,38 @@ def get_status(printer, timeout: float = 2.0):
     return interpret_response(data)
 
 
-def query_status(device_specifier: str) -> dict:
+def _release(printer):
+    """Close the printer handle right away, also when the status query failed
+    and a traceback still references the printer. The backend closes the
+    handle again when the object is garbage collected, which would close an
+    unrelated file if the descriptor number was reused in the meantime, so
+    that second close is turned into a no-op."""
+    printer.dispose()
+    printer.dispose = lambda: None
+
+
+def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     """Query the printer status without waiting for a running print job. While
     a job holds the device, the last known status is returned instead."""
-    with device_lock(device_specifier, blocking=False) as acquired:
+    key = _lock_key(device_specifier)
+    with device_lock(device_specifier, timeout=0) as acquired:
         if acquired:
             printer = get_printer(device_specifier)
-            state = get_status(printer)
-            # Release the device before giving up the lock
-            del printer
-            _status_cache[device_specifier] = state
+            try:
+                state = get_status(printer)
+            finally:
+                # Release the device before giving up the lock
+                _release(printer)
+            _status_cache[key] = state
             return dict(state)
     logger.debug('Printer %s is busy, returning last known status', device_specifier)
-    return dict(_status_cache.get(device_specifier, {
+    return dict(_status_cache.get(key, {
         'errors': [],
-        'model': 'Unknown',
+        'model': default_model,
         'status_type': 'Busy',
         'phase_type': 'Printing state',
+        'media_width': None,
+        'media_length': 0,
     }))
 
 
@@ -325,7 +393,7 @@ def get_ptr_status(config: Config):
                         continue
                     spec = f"file://{dev}"
                     try:
-                        printer_state = query_status(spec)
+                        printer_state = query_status(spec, default_model)
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))
@@ -391,7 +459,7 @@ def get_ptr_status(config: Config):
             status['selected'] = device_specifier
             return status
         else:
-            printer_state = query_status(device_specifier)
+            printer_state = query_status(device_specifier, default_model)
             for key, value in printer_state.items():
                 status[key] = value
         # Always include simulator in returned printers list

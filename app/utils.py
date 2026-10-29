@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from PIL import Image
-from io import BufferedReader, BytesIO
+from io import BytesIO
+from typing import BinaryIO
 from PIL.ImageOps import colorize
 from flask import current_app
 from pdf2image import convert_from_bytes
@@ -29,25 +30,20 @@ def convert_image_to_red_and_black(image: Image.Image,
                     blackpoint=blackpoint, whitepoint=whitepoint, midpoint=redpoint)
 
 
-def imgfile_to_image(file: FileStorage | BufferedReader) -> Image.Image:
-    s = BytesIO()
-    if isinstance(file, BufferedReader):
-        s.write(file.read())
-    else:
-        file.save(s)
-    im = Image.open(s)
-    return im
+def read_file(file: FileStorage | BinaryIO) -> bytes:
+    """Read the whole file. Starts at the beginning so that the same upload
+    can be read again, e.g. once for every label of a print job."""
+    stream = file.stream if isinstance(file, FileStorage) else file
+    stream.seek(0)
+    return stream.read()
 
 
-def pdffile_to_image(file: FileStorage | BufferedReader, dpi: int) -> Image.Image:
-    s = BytesIO()
-    if isinstance(file, BufferedReader):
-        s.write(file.read())
-    else:
-        file.save(s)
-    s.seek(0)
-    im = convert_from_bytes(s.read(), dpi=dpi)[0]
-    return im
+def imgfile_to_image(file: FileStorage | BinaryIO) -> Image.Image:
+    return Image.open(BytesIO(read_file(file)))
+
+
+def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int) -> Image.Image:
+    return convert_from_bytes(read_file(file), dpi=dpi)[0]
 
 
 def image_to_png_bytes(im: Image.Image) -> bytes:

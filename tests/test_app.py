@@ -19,6 +19,15 @@ def test_environment_overrides_config(monkeypatch):
     assert app.config['LABEL_DEFAULT_SIZE'] == '29'
 
 
+def test_empty_environment_variables_keep_defaults(monkeypatch):
+    # e.g. PRINTER_PRINTER=${PRINTER:-} in a compose file
+    monkeypatch.setenv('PRINTER_PRINTER', '')
+    monkeypatch.setenv('PRINTER_MODEL', '')
+    app = create_app()
+    assert app.config['PRINTER_PRINTER'] == '?'
+    assert app.config['PRINTER_MODEL'] == 'QL-800'
+
+
 def test_command_line_overrides_environment(monkeypatch):
     monkeypatch.setenv('PRINTER_MODEL', 'QL-700')
     app = create_app()

@@ -185,7 +185,7 @@ Network printers are supported but with some limitations regarding automatic det
 
 All functionality of the web interface is also available via a REST API. Currently, the API is not documented in a separate documentation but can be explored using the web interface when the container is running.
 
-Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request.
+Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request. To also protect against DNS rebinding, set `TRUSTED_HOSTS` to the host names you use to open the label designer (comma-separated, e.g. `TRUSTED_HOSTS=labels.local,192.168.0.10`). Requests for other host names are refused then.
 
 A request can select a printer with the `printer` parameter. Accepted are the configured printer, `simulation`, USB printers (`file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`) and network printers on the raw printing port 9100 (`tcp://<host>`).
 
@@ -193,6 +193,10 @@ The following environment variables limit what a single request may do:
 
 - `PRINT_MAX_COUNT` - maximum number of labels per print request (default: `100`)
 - `MAX_CONTENT_LENGTH` - maximum size of a request in bytes, e.g. for uploaded images (default: 32 MB)
+
+Text lines are limited to 10000 characters (100000 per label) after the templates are filled in, and a label may have at most 64 million pixels, which is enough for a 62 mm wide label of about 2 m length at 600 dpi.
+
+The log level is set with the `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, default: `WARNING`).
 
 ### Contributing / Development
 

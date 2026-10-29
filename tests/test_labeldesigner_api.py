@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import json
+import base64
 import random
 import pytest
 import unicodedata
@@ -1246,7 +1247,7 @@ def test_cross_origin_requests_are_rejected(tmp_path):
     assert response.status_code == 200
 
 
-def test_log_level_applies_to_request_only(tmp_path):
+def test_requests_cannot_change_log_level(tmp_path):
     client = make_client(tmp_path)
     level = client.application.logger.level
     data = EXAMPLE_FORMDATA.copy()
@@ -1254,6 +1255,68 @@ def test_log_level_applies_to_request_only(tmp_path):
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert client.application.logger.level == level
+
+
+@pytest.mark.parametrize('filename, save_format', [('image.png', 'PNG'), ('image.pdf', 'PDF')])
+def test_print_uploaded_image_several_times(tmp_path, filename, save_format):
+    client = make_client(tmp_path)
+    buffer = io.BytesIO()
+    _red_square().save(buffer, save_format)
+    buffer.seek(0)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'print_count': '3', 'image': FileStorage(stream=buffer, filename=filename)})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 200
+    assert response.get_json() == {'success': True}
+
+
+def test_text_limit_applies_after_templates(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    # Each template is allowed, together they exceed the line limit
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{random:1000}}' * 11, 'size': '40'}])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 413
+    assert response.get_json()['message'] == 'Text is too long'
+    # Many lines below the line limit exceed the total limit
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{random:10000}}', 'size': '40'}] * 11)
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 413
+    assert response.get_json()['message'] == 'Text is too long'
+
+
+@pytest.mark.parametrize('extra', [
+    {'print_type': 'qrcode', 'qrcode_size': '5000', 'text': TEXT},
+    {'print_type': 'image', 'image_fit': '0', 'image_scaling_factor': '500'},
+])
+def test_label_size_is_limited(tmp_path, extra):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update(extra)
+    if extra['print_type'] == 'image':
+        data['image'] = _upload(Image.new('L', (2000, 2000), 'black'), 'big.png')
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Label is too large')
+
+
+def test_trusted_hosts(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['TRUSTED_HOSTS'] = ['labels.local']
+    # A page using DNS rebinding reaches the server under its own host name
+    assert client.get('/labeldesigner/', base_url='http://evil.example').status_code == 400
+    assert client.get('/labeldesigner/', base_url='http://labels.local:8013').status_code == 200
+
+
+def test_webhook_accepts_pdf_in_json(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    buffer = io.BytesIO()
+    _red_square().save(buffer, 'PDF')
+    payload = {'password': 'secret', 'images': [{'data': base64.b64encode(buffer.getvalue()).decode('ascii'), 'mime': 'application/pdf'}]}
+    response = client.post('/labeldesigner/api/webhook/print', json=payload)
+    assert response.status_code == 200
+    assert response.get_json() == {'success': True, 'count': 1}
 
 
 def test_webhook_authentication(tmp_path):

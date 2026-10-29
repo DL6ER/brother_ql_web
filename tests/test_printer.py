@@ -90,7 +90,64 @@ def test_print_during_status_query(client, monkeypatch):
 def test_device_lock_is_exclusive():
     with printer.device_lock(DEVICE) as first:
         assert first
-        with printer.device_lock(DEVICE, blocking=False) as second:
+        with printer.device_lock(DEVICE, timeout=0) as second:
             assert not second
-    with printer.device_lock(DEVICE, blocking=False) as again:
+    with printer.device_lock(DEVICE, timeout=0) as again:
         assert again
+
+
+@pytest.mark.parametrize('held, requested', [
+    ('/dev/usb/lp0', 'file:///dev/usb/lp0'),
+    ('tcp://Printer.local', 'tcp://printer.local:9100'),
+    ('usb://0x04F9:0x209B', 'usb://0x04f9:0x209b'),
+])
+def test_device_lock_covers_all_spellings(held, requested):
+    with printer.device_lock(held):
+        with printer.device_lock(requested, timeout=0) as acquired:
+            assert not acquired
+
+
+def test_device_lock_uses_private_directory(tmp_path):
+    with printer.device_lock(DEVICE):
+        lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
+        assert lock_dir.is_dir()
+        assert lock_dir.stat().st_mode & 0o777 == 0o700
+
+
+def test_device_lock_refuses_shared_directory(tmp_path):
+    # A directory other users can write to is not used for the lock files
+    lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
+    lock_dir.mkdir(mode=0o777)
+    lock_dir.chmod(0o777)
+    with printer.device_lock(DEVICE) as acquired:
+        assert acquired
+        assert list(lock_dir.iterdir()) == []
+
+
+def test_print_gives_up_when_printer_stays_busy(client, monkeypatch):
+    monkeypatch.setattr(printer, 'DEVICE_LOCK_TIMEOUT', 0.2)
+    with printer.device_lock(DEVICE):
+        response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Printer is busy with another print job, please try again'
+
+
+def test_failed_status_query_releases_device(client, monkeypatch):
+    def broken_read(self, length=32):
+        raise OSError('read failed')
+    monkeypatch.setattr(ExclusiveUsbPrinter, 'read', broken_read)
+    try:
+        printer.query_status(DEVICE)
+    except OSError:
+        # The traceback still references the printer, the device must be closed anyway
+        assert not ExclusiveUsbPrinter.in_use.locked()
+    else:
+        pytest.fail('query_status() did not raise')
+
+
+def test_status_during_print_keeps_configured_model(client):
+    with printer.device_lock(DEVICE):
+        status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert status['model'] == client.application.config['PRINTER_MODEL']
+    assert status['red_support'] is True
+    assert status['media_width'] is None

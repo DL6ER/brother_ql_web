@@ -61,6 +61,8 @@ def test_missing_default_font_is_replaced():
     fonts = Fonts(logging.getLogger('TestFonts'), default_family='No Such Font', default_style='Book')
     family, style = fonts.get_default_font()
     assert style in fonts.fonts.get(family, {})
+    # Every worker process of a WSGI server has to pick the same font
+    assert Fonts(logging.getLogger('TestFonts'), default_family='No Such Font').get_default_font() == (family, style)
 
 
 if __name__ == '__main__':

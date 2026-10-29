@@ -26,7 +26,8 @@ def create_app(config_class=Config) -> Flask:
     app.config.from_object(config_class)
     app.config.from_pyfile('application.py', silent=True)
     for key in ENV_OVERRIDES:
-        if key in os.environ:
+        # Empty variables (e.g. PRINTER_PRINTER= in a compose file) keep the default
+        if os.environ.get(key):
             app.config[key] = os.environ[key]
 
     app.logger.setLevel(app.config.get('LOG_LEVEL', 'INFO'))

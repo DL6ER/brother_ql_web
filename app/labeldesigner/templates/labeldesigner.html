@@ -330,27 +330,6 @@
                         <!-- class="accordion-body" -->
                     </div>
                 </div>
-
-                <div class="accordion-item">
-                    <h2 class="accordion-header" id="headingAdvancedSettings">
-                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#accordionAdvancedSettings" aria-expanded="false" aria-controls="accordionAdvancedSettings">
-                            <span class="fas fa-wrench" aria-hidden="true"></span> Advanced Settings
-                        </button>
-                    </h2>
-                    <div id="accordionAdvancedSettings" class="accordion-collapse collapse" aria-labelledby="headingAdvancedSettings" data-bs-parent="#accordion">
-                        <div class="accordion-body">
-                            <label for="log_level" style="margin-bottom: 0">Log Level:</label>
-                            <select class="form-control form-select mb-3" id="log_level" onChange="preview()">
-                                <option value="CRITICAL">CRITICAL</option>
-                                <option value="ERROR">ERROR</option>
-                                <option value="WARNING" selected>WARNING</option>
-                                <option value="INFO">INFO</option>
-                                <option value="DEBUG">DEBUG</option>
-                            </select>
-                        </div>
-                        <!-- class="accordion-body" -->
-                    </div>
-                </div>
             </div>
         </fieldset>
     </div>
@@ -407,9 +386,9 @@
                             </li>
                             <li><code>{{'{{uuid'}}}}</code> — Inserts a random UUID (Universally Unique Identifier).</li>
                             <li><code>{{'{{short-uuid'}}}}</code> — Inserts a shortened version of a UUID.</li>
-                            <li><code>{{'{{env:<var>}}'}}</code> — Inserts the value of the environment variable <code><var></code>.</li>
-                            <li><code>{{'{{random[:<len>][:shift]}}'}}</code> — Inserts a random string of optional length <code><len></code>
-                                (defaulting to 64). The optional <code>shift</code> parameter can be used to shift the random string around to fill gaps.</li>
+                            <li><code>{{'{{env:<var>}}'}}</code> - Inserts the value of the environment variable <code><var></code> if it is listed in <code>LABEL_TEMPLATE_ENV_VARS</code>, otherwise nothing.</li>
+                            <li><code>{{'{{random[:<len>][:shift]}}'}}</code> - Inserts a random string of optional length <code><len></code>
+                                (defaulting to 64, at most 10000). The optional <code>shift</code> parameter can be used to shift the random string around to fill gaps.</li>
                         </ul>
                         <span class="text-muted">Templates are replaced at print time.</span>
                     </div>

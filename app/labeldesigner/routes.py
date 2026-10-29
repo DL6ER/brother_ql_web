@@ -4,16 +4,17 @@ import hmac
 import base64
 import logging
 import barcode
-from io import BufferedReader, BytesIO
-from functools import wraps
+from io import BytesIO
+from typing import BinaryIO
 from urllib.parse import urlparse
 from . import bp
 from app import get_fonts
 from PIL import Image
 from werkzeug.datastructures import FileStorage
+from werkzeug.exceptions import HTTPException
 from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
-from .label import SimpleLabel, LabelContent, LabelOrientation, LabelType
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.utils import secure_filename
 from app.utils import (
@@ -32,6 +33,13 @@ REPO_IMAGE_EXTENSIONS = {
     'image/jpg': '.jpg',
     'image/gif': '.gif',
     'application/pdf': '.pdf'
+}
+REPO_IMAGE_MIME_TYPES = {
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.pdf': 'application/pdf'
 }
 
 # Printers a request may select besides the configured one. The backend opens
@@ -68,21 +76,18 @@ def reject_cross_origin_requests():
     return make_response(jsonify({'success': False, 'message': 'Cross-origin request rejected'}), 403)
 
 
-def with_request_log_level(view):
-    """Apply the log_level request parameter while handling this request only,
-    so that one client cannot change the logging for everybody else."""
-    @wraps(view)
-    def wrapper(*args, **kwargs):
-        level = logging.getLevelNamesMapping().get(str(request.values.get('log_level', '')).upper())
-        if level is None:
-            return view(*args, **kwargs)
-        previous = current_app.logger.level
-        current_app.logger.setLevel(level)
-        try:
-            return view(*args, **kwargs)
-        finally:
-            current_app.logger.setLevel(previous)
-    return wrapper
+def open_image(file: FileStorage | BinaryIO, filename: str, dpi: int) -> Image.Image:
+    """Open an uploaded or stored image. PDFs are recognized by extension or
+    content and rendered with the given resolution. Files without extension
+    are left to Pillow to identify."""
+    ext = os.path.splitext(filename or '')[1].lower()
+    stream = file.stream if isinstance(file, FileStorage) else file
+    stream.seek(0)
+    if ext == '.pdf' or stream.read(5) == b'%PDF-':
+        return pdffile_to_image(file, dpi)
+    if ext and ext not in {ex for ex, f in Image.registered_extensions().items() if f in Image.OPEN}:
+        raise ValueError("Unsupported file type")
+    return imgfile_to_image(file)
 
 
 @bp.route('/')
@@ -193,6 +198,20 @@ def repo_save():
         filename = filename + '.json'
     repo = _get_repo_dir()
     path = os.path.join(repo, filename)
+
+    # Accept JSON image payloads that include raw base64 image data in
+    # fields `image_data` (base64 string), `image_mime` and optional
+    # `image_name` so clients can submit images using pure JSON payloads.
+    # Decode before touching the stored files, so a broken payload does not
+    # destroy the existing image.
+    image_bytes = None
+    img_b64 = data.get('image_data')
+    if isinstance(img_b64, str) and len(img_b64) > 0:
+        try:
+            image_bytes = base64.b64decode(img_b64)
+        except ValueError:
+            return make_response(jsonify({'success': False, 'message': 'Invalid image data'}), 400)
+
     try:
         # Extract text properties. The label designer sends them as JSON string
         # in fontSettingsPerLine, API clients may send text as list or string.
@@ -201,24 +220,16 @@ def repo_save():
             text = json.loads(text)
         data['text'] = text
 
-        # Accept JSON image payloads that include raw base64 image data in
-        # fields `image_data` (base64 string), `image_mime` and optional
-        # `image_name` so clients can submit images using pure JSON payloads.
-        try:
-            img_b64 = data.get('image_data')
-            if isinstance(img_b64, str) and len(img_b64) > 0:
-                img_mime = data.get('image_mime', 'image/png')
-                ext = REPO_IMAGE_EXTENSIONS.get(img_mime, '.png')
-                # The image file is always named after the label, a name chosen
-                # by the client could overwrite images of other labels
-                base = os.path.splitext(filename)[0]
-                image_name = base + '_image' + ext
-                _remove_repo_images(repo, base)
-                with open(os.path.join(repo, image_name), 'wb') as imgfh:
-                    imgfh.write(base64.b64decode(img_b64))
-                data['image'] = image_name
-        except Exception:
-            current_app.logger.exception('Failed to store base64 image from JSON')
+        if image_bytes is not None:
+            ext = REPO_IMAGE_EXTENSIONS.get(data.get('image_mime', 'image/png'), '.png')
+            # The image file is always named after the label, a name chosen
+            # by the client could overwrite images of other labels
+            base = os.path.splitext(filename)[0]
+            image_name = base + '_image' + ext
+            _remove_repo_images(repo, base)
+            with open(os.path.join(repo, image_name), 'wb') as imgfh:
+                imgfh.write(image_bytes)
+            data['image'] = image_name
 
         # Remove raw image data from JSON before saving
         if 'image_data' in data:
@@ -263,22 +274,13 @@ def repo_load():
                 repo = _get_repo_dir()
                 image_path = os.path.join(repo, secure_filename(image_ref))
                 if os.path.exists(image_path):
-                    import base64 as _b64
                     with open(image_path, 'rb') as imgfh:
                         b = imgfh.read()
                     # Guess mime from extension
-                    _, ext = os.path.splitext(image_path)
-                    ext = ext.lower()
-                    mime = {
-                        '.png': 'image/png',
-                        '.jpg': 'image/jpeg',
-                        '.jpeg': 'image/jpeg',
-                        '.gif': 'image/gif',
-                        '.pdf': 'application/pdf'
-                    }.get(ext, 'application/octet-stream')
+                    ext = os.path.splitext(image_path)[1].lower()
                     data['image_name'] = image_ref
-                    data['image_mime'] = mime
-                    data['image_data'] = _b64.b64encode(b).decode('ascii')
+                    data['image_mime'] = REPO_IMAGE_MIME_TYPES.get(ext, 'application/octet-stream')
+                    data['image_data'] = base64.b64encode(b).decode('ascii')
         except Exception:
             current_app.logger.exception('Failed to include repository image in load response')
         return data
@@ -346,7 +348,6 @@ def repo_preview():
     return_format = request.values.get('return_format', 'png')
     response_data = image_to_png_bytes(im)
     if return_format == 'base64':
-        import base64
         response_data = base64.b64encode(response_data)
         content_type = 'text/plain'
     else:
@@ -425,13 +426,15 @@ def get_barcodes():
 
 
 @bp.route('/api/preview', methods=['POST'])
-@with_request_log_level
 def preview_from_image():
     try:
         values = request.values.to_dict(flat=True)
         files = request.files.to_dict(flat=True)
         label = create_label_from_request(values, files)
         im = label.generate(rotate=True)
+    except HTTPException:
+        # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
+        raise
     except Exception as e:
         current_app.logger.exception(e)
         error = 413 if "too long" in str(e) else 400
@@ -440,7 +443,6 @@ def preview_from_image():
     return_format = request.values.get('return_format', 'png')
     response_data = image_to_png_bytes(im)
     if return_format == 'base64':
-        import base64
         response_data = base64.b64encode(response_data)
         content_type = 'text/plain'
     else:
@@ -456,7 +458,6 @@ def get_printer_status():
 
 
 @bp.route('/api/print', methods=['POST'])
-@with_request_log_level
 def print_label():
     """
     API to print a label
@@ -468,6 +469,8 @@ def print_label():
         print_count = _check_print_count(int(request.values.get('print_count', 1)))
         cut_once = int(request.values.get('cut_once', 0)) == 1
         high_res = int(request.values.get('high_res', 0)) != 0
+    except HTTPException:
+        raise
     except Exception as e:
         return_dict['message'] = str(e)
         current_app.logger.exception(e)
@@ -556,15 +559,9 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
         'code_text': d.get('code_text', '').strip(),
     }
 
-    def load_image(file: FileStorage | BufferedReader, filename: str) -> Image.Image:
-        ext = os.path.splitext(filename)[1].lower()
-        if ext == '.pdf':
-            # Render at the resolution the label is printed with
-            image = pdffile_to_image(file, HIGH_RES_DPI if context['high_res'] else DEFAULT_DPI)
-        elif ext in {ex for ex, f in Image.registered_extensions().items() if f in Image.OPEN}:
-            image = imgfile_to_image(file)
-        else:
-            raise ValueError("Unsupported file type")
+    def load_image(file: FileStorage | BinaryIO, filename: str) -> Image.Image:
+        # PDFs are rendered at the resolution the label is printed with
+        image = open_image(file, filename, HIGH_RES_DPI if context['high_res'] else DEFAULT_DPI)
         return _convert_image(image, context['image_mode'], context['image_bw_threshold'])
 
     print_type = context['print_type']
@@ -606,7 +603,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
         line['path'] = get_fonts().get_path(line.get('font', ''))
-        if len(line.get('text', '')) > 10_000:
+        if len(line.get('text', '')) > MAX_TEXT_LENGTH:
             raise ValueError("Text is too long")
 
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
@@ -838,6 +835,7 @@ def webhook_print():
 
     # Collect images from request
     pil_images = []
+    dpi = HIGH_RES_DPI if high_res else DEFAULT_DPI
     try:
         # Check for multipart file uploads first
         uploaded_files = request.files.getlist('images')
@@ -845,13 +843,7 @@ def webhook_print():
             for f in uploaded_files:
                 if not f.filename:
                     continue
-                _, ext = os.path.splitext(f.filename)
-                ext = ext.lower()
-                if ext == '.pdf':
-                    img = pdffile_to_image(f, HIGH_RES_DPI if high_res else DEFAULT_DPI)
-                else:
-                    img = imgfile_to_image(f)
-                pil_images.append(img)
+                pil_images.append(open_image(f, f.filename, dpi))
 
         # Check for JSON payload with base64 images
         if not pil_images:
@@ -864,8 +856,7 @@ def webhook_print():
                         img_bytes = base64.b64decode(entry['data'])
                     else:
                         continue
-                    img = Image.open(BytesIO(img_bytes))
-                    pil_images.append(img)
+                    pil_images.append(open_image(BytesIO(img_bytes), '', dpi))
 
     except Exception as e:
         current_app.logger.exception(e)

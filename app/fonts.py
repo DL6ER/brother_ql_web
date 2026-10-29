@@ -1,5 +1,4 @@
 import os
-import random
 import logging
 from fontTools.ttLib import TTFont
 from collections import defaultdict
@@ -69,14 +68,16 @@ class Fonts:
                     # Remove the child
                     del self.fonts[other_family]
 
-        # Check if the default family/style is available, if not, pick an
-        # available random one
+        # Check if the default family/style is available, if not, pick the
+        # first available one. The choice must not be random, otherwise every
+        # worker process of a WSGI server could end up with another default.
         if default_family in self.fonts and default_style in self.fonts[default_family]:
             logger.debug(f"Selected the following default font: {default_family}")
         elif self.fonts:
-            logger.warning('Could not find any of the default fonts. Choosing a random one.')
-            self.default_family = random.choice(list(self.fonts.keys()))
-            self.default_style = random.choice(list(self.fonts[self.default_family].keys()))
+            logger.warning('Could not find any of the default fonts. Choosing the first available one.')
+            first = self.fontlist()[0]
+            self.default_family = first['family']
+            self.default_style = first['styles'][0]
             logger.warning(f'The default font is now set to: {self.default_family} ({self.default_style})')
 
     def get_default_font(self):
