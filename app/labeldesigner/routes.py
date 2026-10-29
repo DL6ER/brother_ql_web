@@ -1,6 +1,7 @@
 import os
 import re
 import hmac
+import math
 import uuid
 import base64
 import logging
@@ -667,6 +668,18 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     if image is _LOAD_IMAGE:
         image = load_label_image(d, files)
 
+    # In "standard" orientation die-cut labels are landscape, so a portrait
+    # image (e.g. a shipping label on a 103 x 164 mm label) came out small and
+    # sideways. With auto-fit, an image without text is placed in the
+    # orientation that makes it largest. Without auto-fit the chosen
+    # orientation is kept.
+    image_label = label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED)
+    has_text = any(str(line.get('text', '')).strip() for line in context['text'])
+    if label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None and context['image_fit'] and not has_text:
+        margins = (context['margin_left'], context['margin_right'], context['margin_top'], context['margin_bottom'])
+        width, height, label_orientation = _fitting_orientation(
+            image, width, height, label_orientation, margins, context['image_crop'], context['image_rotation'])
+
     return SimpleLabel(
         width=width,
         height=height,
@@ -725,6 +738,32 @@ def load_label_image(d: dict, files: dict) -> Image.Image | None:
         except Exception:
             current_app.logger.exception('Failed to load repository image')
     return None
+
+
+def _placed_image_size(image: Image.Image, crop: bool, rotation: int) -> tuple[float, float]:
+    """Size of the image after the crop and rotation the label applies."""
+    if crop:
+        image = SimpleLabel._crop_image_to_content(image)
+    angle = math.radians(rotation)
+    cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+    return image.width * cos + image.height * sin, image.width * sin + image.height * cos
+
+
+def _fitting_orientation(image: Image.Image, width: int, height: int, orientation: LabelOrientation,
+                         margins: tuple = (0, 0, 0, 0), crop: bool = False, rotation: int = 0) -> tuple:
+    """Canvas size and orientation of a die-cut label that show the fitted
+    image largest: the given ones or the ones turned by 90 degrees."""
+    image_width, image_height = _placed_image_size(image, crop, rotation)
+    margin_left, margin_right, margin_top, margin_bottom = margins
+
+    def fitted_scale(canvas_width, canvas_height):
+        return min(max(canvas_width - margin_left - margin_right, 1) / image_width,
+                   max(canvas_height - margin_top - margin_bottom, 1) / image_height)
+
+    if fitted_scale(height, width) > fitted_scale(width, height):
+        turned = LabelOrientation.STANDARD if orientation == LabelOrientation.ROTATED else LabelOrientation.ROTATED
+        return height, width, turned
+    return width, height, orientation
 
 
 def _template_env_vars() -> frozenset:
@@ -792,7 +831,8 @@ def webhook_print():
 
     Accepts multiple images via multipart form-data or JSON with base64-encoded
     images. Each image is scaled to fit the target label dimensions and printed
-    in batch with a cut after each label.
+    in batch with a cut after each label. On die-cut labels each image is
+    turned to the orientation that shows it largest.
 
     Authentication:
         The webhook is disabled unless the WEBHOOK_PASSWORD environment variable
@@ -908,10 +948,16 @@ def webhook_print():
     if len(uploaded_files or json_images) > max_count:
         return make_response(jsonify({'success': False, 'message': f'Too many images, at most {max_count} per request'}), 400)
 
-    def prepare(img: Image.Image) -> Image.Image:
-        # Convert and scale right away, so only label sized images are kept
+    def prepare(img: Image.Image) -> tuple:
+        # Convert and scale right away, so only label sized images are kept.
+        # Images on die-cut labels are turned like with auto-fit in the label
+        # designer.
         img = _convert_image(img, image_mode, bw_threshold)
-        return _scale_image_to_label(img, label_size, orientation, high_res)
+        image_width, image_height, image_orientation = width, height, label_orientation
+        if label_type == LabelType.DIE_CUT_LABEL:
+            image_width, image_height, image_orientation = _fitting_orientation(img, width, height, label_orientation)
+        image_orientation_name = 'rotated' if image_orientation == LabelOrientation.ROTATED else 'standard'
+        return _scale_image_to_label(img, label_size, image_orientation_name, high_res), image_width, image_height, image_orientation
 
     pil_images = []
     dpi = HIGH_RES_DPI if high_res else DEFAULT_DPI
@@ -940,12 +986,12 @@ def webhook_print():
     # Process and queue each image
     try:
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
-        for img in pil_images:
+        for img, image_width, image_height, image_orientation in pil_images:
             label = SimpleLabel(
-                width=width,
-                height=height,
+                width=image_width,
+                height=image_height,
                 label_content=label_content,
-                label_orientation=label_orientation,
+                label_orientation=image_orientation,
                 label_type=label_type,
                 image=img,
                 image_fit=True,
