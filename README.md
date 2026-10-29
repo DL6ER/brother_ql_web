@@ -70,6 +70,7 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
 - Import and export of labels in an easily editable format (JSON)
 - Allow text inversion for emphasized text even without color
 - Auto-fit images onto the labels to avoid cropping
+  - On die-cut labels, auto-fit also turns images without text to the orientation that makes them largest, e.g. a 4 x 6 in shipping label on a 103 x 164 mm label. The webhook does the same.
 - Arbitrary scaling of images with interpolation
 - Arbitrary rotation of images with interpolation
 - Automatic crop of images to the actual content to avoid unnecessary white space

@@ -13,7 +13,7 @@ from PIL import Image, ImageChops, ImageOps
 from werkzeug.datastructures import FileStorage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app import create_app
-from app.labeldesigner.enums import LabelContent
+from app.labeldesigner.enums import LabelContent, LabelOrientation
 from app.labeldesigner.routes import create_label_from_request
 
 UPDATE_IMAGES = False
@@ -1598,3 +1598,54 @@ def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):
     data.update({'print_type': 'qrcode', 'barcode_type': 'QR', 'code_text': 'https://example.com/Größe'})
     assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
     assert added == ['https://example.com/Größe'.encode('utf-8')]
+
+
+def _auto_orientation_label(tmp_path, size, **values):
+    client = make_client(tmp_path)
+    data = {'print_type': 'image', 'image_mode': 'grayscale', 'image_fit': '1', 'orientation': 'standard', 'text': '[]',
+            'margin_top': '0', 'margin_bottom': '0', 'margin_left': '0', 'margin_right': '0', **values}
+    files = {'image': _upload(Image.new('L', size, 'black'), 'image.png')}
+    with client.application.test_request_context():
+        return create_label_from_request(data, files)
+
+
+@pytest.mark.parametrize('orientation', ['standard', 'rotated'])
+def test_portrait_image_on_die_cut_label_is_turned(tmp_path, orientation):
+    # A 4 x 6 in shipping label on a 103 x 164 mm label uses the full label
+    label = _auto_orientation_label(tmp_path, (1200, 1800), label_size='103x164', orientation=orientation)
+    assert (label._width, label._height) == (1200, 1822)
+    assert label.label_orientation == LabelOrientation.ROTATED
+
+
+def test_landscape_image_on_die_cut_label_is_turned(tmp_path):
+    label = _auto_orientation_label(tmp_path, (1800, 1200), label_size='103x164', orientation='rotated')
+    assert (label._width, label._height) == (1822, 1200)
+    assert label.label_orientation == LabelOrientation.STANDARD
+
+
+@pytest.mark.parametrize('values', [
+    # Without auto-fit the chosen orientation is kept
+    {'image_fit': '0'},
+    # Labels with text keep their layout
+    {'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Text', 'size': '40'}])},
+    # Endless labels have no fixed length to fit
+    {'label_size': '62'},
+])
+def test_orientation_is_kept(tmp_path, values):
+    label = _auto_orientation_label(tmp_path, (1200, 1800), **{'label_size': '103x164', **values})
+    assert label.label_orientation == LabelOrientation.STANDARD
+
+
+def test_webhook_turns_images_on_die_cut_labels(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    labels = []
+    monkeypatch.setattr(routes.PrinterQueue, 'add_label_to_queue', lambda self, label, **kwargs: labels.append(label))
+    monkeypatch.setattr(routes.PrinterQueue, 'process_queue', lambda self: '')
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    images = [base64.b64encode(_upload(Image.new('L', size, 'black'), 'image.png').stream.read()).decode('ascii')
+              for size in ((1200, 1800), (1800, 1200))]
+    payload = {'password': 'secret', 'label_size': '103x164', 'orientation': 'standard', 'images': images}
+    assert client.post('/labeldesigner/api/webhook/print', json=payload).get_json() == {'success': True, 'count': 2}
+    assert [(label._width, label._height, label.label_orientation) for label in labels] == [
+        (1200, 1822, LabelOrientation.ROTATED), (1822, 1200, LabelOrientation.STANDARD)]
