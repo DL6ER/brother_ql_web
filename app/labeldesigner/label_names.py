@@ -14,7 +14,8 @@ brother_ql (tape width x label length) with Brother's official values where
 brother_ql rounds differently.
 """
 
-from brother_ql.labels import Label
+from brother_ql.labels import Color, Label
+from brother_ql.models import ALL_MODELS
 
 LABEL_NAMES = {
     # Endless DK rolls
@@ -26,9 +27,8 @@ LABEL_NAMES = {
     '62': '62 mm endless (DK-22205 / DK-2205)',
     '62red': '62 mm endless, black/red/white (DK-22251 / DK-2251)',
     '102': '102 mm endless (DK-22243 / DK-2243)',
-    # The same roll in two printer geometries, brother_ql tested "103" on the
-    # QL-1100 and "104" on the QL-1050. The label designer shows one of them.
-    '103': '103 mm endless (DK-22246 / DK-2246)',
+    # The same roll in two printer geometries, see HIDDEN_LABELS
+    '103': '103 mm endless (DK-22246 / DK-2246, off-centre)',
     '104': '103 mm endless (DK-22246 / DK-2246)',
     # Not a Brother product, added to brother_ql without documentation
     '12+17': '12 mm endless (12+17)',
@@ -65,7 +65,28 @@ LABEL_NAMES = {
 # no DK rolls).
 PTOUCH_LABELS = {'18', 'pt12', 'pt18', 'pt24', 'pt36'}
 
+# Label sizes only shown while selected, e.g. in saved settings. "103" is the
+# same roll as "104", but brother_ql places it 18 dots (1.5 mm) further from
+# the centre of the QL-1100 print head. "104" is 2 dots from the position
+# measured for the 103 x 164 mm die-cut label (see printer.py).
+HIDDEN_LABELS = {'103'}
+
 
 def label_name(label: Label) -> str:
     """Name of a label size, brother_ql's own name for sizes not listed here."""
     return LABEL_NAMES.get(label.identifier, label.name)
+
+
+def label_printers(label: Label) -> list:
+    """Printer models that can print a label size."""
+    if label.identifier in HIDDEN_LABELS:
+        return []
+    return [
+        model.identifier for model in ALL_MODELS
+        if (not label.restricted_to_models or model.identifier in label.restricted_to_models)
+        and (label.identifier in PTOUCH_LABELS) == model.identifier.startswith('PT-')
+        and (label.color != Color.BLACK_RED_WHITE or model.two_color)
+        # brother_ql does not restrict the TZe tapes to the printers with a
+        # wide enough print head (36 mm needs a PT-P900 series printer)
+        and label.dots_printable[0] <= model.number_bytes_per_row * 8
+    ]
