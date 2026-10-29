@@ -14,8 +14,9 @@ from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from .printer import PrinterQueue, get_ptr_status
-from brother_ql.labels import ALL_LABELS, FormFactor
+from brother_ql.labels import ALL_LABELS, Color, FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
+from .label_names import PTOUCH_LABELS, label_name
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -97,7 +98,8 @@ def index():
     debug = current_app.logger.isEnabledFor(logging.DEBUG)
     fonts = get_fonts()
     label_sizes = [
-        (label.identifier, label.name, label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size, label.dots_printable)
+        (label.identifier, label_name(label), label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size, label.dots_printable,
+         ','.join(label.restricted_to_models or []), label.identifier in PTOUCH_LABELS, label.color == Color.BLACK_RED_WHITE)
         for label in ALL_LABELS
     ]
     return render_template(
