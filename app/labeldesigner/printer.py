@@ -14,6 +14,8 @@ from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
 from brother_ql.models import ALL_MODELS
+from brother_ql.labels import ALL_LABELS
+from brother_ql.devicedependent import label_type_specs
 from werkzeug.security import safe_join
 
 try:
@@ -39,6 +41,30 @@ logger = logging.getLogger(__name__)
 BROTHER_MAC_ADDRESS_PREFIXES = [
     "ac:f2:3c",  # Brother QL-810W
 ]
+
+# Horizontal offsets (offset_r, in dots) that differ from the label table of
+# brother_ql, measured on real printers. Remove an entry once brother_ql
+# ships the corrected value.
+# - 103x164 (103 x 164 mm die-cut): with brother_ql's 12 the content is 1.5 mm
+#   off-centre on a QL-1100 (3.5 mm left, 6.5 mm right), -6 centres it. The
+#   104 mm endless entry of brother_ql already uses a similar -8.
+LABEL_OFFSET_CORRECTIONS = {
+    '103x164': -6,
+}
+
+
+def _apply_label_offset_corrections():
+    for label in ALL_LABELS:
+        if label.identifier in LABEL_OFFSET_CORRECTIONS:
+            label.offset_r = LABEL_OFFSET_CORRECTIONS[label.identifier]
+    # brother_ql copies the offsets into label_type_specs when it is imported,
+    # the conversion to raster data reads them from there
+    for identifier, offset in LABEL_OFFSET_CORRECTIONS.items():
+        if identifier in label_type_specs:
+            label_type_specs[identifier]['right_margin_dots'] = offset
+
+
+_apply_label_offset_corrections()
 
 # Base directory for the lock files serializing access to the printer devices
 LOCK_DIR = tempfile.gettempdir()
