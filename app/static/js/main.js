@@ -543,36 +543,21 @@ function get_barcode_types() {
         });
 }
 
-// Show only the label sizes the printer can use. Of sizes with the same name
-// (the same roll in the geometries of different printers) only the one meant
-// most specifically for the printer is shown.
-function filterLabelSizes(model, redSupport) {
+// Show only the label sizes the printer can use (data-models, computed by
+// label_printers() on the server)
+function filterLabelSizes(model) {
     const select = document.getElementById('label_size');
     if (!select) return;
     const known = model && model !== 'Unknown';
-    const ptouch = known && model.startsWith('PT-');
-    const shown = {};
     for (const option of select.options) {
-        const models = option.dataset.models ? option.dataset.models.split(',') : [];
-        option.hidden = known && ((option.dataset.ptouch === '1') !== ptouch || (models.length > 0 && !models.includes(model))
-            || (option.dataset.red === '1' && !redSupport));
-        if (option.hidden) continue;
-        // Fewer models means more specific, no restriction is the least specific
-        const specificity = models.length > 0 ? models.length : Infinity;
-        const other = shown[option.text];
-        if (other && other.specificity <= specificity) {
-            option.hidden = true;
-        } else {
-            if (other) other.option.hidden = true;
-            shown[option.text] = { option, specificity };
-        }
+        option.hidden = known && !option.dataset.models.split(',').includes(model);
     }
     // Never hide the selected size, e.g. one restored from the settings
     if (select.selectedOptions[0]) select.selectedOptions[0].hidden = false;
 }
 
 function updatePrinterStatus() {
-    filterLabelSizes(printer_status.model, printer_status.red_support);
+    filterLabelSizes(printer_status.model);
     if ($('#label_size option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
