@@ -9,22 +9,24 @@ class Fonts:
                  logger: logging.Logger,
                  default_family: str = 'DejaVu Serif',
                  default_style: str = 'Book',
-                 additional_path: str = ''):
+                 additional_path: str | list[str] = ''):
         self.fonts = defaultdict(dict)
         self.default_family = default_family
         self.default_style = default_style
         self.additional_path = additional_path
 
         # Scan for TTF/OTF fonts using pure Python (fontTools).
-        # :param additional_path: Directory to search in addition to
-        #     common system font paths.
+        # :param additional_path: Directory (or list of directories) to search
+        #     in addition to common system font paths.
         search_paths = [
             '/usr/share/fonts', '/usr/local/share/fonts', os.path.expanduser('~/.fonts'),
             os.path.expanduser('~/.local/share/fonts'), '/Library/Fonts', '/System/Library/Fonts',
             'C:\\Windows\\Fonts'
         ]
-        if additional_path:
-            search_paths.append(additional_path)
+        # FONT_FOLDER may be a single folder or a list of folders
+        if isinstance(additional_path, str):
+            additional_path = [additional_path] if additional_path else []
+        search_paths.extend(additional_path or [])
 
         font_exts = ('.ttf', '.otf')
         for base_path in search_paths:
@@ -75,7 +77,9 @@ class Fonts:
             logger.debug(f"Selected the following default font: {default_family}")
         elif self.fonts:
             logger.warning('Could not find any of the default fonts. Choosing the first available one.')
-            first = self.fontlist()[0]
+            fontlist = self.fontlist()
+            # Prefer another style of the configured family
+            first = next((f for f in fontlist if f['family'] == default_family), fontlist[0])
             self.default_family = first['family']
             self.default_style = first['styles'][0]
             logger.warning(f'The default font is now set to: {self.default_family} ({self.default_style})')

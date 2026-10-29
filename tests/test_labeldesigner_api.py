@@ -1441,3 +1441,91 @@ class TestPrinterStatus:
         printer = FakeSlowPrinter(empty_reads=10**6, response=b'')
         with pytest.raises(TimeoutError):
             get_status(printer, timeout=0.1)
+
+
+def test_barcode_length_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'qrcode', 'barcode_type': 'code128', 'code_text': 'A' * 1001})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Barcode value must not exceed 1000 characters'
+
+
+def test_uploaded_image_is_decoded_once_per_job(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    calls = []
+    original = routes.open_image
+    monkeypatch.setattr(routes, 'open_image', lambda *args: calls.append(args) or original(*args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'print_count': '3', 'image': _upload(_red_square(), 'red.png')})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.get_json() == {'success': True}
+    assert len(calls) == 1
+
+
+def test_pdf_upload_renders_first_page_only(tmp_path, monkeypatch):
+    import app.utils
+    calls = []
+    original = app.utils.convert_from_bytes
+    monkeypatch.setattr(app.utils, 'convert_from_bytes', lambda data, **kwargs: calls.append(kwargs) or original(data, **kwargs))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': _upload(_red_square(), 'red.pdf')})
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert calls[0]['first_page'] == 1 and calls[0]['last_page'] == 1
+
+
+@pytest.mark.parametrize('size, extra', [
+    # Refused when decoding
+    ((8200, 8000), {}),
+    # Small enough, but not when rotated by 45 degrees
+    ((16000, 2000), {'image_rotation': '45', 'image_fit': '0'}),
+])
+def test_large_images_are_refused(tmp_path, size, extra):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'image', 'image': _upload(Image.new('L', size, 'white'), 'large.png'), **extra})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    message = response.get_json()['message']
+    assert 'exceeds limit' in message or message.startswith('Label is too large')
+
+
+def test_webhook_image_count_is_limited(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    client.application.config['PRINT_MAX_COUNT'] = 2
+    image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image] * 3})
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Too many images, at most 2 per request'
+
+
+def test_webhook_refuses_images_too_large_for_the_label(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    # Scaled to the label width, this thin image would get 69 million pixels high
+    image = base64.b64encode(_upload(Image.new('L', (1, 100000), 'black'), 'thin.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image]})
+    assert response.status_code == 400
+
+
+def test_printer_device_with_trailing_newline_is_refused(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['printer'] = '/dev/usb/lp0\n'
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'].startswith('Unsupported printer')
+
+
+def test_simulator_keeps_only_the_newest_labels(tmp_path, monkeypatch):
+    from app.labeldesigner import printer
+    monkeypatch.setattr(printer, 'MAX_SIMULATED_LABELS', 2)
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['print_count'] = '3'
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+    assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2

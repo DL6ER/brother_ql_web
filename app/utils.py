@@ -43,7 +43,8 @@ def imgfile_to_image(file: FileStorage | BinaryIO) -> Image.Image:
 
 
 def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int) -> Image.Image:
-    return convert_from_bytes(read_file(file), dpi=dpi)[0]
+    # Only the first page is used, rendering all pages could exhaust the memory
+    return convert_from_bytes(read_file(file), dpi=dpi, first_page=1, last_page=1)[0]
 
 
 def image_to_png_bytes(im: Image.Image) -> bytes:

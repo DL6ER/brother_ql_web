@@ -194,7 +194,7 @@ The following environment variables limit what a single request may do:
 - `PRINT_MAX_COUNT` - maximum number of labels per print request (default: `100`)
 - `MAX_CONTENT_LENGTH` - maximum size of a request in bytes, e.g. for uploaded images (default: 32 MB)
 
-Text lines are limited to 10000 characters (100000 per label) after the templates are filled in, and a label may have at most 64 million pixels, which is enough for a 62 mm wide label of about 2 m length at 600 dpi.
+Text lines are limited to 10000 characters (100000 per label) after the templates are filled in, and barcodes to 1000 characters. Labels and uploaded images may have at most 64 million pixels, which is enough for a 62 mm wide label of about 2 m length at 600 dpi. Of PDFs only the first page is used. The simulator keeps the 100 newest labels in `simulated_labels`.
 
 The log level is set with the `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, default: `WARNING`).
 

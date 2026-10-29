@@ -318,3 +318,27 @@ def test_repository_save_keeps_image_on_invalid_data(tmp_path):
     assert resp.get_json()['message'] == 'Invalid image data'
     with open(os.path.join(repo, 'Alpha_image.png'), 'rb') as fh:
         assert fh.read() == stored
+
+
+def test_repository_save_failure_keeps_label_consistent(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    label = {'name': 'Alpha', 'label_size': '62', 'text': TEXT}
+    assert client.post(SAVE_URL, json={**label, 'image_data': _png_b64('red'), 'image_mime': 'image/png'}).status_code == 200
+
+    # Writing the label fails (e.g. disk full) after the new image was stored
+    original = routes._write_atomically
+
+    def failing_write(path, content):
+        if path.endswith('.json'):
+            raise OSError('No space left on device')
+        original(path, content)
+    monkeypatch.setattr(routes, '_write_atomically', failing_write)
+    resp = client.post(SAVE_URL, json={**label, 'image_data': _png_b64('blue'), 'image_mime': 'image/jpeg'})
+    assert resp.status_code == 500
+
+    # The stored label still refers to its old image, which still exists
+    with open(os.path.join(repo, 'Alpha.json')) as fh:
+        assert json.load(fh)['image'] == 'Alpha_image.png'
+    assert os.path.exists(os.path.join(repo, 'Alpha_image.png'))

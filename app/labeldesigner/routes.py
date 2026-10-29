@@ -14,7 +14,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.utils import secure_filename
 from app.utils import (
@@ -45,9 +45,9 @@ REPO_IMAGE_MIME_TYPES = {
 # Printers a request may select besides the configured one. The backend opens
 # and writes to whatever it is given, so arbitrary paths must not get through.
 PRINTER_DEVICE_PATTERNS = (
-    re.compile(r'^(file://)?/dev/usb/lp\d+$'),
-    re.compile(r'^usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?$'),
-    re.compile(r'^tcp://[A-Za-z0-9.-]+(:9100)?$'),
+    re.compile(r'(file://)?/dev/usb/lp\d+'),
+    re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
+    re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
 )
 
 @bp.errorhandler(ValueError)
@@ -131,15 +131,30 @@ def _get_repo_dir():
     return repo
 
 
-def _remove_repo_images(repo: str, base: str):
-    """Remove the image files stored for the label named base."""
+def _remove_repo_images(repo: str, base: str, keep: str | None = None):
+    """Remove the image files stored for the label named base, except keep."""
     for ext in set(REPO_IMAGE_EXTENSIONS.values()):
+        if base + '_image' + ext == keep:
+            continue
         path = os.path.join(repo, base + '_image' + ext)
         if os.path.exists(path):
             try:
                 os.remove(path)
             except Exception:
                 current_app.logger.exception(f'Failed to remove associated image {path}')
+
+
+def _write_atomically(path: str, content: bytes):
+    """Write a file so that it either has the old or the new content, also
+    when writing fails part way through (e.g. disk full)."""
+    tmp_path = path + '.tmp'
+    try:
+        with open(tmp_path, 'wb') as fh:
+            fh.write(content)
+        os.replace(tmp_path, path)
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 def _json_body() -> dict:
@@ -220,16 +235,13 @@ def repo_save():
             text = json.loads(text)
         data['text'] = text
 
+        base = os.path.splitext(filename)[0]
         if image_bytes is not None:
             ext = REPO_IMAGE_EXTENSIONS.get(data.get('image_mime', 'image/png'), '.png')
             # The image file is always named after the label, a name chosen
             # by the client could overwrite images of other labels
-            base = os.path.splitext(filename)[0]
-            image_name = base + '_image' + ext
-            _remove_repo_images(repo, base)
-            with open(os.path.join(repo, image_name), 'wb') as imgfh:
-                imgfh.write(image_bytes)
-            data['image'] = image_name
+            data['image'] = base + '_image' + ext
+            _write_atomically(os.path.join(repo, data['image']), image_bytes)
 
         # Remove raw image data from JSON before saving
         if 'image_data' in data:
@@ -241,8 +253,11 @@ def repo_save():
                 del data[key]
 
         # Finally, save the JSON file
-        with open(path, 'w', encoding='utf-8') as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2, default=str)
+        _write_atomically(path, json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+        # Only now that the label refers to the new image, remove images
+        # stored with another file type before
+        if image_bytes is not None:
+            _remove_repo_images(repo, base, keep=data['image'])
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
@@ -393,8 +408,9 @@ def repo_print():
 
     status = ""
     try:
+        image = load_label_image(data, {})
         for i in range(print_count):
-            label = create_label_from_request(data, {}, i)
+            label = create_label_from_request(data, {}, i, image)
             cut = not cut_once or (cut_once and i == print_count - 1)
             printer.add_label_to_queue(label, cut, high_res)
         status = printer.process_queue()
@@ -478,10 +494,12 @@ def print_label():
 
     status = ""
     try:
+        values = request.values.to_dict(flat=True)
+        files = request.files.to_dict(flat=True)
+        # Decode the image once, all labels of the job share it
+        image = load_label_image(values, files)
         for i in range(print_count):
-            values = request.values.to_dict(flat=True)
-            files = request.files.to_dict(flat=True)
-            label = create_label_from_request(values, files, i)
+            label = create_label_from_request(values, files, i, image)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
@@ -505,7 +523,7 @@ def _printer_device(requested) -> str:
     configured = current_app.config['PRINTER_PRINTER']
     if not requested or requested in (configured, 'simulation', '?'):
         return requested or configured
-    if any(pattern.match(requested) for pattern in PRINTER_DEVICE_PATTERNS):
+    if any(pattern.fullmatch(requested) for pattern in PRINTER_DEVICE_PATTERNS):
         return requested
     raise ValueError(f"Unsupported printer: {requested}")
 
@@ -523,7 +541,7 @@ def create_printer_from_request(request: Request):
     )
 
 
-def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
+def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image: Image.Image | None = None):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
@@ -558,11 +576,6 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
         'high_res': int(d.get('high_res', 0)) != 0,
         'code_text': d.get('code_text', '').strip(),
     }
-
-    def load_image(file: FileStorage | BinaryIO, filename: str) -> Image.Image:
-        # PDFs are rendered at the resolution the label is printed with
-        image = open_image(file, filename, HIGH_RES_DPI if context['high_res'] else DEFAULT_DPI)
-        return _convert_image(image, context['image_mode'], context['image_bw_threshold'])
 
     print_type = context['print_type']
     image_mode = context['image_mode']
@@ -609,24 +622,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
 
-    uploaded = files.get('image', None)
-    image = None
-    if uploaded is not None:
-        image = load_image(uploaded, uploaded.filename)
-    else:
-        # If no uploaded FileStorage was provided but the data references an
-        # image filename (stored in repository), attempt to load it from the
-        # repository directory and convert it consistent with uploaded images.
-        image_ref = d.get('image')
-        if isinstance(image_ref, str) and len(image_ref) > 0:
-            try:
-                repo = _get_repo_dir()
-                image_path = os.path.join(repo, secure_filename(image_ref))
-                if os.path.exists(image_path):
-                    with open(image_path, 'rb') as fh:
-                        image = load_image(fh, image_path)
-            except Exception:
-                current_app.logger.exception('Failed to load repository image')
+    if image is None:
+        image = load_label_image(d, files)
 
     return SimpleLabel(
         width=width,
@@ -659,6 +656,33 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0):
         code_text=context['code_text'],
         template_env_vars=_template_env_vars()
     )
+
+
+def load_label_image(d: dict, files: dict) -> Image.Image | None:
+    """Return the uploaded image, or the image stored with a repository label,
+    converted to the image mode of the request."""
+    image_mode = d.get('image_mode', 'grayscale')
+    bw_threshold = int(d.get('image_bw_threshold', 70))
+    # PDFs are rendered at the resolution the label is printed with
+    dpi = HIGH_RES_DPI if int(d.get('high_res', 0)) != 0 else DEFAULT_DPI
+
+    uploaded = files.get('image', None)
+    if uploaded is not None:
+        return _convert_image(open_image(uploaded, uploaded.filename, dpi), image_mode, bw_threshold)
+
+    # If no uploaded FileStorage was provided but the data references an
+    # image filename (stored in repository), attempt to load it from the
+    # repository directory and convert it consistent with uploaded images.
+    image_ref = d.get('image')
+    if isinstance(image_ref, str) and len(image_ref) > 0:
+        try:
+            image_path = os.path.join(_get_repo_dir(), secure_filename(image_ref))
+            if os.path.exists(image_path):
+                with open(image_path, 'rb') as fh:
+                    return _convert_image(open_image(fh, image_path, dpi), image_mode, bw_threshold)
+        except Exception:
+            current_app.logger.exception('Failed to load repository image')
+    return None
 
 
 def _template_env_vars() -> frozenset:
@@ -713,6 +737,7 @@ def _scale_image_to_label(img: Image.Image, label_size: str, orientation: str,
         scale = min(width / img_width, height / img_height)
 
     new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
+    check_image_size(*new_size)
     return img.resize(new_size, Image.Resampling.LANCZOS)
 
 
@@ -833,30 +858,35 @@ def webhook_print():
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Invalid request parameters'}), 400)
 
-    # Collect images from request
+    # Collect images from request: multipart file uploads first, otherwise
+    # a JSON payload with base64 images
+    uploaded_files = [f for f in request.files.getlist('images') if f.filename]
+    json_images = jdata.get('images') if isinstance(jdata.get('images'), list) else []
+    max_count = current_app.config['PRINT_MAX_COUNT']
+    if len(uploaded_files or json_images) > max_count:
+        return make_response(jsonify({'success': False, 'message': f'Too many images, at most {max_count} per request'}), 400)
+
+    def prepare(img: Image.Image) -> Image.Image:
+        # Convert and scale right away, so only label sized images are kept
+        img = _convert_image(img, image_mode, bw_threshold)
+        return _scale_image_to_label(img, label_size, orientation, high_res)
+
     pil_images = []
     dpi = HIGH_RES_DPI if high_res else DEFAULT_DPI
     try:
-        # Check for multipart file uploads first
-        uploaded_files = request.files.getlist('images')
-        if uploaded_files:
-            for f in uploaded_files:
-                if not f.filename:
-                    continue
-                pil_images.append(open_image(f, f.filename, dpi))
+        for f in uploaded_files:
+            pil_images.append(prepare(open_image(f, f.filename, dpi)))
 
-        # Check for JSON payload with base64 images
-        if not pil_images:
-            if jdata and isinstance(jdata.get('images'), list):
-                for entry in jdata['images']:
-                    if isinstance(entry, str):
-                        # Plain base64 string
-                        img_bytes = base64.b64decode(entry)
-                    elif isinstance(entry, dict) and 'data' in entry:
-                        img_bytes = base64.b64decode(entry['data'])
-                    else:
-                        continue
-                    pil_images.append(open_image(BytesIO(img_bytes), '', dpi))
+        if not uploaded_files:
+            for entry in json_images:
+                if isinstance(entry, str):
+                    # Plain base64 string
+                    img_bytes = base64.b64decode(entry)
+                elif isinstance(entry, dict) and 'data' in entry:
+                    img_bytes = base64.b64decode(entry['data'])
+                else:
+                    continue
+                pil_images.append(prepare(open_image(BytesIO(img_bytes), '', dpi)))
 
     except Exception as e:
         current_app.logger.exception(e)
@@ -869,8 +899,6 @@ def webhook_print():
     try:
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
         for img in pil_images:
-            img = _convert_image(img, image_mode, bw_threshold)
-            img = _scale_image_to_label(img, label_size, orientation, high_res)
             label = SimpleLabel(
                 width=width,
                 height=height,

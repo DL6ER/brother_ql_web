@@ -151,3 +151,32 @@ def test_status_during_print_keeps_configured_model(client):
     assert status['model'] == client.application.config['PRINTER_MODEL']
     assert status['red_support'] is True
     assert status['media_width'] is None
+
+
+def test_lock_files_are_bounded(tmp_path):
+    for i in range(300):
+        with printer.device_lock(f'tcp://printer-{i}.example', timeout=0):
+            pass
+    assert len(list((tmp_path / f'brother_ql_web-{os.getuid()}').iterdir())) <= 256
+
+
+def test_device_lock_without_flock_support(monkeypatch):
+    def no_flock(fd, operation):
+        raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
+    monkeypatch.setattr(printer.fcntl, 'flock', no_flock)
+    with printer.device_lock(DEVICE) as acquired:
+        assert acquired
+        with printer.device_lock(DEVICE, timeout=0) as second:
+            assert not second
+
+
+def test_status_during_print_does_not_show_old_state(client):
+    printer._status_cache[printer._lock_key(DEVICE)] = {
+        'model': 'QL-800', 'media_width': 62, 'media_length': 0,
+        'errors': ['No media when printing'], 'status_type': 'Error occurred', 'phase_type': 'Waiting to receive',
+    }
+    with printer.device_lock(DEVICE):
+        status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert status['errors'] == []
+    assert status['status_type'] == 'Printing'
+    assert status['media_width'] == 62

@@ -1,8 +1,8 @@
 import logging
 import os
-import re
 import stat
 import time
+import hashlib
 import datetime
 import tempfile
 import threading
@@ -21,6 +21,10 @@ except ImportError:  # Not available on Windows
     fcntl = None
 
 SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'simulated_labels')
+
+# Number of simulated labels kept in SIMULATED_LABELS_DIR, older ones are
+# deleted so that printing to the simulator cannot fill up the disk
+MAX_SIMULATED_LABELS = 100
 
 # Default maximum number of labels to rasterize and send in a single batch.
 # Sending too many labels at once can cause printer timeouts/failures.
@@ -71,20 +75,24 @@ def _private_lock_dir() -> str:
     return os.path.normpath(path)
 
 
-def _open_lock_file(key: str):
+def _lock_slot(key: str) -> str:
+    """Map a device to one of 256 lock slots. Requests can name any number of
+    devices, the slots keep the number of lock files bounded. Two devices
+    sharing a slot are merely serialized."""
+    return hashlib.sha256(key.encode()).hexdigest()[:2]
+
+
+def _open_lock_file(slot: str):
     if fcntl is None:
         return None
     try:
         lock_dir = _private_lock_dir()
-        # The device specifier comes from the request, make sure the lock file
-        # stays inside the lock directory
-        name = re.sub(r'[^A-Za-z0-9_.-]', '_', key)
-        path = os.path.normpath(os.path.join(lock_dir, f'{name}.lock'))
+        path = os.path.normpath(os.path.join(lock_dir, f'printer-{slot}.lock'))
         if not path.startswith(lock_dir + os.sep):
-            raise ValueError(f'Invalid printer: {key}')
+            raise ValueError(f'Invalid lock file: {path}')
         return os.open(path, os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     except OSError as e:
-        logger.warning('Cannot open lock file for %s, locking within this process only: %s', key, e)
+        logger.warning('Cannot open lock file, locking within this process only: %s', e)
         return None
 
 
@@ -111,12 +119,20 @@ def device_lock(device_specifier: str, timeout: float | None = None):
     0 = do not wait) and yields whether the lock was acquired."""
     if timeout is None:
         timeout = DEVICE_LOCK_TIMEOUT
-    key = _lock_key(device_specifier)
-    fd = _open_lock_file(key)
+    slot = _lock_slot(_lock_key(device_specifier))
+    fd = _open_lock_file(slot)
+    if fd is not None:
+        try:
+            acquired = _flock(fd, timeout)
+        except OSError as e:
+            # e.g. ENOLCK on file systems without flock() support
+            logger.warning('Cannot lock lock file, locking within this process only: %s', e)
+            os.close(fd)
+            fd = None
 
     if fd is None:
         with _fallback_locks_guard:
-            lock = _fallback_locks.setdefault(key, threading.Lock())
+            lock = _fallback_locks.setdefault(slot, threading.Lock())
         acquired = lock.acquire(timeout=timeout) if timeout > 0 else lock.acquire(blocking=False)
         try:
             yield acquired
@@ -126,7 +142,7 @@ def device_lock(device_specifier: str, timeout: float | None = None):
         return
 
     try:
-        yield _flock(fd, timeout)
+        yield acquired
     finally:
         # Closing the file releases the lock
         os.close(fd)
@@ -134,6 +150,16 @@ def device_lock(device_specifier: str, timeout: float | None = None):
 
 def is_simulation(device_specifier) -> bool:
     return isinstance(device_specifier, str) and device_specifier in ['simulation', '?']
+
+
+def _prune_simulated_labels():
+    # The names start with a timestamp, so sorting by name sorts by age
+    labels = sorted((entry for entry in os.scandir(SIMULATED_LABELS_DIR) if entry.name.endswith('.png')), key=lambda entry: entry.name)
+    for entry in labels[:-MAX_SIMULATED_LABELS]:
+        try:
+            os.remove(entry.path)
+        except OSError:
+            logger.debug('Failed to remove simulated label %s', entry.path, exc_info=True)
 
 
 class PrinterQueue:
@@ -194,6 +220,7 @@ class PrinterQueue:
                     path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_b{batch_index}_{i}.png')
                     img.save(path, format='PNG')
                     logger.info('Saved simulated label to %s', path)
+                _prune_simulated_labels()
                 return ""
 
             network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
@@ -228,16 +255,6 @@ class PrinterQueue:
         entries = list(self._print_queue)
         self._print_queue.clear()
 
-        # Split into batches to avoid printer timeouts on large jobs. All
-        # batches are rasterized first, so the printer is not blocked while
-        # the labels are generated.
-        batches = []
-        for start in range(0, total, batch_size):
-            batch = entries[start:start + batch_size]
-            logger.info('Rasterizing batch %d (%d labels, %d/%d)',
-                        len(batches) + 1, len(batch), start + len(batch), total)
-            batches.append(self._rasterize_entries(batch))
-
         # Hold the device for the whole job so that neither status queries nor
         # other jobs get in between the batches
         lock = contextlib.nullcontext(True) if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
@@ -245,7 +262,14 @@ class PrinterQueue:
             if not acquired:
                 logger.warning('Printer %s is busy with another job', self.device_specifier)
                 return "Printer is busy with another print job, please try again"
-            for batch_index, (qlr, generated_images) in enumerate(batches, start=1):
+            # Split into batches to avoid printer timeouts on large jobs. Each
+            # batch is rasterized right before it is sent, so only one batch
+            # is kept in memory at a time.
+            for batch_index, start in enumerate(range(0, total, batch_size), start=1):
+                batch = entries[start:start + batch_size]
+                logger.info('Processing batch %d (%d labels, %d/%d)',
+                            batch_index, len(batch), start + len(batch), total)
+                qlr, generated_images = self._rasterize_entries(batch)
                 status = self._send_raster(qlr, generated_images, batch_index)
                 if status:
                     return status
@@ -321,14 +345,11 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
             _status_cache[key] = state
             return dict(state)
     logger.debug('Printer %s is busy, returning last known status', device_specifier)
-    return dict(_status_cache.get(key, {
-        'errors': [],
-        'model': default_model,
-        'status_type': 'Busy',
-        'phase_type': 'Printing state',
-        'media_width': None,
-        'media_length': 0,
-    }))
+    # Model and media from the last query, but the state of a running job:
+    # errors or the idle state from before the job no longer apply
+    state = dict(_status_cache.get(key, {'model': default_model, 'media_width': None, 'media_length': 0}))
+    state.update({'errors': [], 'status_type': 'Printing', 'phase_type': 'Printing state'})
+    return state
 
 
 _last_scan_ts = 0

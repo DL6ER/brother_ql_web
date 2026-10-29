@@ -7,6 +7,7 @@ import logging
 import barcode
 from barcode.writer import ImageWriter
 import datetime
+import math
 import re
 import random
 import string
@@ -25,7 +26,14 @@ MAX_IMAGE_SCALING_FACTOR = 500.0
 # Upper limit for the label and every image created on the way, enough for a
 # 62 mm wide label of about 2 m length at 600 dpi
 MAX_LABEL_PIXELS = 64_000_000
+# Barcode values are rendered before the label size is known, a long value
+# would create a huge image. 1000 characters are far more than a label holds.
+MAX_BARCODE_LENGTH = 1000
 DEFAULT_FONT_SIZE = 12
+
+# Pillow refuses to open images with more than twice this number of pixels,
+# so uploaded images above MAX_LABEL_PIXELS are rejected right when decoding
+Image.MAX_IMAGE_PIXELS = MAX_LABEL_PIXELS // 2
 FONT_CACHE: Dict[Tuple[str, int], ImageFont.FreeTypeFont] = {}
 
 
@@ -284,6 +292,10 @@ class SimpleLabel:
 
             # First rotate the image if requested
             if self._image_rotation != 0 and self._image_rotation != 360:
+                # expand=True enlarges the canvas to fit the rotated image
+                angle = math.radians(self._image_rotation)
+                cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+                check_image_size(img.width * cos + img.height * sin, img.width * sin + img.height * cos)
                 img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
 
             # Rotation with expand=True may add an empty border around content.
@@ -462,6 +474,8 @@ class SimpleLabel:
         else:
             # Take value from the first line of text
             value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
+        if len(value) > MAX_BARCODE_LENGTH:
+            raise ValueError(f"Barcode value must not exceed {MAX_BARCODE_LENGTH} characters")
         my_barcode = barcode_generator(value, writer=ImageWriter())
         return my_barcode.render()
 

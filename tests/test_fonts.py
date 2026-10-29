@@ -51,6 +51,19 @@ def test_font_folder_is_scanned(monkeypatch):
     assert '/' not in scanned
 
 
+def test_font_folder_list_is_scanned(monkeypatch):
+    scanned = []
+    monkeypatch.setattr(os.path, 'isdir', lambda path: scanned.append(path) or False)
+    Fonts(logging.getLogger('TestFonts'), additional_path=['/opt/fonts', '/srv/fonts'])
+    assert scanned[-2:] == ['/opt/fonts', '/srv/fonts']
+
+
+def test_missing_default_style_keeps_family():
+    family = Fonts(logging.getLogger('TestFonts')).fontlist()[-1]['family']
+    fonts = Fonts(logging.getLogger('TestFonts'), default_family=family, default_style='No Such Style')
+    assert fonts.get_default_font()[0] == family
+
+
 def test_no_fonts_found(monkeypatch):
     monkeypatch.setattr(os.path, 'isdir', lambda path: False)
     fonts = Fonts(logging.getLogger('TestFonts'))
