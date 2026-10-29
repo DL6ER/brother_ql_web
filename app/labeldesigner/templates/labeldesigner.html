@@ -26,7 +26,8 @@
                             <label for="label_size" style="margin-bottom: 0">Label Size:</label>
                             <select class="form-control form-select" id="label_size" onChange="preview()" data-default="{{default_label_size}}">
                                 {% for label_size in label_sizes %}<option value="{{label_size[0]}}" data-x="{{label_size[3][0]}}"
-                                    data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" {% if default_label_size==label_size[0]
+                                    data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" data-models="{{label_size[5]}}"
+                                    data-ptouch="{{1 if label_size[6] else 0}}" data-red="{{1 if label_size[7] else 0}}" {% if default_label_size==label_size[0]
                                     %}selected{% endif %}>{{label_size[1]}}{% if debug %} ({{label_size[4][0]}}x{{label_size[4][1]}}px){% endif %}</option>{% endfor %}
                             </select>
                             <div class="form-text text-muted">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
