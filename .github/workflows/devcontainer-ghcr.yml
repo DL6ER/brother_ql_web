@@ -31,6 +31,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Get build time
+        id: build_date
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -39,3 +43,6 @@ jobs:
           push: true
           tags: ghcr.io/dl6er/brother-ql-web:latest
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            GIT_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.build_date.outputs.date }}
