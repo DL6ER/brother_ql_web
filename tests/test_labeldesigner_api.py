@@ -1585,3 +1585,16 @@ def test_refused_env_variables_are_bounded(tmp_path, monkeypatch):
     data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'size': '10', 'text': ''.join(f'{{{{env:X{i}}}}}' for i in range(500))}])
     assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
     assert len(label._REFUSED_ENV_VARS) == label._MAX_REFUSED_ENV_VARS
+
+
+def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):
+    # A BOM in front of the content keeps phones from recognising URLs (#101)
+    from app.labeldesigner import label
+    added = []
+    original = label.QRCode.add_data
+    monkeypatch.setattr(label.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'qrcode', 'barcode_type': 'QR', 'code_text': 'https://example.com/Größe'})
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert added == ['https://example.com/Größe'.encode('utf-8')]

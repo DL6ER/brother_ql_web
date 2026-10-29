@@ -499,7 +499,7 @@ class SimpleLabel:
         else:
             # Combine texts from all lines for QR code
             text = "\n".join(line.get('text', '') for line in self.text)
-        qr.add_data(text.encode("utf-8-sig"))
+        qr.add_data(text.encode("utf-8"))
         qr.make(fit=True)
         check_image_size(qr.modules_count * self._qr_size, qr.modules_count * self._qr_size)
         fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'
