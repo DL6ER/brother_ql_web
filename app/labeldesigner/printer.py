@@ -162,20 +162,16 @@ def get_status(printer, timeout: float = 2.0):
     as the QL-1100 need ~100 ms to answer and return empty reads until then.
     Poll until the full 32-byte response arrives or the timeout expires.
     """
-    try:
-        printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
-        data = b''
-        deadline = time.time() + timeout
-        while len(data) < 32 and time.time() < deadline:
-            data += printer.read(32 - len(data)) or b''
-            if len(data) < 32:
-                time.sleep(0.02)
-        return interpret_response(data)
-    finally:
-        try:
-            printer.dispose()
-        except Exception:
-            logger.debug('Failed to release printer after status query', exc_info=True)
+    printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
+    data = b''
+    deadline = time.time() + timeout
+    while len(data) < 32 and time.time() < deadline:
+        data += printer.read(32 - len(data)) or b''
+        if len(data) < 32:
+            time.sleep(0.02)
+    if len(data) < 32:
+        raise TimeoutError(f"No complete status response within {timeout} s")
+    return interpret_response(data)
 
 
 _last_scan_ts = 0
