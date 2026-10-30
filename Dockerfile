@@ -61,4 +61,4 @@ ARG BUILD_DATE=""
 ENV GIT_COMMIT=$GIT_COMMIT BUILD_DATE=$BUILD_DATE
 
 EXPOSE 8013
-ENTRYPOINT ["python3", "run.py"]
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
