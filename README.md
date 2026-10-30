@@ -229,6 +229,13 @@ To contribute to this project, follow these steps:
    pytest
    ```
 
+   The tests in `tests/browser` open the label designer in Chromium and are skipped unless Playwright is installed. Playwright does not run on Alpine, so outside the devcontainer:
+   ```bash
+   pip install -r requirements-browser.txt
+   python -m playwright install --with-deps chromium
+   pytest tests/browser
+   ```
+
 3. Submit a pull request with a clear description of your changes.
 
 This project offers a **Development Container** for easy local development. You can right away start coding without worrying about the environment setup using the free and open source IDE [VSCode](https://code.visualstudio.com/). Other editors may be able to utilize the provided Dockerfile for a similar setup. Note that the provided devcontainer does not mount any possibly existing local USB printers for compatibility reasons. You may want to edit `.devcontainer/devcontainer.json` to mount such local devices.
