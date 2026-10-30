@@ -86,11 +86,11 @@
                                 <div id="fontSetting">
                                     <div class="mb-3">
                                         <label for="font" class="form-label">Font</label>
-                                        <select class="form-select" id="font" onChange="preview()">
+                                        <select class="form-select" id="font" onChange="preview()" data-default="{{default_font_family}},{{default_font_style}}">
                                                 {% for font in fonts %}
                                         <optgroup label="{{font.family}}">
                                         {% for style in font.styles %}
-                                        <option value="{{font.family}},{{style}}">{{font.family}} ({{style}})</option>
+                                        <option value="{{font.family}},{{style}}"{% if font.family == default_font_family and style == default_font_style %} selected{% endif %}>{{font.family}} ({{style}})</option>
                                         {% endfor %}
                                         </optgroup>
                                         {% endfor %}

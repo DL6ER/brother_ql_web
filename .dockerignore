@@ -16,6 +16,7 @@
 !config.py
 !run.py
 !wsgi.py
+!docker-entrypoint.sh
 !requirements.txt
 !LICENSE
 **/__pycache__

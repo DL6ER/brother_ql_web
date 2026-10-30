@@ -1,5 +1,7 @@
 # syntax=docker/dockerfile:1.6
-FROM --platform=$TARGETPLATFORM python:3-alpine
+# The minor version is pinned, so that a new Python version comes as a
+# Dependabot pull request that the tests check, not with the next build
+FROM --platform=$TARGETPLATFORM python:3.15-alpine
 
 ARG TARGETARCH
 WORKDIR /app
@@ -59,4 +61,4 @@ ARG BUILD_DATE=""
 ENV GIT_COMMIT=$GIT_COMMIT BUILD_DATE=$BUILD_DATE
 
 EXPOSE 8013
-ENTRYPOINT ["python3", "run.py"]
+ENTRYPOINT ["sh", "/app/docker-entrypoint.sh"]
