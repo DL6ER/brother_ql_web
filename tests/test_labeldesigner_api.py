@@ -1,4 +1,5 @@
 import io
+import re
 import os
 import sys
 import json
@@ -1694,3 +1695,13 @@ def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
     response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '103x164', 'model': 'QL-800'})
     assert response.status_code == 400
     assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
+
+
+def test_default_font_is_selected(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['LABEL_DEFAULT_FONT_FAMILY'] = 'DejaVu Serif'
+    html = client.get('/labeldesigner/').get_data(as_text=True)
+    selected = re.findall(r'<option value="([^"]+)" selected>', html)
+    family, style = client.application.extensions['fonts'].get_default_font()
+    assert f'{family},{style}' in selected
+    assert f'data-default="{family},{style}"' in html

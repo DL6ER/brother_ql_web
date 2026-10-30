@@ -8,7 +8,8 @@ var printer_status = {
     'red_support': false
 };
 
-const DEFAULT_FONT = 'Droid Serif,Regular';
+// The configured default font (LABEL_DEFAULT_FONT_FAMILY and _STYLE)
+const DEFAULT_FONT = $('#font').data('default');
 
 // Returns an array of font settings for each line of label text.
 // Each new line inherits the font settings of the previous line.
