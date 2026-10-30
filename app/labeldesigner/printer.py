@@ -37,6 +37,11 @@ DEFAULT_BATCH_SIZE = 5
 
 logger = logging.getLogger(__name__)
 
+# Where printers are looked for when PRINTER_PRINTER is '?'. The tests point
+# them elsewhere, so that they never find, let alone print on, a real printer.
+USB_PRINTER_DEVICES = [f'/dev/usb/lp{i}' for i in range(0, 11)]
+ARP_TABLE = '/proc/net/arp'
+
 # Experimentally identified MAC address prefixes for Brother network printers
 # (may not be exhaustive)
 BROTHER_MAC_ADDRESS_PREFIXES = [
@@ -479,8 +484,7 @@ def get_ptr_status(config: Config):
             if now - _last_scan_ts > 10:
                 logger.debug('Auto-detecting printers: scanning local USB and network')
                 found_list = []
-                for i in range(0, 11):
-                    dev = f"/dev/usb/lp{i}"
+                for dev in USB_PRINTER_DEVICES:
                     if not os.path.exists(dev):
                         continue
                     spec = f"file://{dev}"
@@ -503,7 +507,7 @@ def get_ptr_status(config: Config):
                 # scan ARP table for network printers with known Brother MAC
                 # address prefixes
                 try:
-                    with open('/proc/net/arp', 'r') as arp_file:
+                    with open(ARP_TABLE, 'r') as arp_file:
                         for line in arp_file.readlines()[1:]:  # skip header line
                             parts = line.split()
                             if len(parts) < 4:

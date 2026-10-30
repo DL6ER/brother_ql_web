@@ -17,6 +17,7 @@ sync_api = pytest.importorskip('playwright.sync_api')
 from werkzeug.serving import make_server  # noqa: E402
 
 from app import create_app  # noqa: E402
+from app.labeldesigner import printer  # noqa: E402
 from browser_helpers import wait_until_ready  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,7 +26,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 @pytest.fixture(scope='session')
 def app(tmp_path_factory):
     app = create_app()
-    # The simulator is the only printer, with a fixed model
+    # The simulator is the only printer, with a fixed model. Printers of the
+    # machine running the tests must not be detected: the page would choose
+    # the first one and print on it.
     app.config['PRINTER_PRINTER'] = '?'
     app.config['PRINTER_MODEL'] = 'QL-800'
     # A copy of the sample labels, the tests must not change the working tree
@@ -33,7 +36,10 @@ def app(tmp_path_factory):
     for name in os.listdir(os.path.join(REPO_ROOT, 'labels')):
         shutil.copy(os.path.join(REPO_ROOT, 'labels', name), repo)
     app.config['LABEL_REPOSITORY_DIR'] = str(repo)
-    return app
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(printer, 'USB_PRINTER_DEVICES', [])
+        patch.setattr(printer, 'ARP_TABLE', os.devnull)
+        yield app
 
 
 @pytest.fixture(scope='session')
