@@ -1,10 +1,18 @@
-name: Build and Push master to GHCR.io
+name: Build and push images to GHCR.io
 
 on:
   push:
     branches:
       - master
+  release:
+    types:
+      - published
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release to build, e.g. v1.0 (empty: the selected branch as :dev)'
+        required: false
+        default: ''
   schedule:
     - cron: '37 2 * * *'
 
@@ -14,9 +22,38 @@ jobs:
     permissions:
       contents: read
       packages: write
+    env:
+      IMAGE: ghcr.io/dl6er/brother-ql-web
+      RELEASE: ${{ github.event.release.tag_name || inputs.release }}
     steps:
+      # Without a release the image becomes :dev. A release vX.Y.Z becomes
+      # :X.Y.Z and, if it is the latest release, also :X.Y, :X and :latest
+      # (v1.0 becomes :1.0, :1 and :latest), so rebuilding an older release
+      # or a pre-release does not move them.
+      - name: Choose image tags
+        id: tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$RELEASE" ]; then
+            echo "tags=$IMAGE:dev" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! echo "$RELEASE" | grep -Eq '^v[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.]+)?$'; then
+            echo "::error::$RELEASE is not a release tag like v1.0 or v1.0.1"
+            exit 1
+          fi
+          version="${RELEASE#v}"
+          tags="$version"
+          if [ "$RELEASE" = "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" ]; then
+            tags="$tags $(echo "$version" | cut -d. -f1,2) ${version%%.*} latest"
+          fi
+          echo "tags=$(for tag in $tags; do echo "$IMAGE:$tag"; done | sort -u | paste -sd, -)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -31,9 +68,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get build time
-        id: build_date
-        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Get commit and build time
+        id: build_info
+        run: |
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -41,8 +80,8 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: ghcr.io/dl6er/brother-ql-web:latest
+          tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
           build-args: |
-            GIT_COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.build_date.outputs.date }}
+            GIT_COMMIT=${{ steps.build_info.outputs.commit }}
+            BUILD_DATE=${{ steps.build_info.outputs.date }}

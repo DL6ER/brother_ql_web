@@ -1,6 +1,6 @@
 # brother_ql_web
 
-[![Python tests](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml) [![Build and Push master to GHCR.io](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml)
+[![Python tests](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml) [![Build and push images to GHCR.io](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml)
 
 This is a dockerized `python3` web service to print labels on Brother QL label printers.
 The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design). The CI tests are run using `pytest` in [Python 3.15 for Alpine Linux](https://hub.docker.com/_/python), the base image of the published container.
@@ -158,6 +158,25 @@ services:
 ```
 
 The container will automatically show printers when they become available.
+
+### Image tags
+
+The image `ghcr.io/dl6er/brother-ql-web` is published with several tags, so you can choose how often your installation changes:
+
+| Tag | Contains | Changes |
+|---|---|---|
+| `latest` | the newest release | with every release |
+| `1` | the newest `1.x` release | with every release of the `1` series |
+| `1.0` | the newest `1.0.x` release | with every release of the `1.0` series |
+| `1.0.1` | exactly this release | never |
+| `dev` | the current state of `master` | with every change and every night |
+
+- `latest` is what the examples above use and the right choice for most installations.
+- Choose `1` or `1.0` to stay on one release series, and an exact version like `1.0.1` if you want to update only by hand.
+- `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Switch back to `latest` once the next release is out.
+- Pre-releases (e.g. `1.1.0-rc.1`) get only their exact tag and never move `latest`, `1` or `1.0`.
+
+All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases). To switch tags, change the `image:` line in your `docker-compose.yml` and run `docker compose pull && docker compose up -d`. The navbar of the label designer shows the commit and build time of the running image.
 
 To build the image locally:
 

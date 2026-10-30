@@ -1,0 +1,12 @@
+# Groups the automatically generated release notes
+changelog:
+  categories:
+    - title: Changes
+      labels:
+        - "*"
+      exclude:
+        labels:
+          - dependencies
+    - title: Dependency updates
+      labels:
+        - dependencies
