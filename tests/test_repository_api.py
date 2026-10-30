@@ -41,7 +41,8 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     # Check that label_size metadata is present
     entry = next((f for f in files if f['name'] == f'repo_test_{label}.json'), None)
     assert entry is not None
-    assert entry.get('label_size') == '62mm endless' if label != 'URGENT-Text' else '62mm endless (black/red/white)'
+    assert entry.get('label_size') == ('62 mm endless (DK-22205 / DK-2205)' if label != 'URGENT-Text'
+                                       else '62 mm endless, black/red/white (DK-22251 / DK-2251)')
 
     # Preview the stored label (base64)
     preview_url = (

@@ -25,8 +25,10 @@
                                     data-y="{{label_size[3][1]}}" data-round="{{label_size[2]}}" data-models="{{label_size[5]}}" {% if default_label_size==label_size[0]
                                     %}selected{% endif %}>{{label_size[1]}}{% if debug %} ({{label_size[4][0]}}x{{label_size[4][1]}}px){% endif %}</option>{% endfor %}
                                 </select>
-                                <div class="form-text">Detected label: <span id="label-width">???</span> x <span id="label-height">???</span></div>
-                                <div id="labelMismatch" class="form-text text-danger" style="display: none;">The printer reports a different label size.</div>
+                                <div class="form-text text-success" id="detectedLabel" hidden><span class="fas fa-check me-1" aria-hidden="true"></span>Matches the label in the printer</div>
+                                <div id="labelMismatch" class="form-text text-danger" style="display: none;">The printer has <span id="detectedLabelName"></span> loaded.
+                                    <button type="button" class="btn btn-link btn-sm p-0 align-baseline" id="useDetectedLabel" hidden>Switch to it</button>
+                                </div>
                             </div>
 
                             <div class="mb-3">
@@ -406,7 +408,7 @@
                     </div>
                 </div>
                 <div class="btn-group flex-grow-1">
-                    <button type="button" id="printButton" class="btn btn-primary btn-lg flex-grow-1" onClick="print()">
+                    <button type="button" id="printButton" class="btn btn-primary btn-lg flex-grow-1" onClick="print()" title="Print (Ctrl+Enter)" aria-keyshortcuts="Control+Enter Meta+Enter">
                         <span class="fas fa-print me-1" aria-hidden="true"></span> Print
                     </button>
                     <button type="button" class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split" id="dropdownPrintButton" data-bs-toggle="dropdown" aria-expanded="false">
