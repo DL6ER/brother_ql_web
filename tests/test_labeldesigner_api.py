@@ -1103,7 +1103,7 @@ class TestLabelDesignerAPI:
         assert response.is_json
         json_response = response.get_json()
         assert 'message' in json_response
-        assert "Exception during sending to printer" in json_response['message']
+        assert "Could not send the label to the printer" in json_response['message']
         assert "/dev/usb/lp99" in json_response['message']
         assert 'success' in json_response
         assert json_response['success'] is False

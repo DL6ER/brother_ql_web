@@ -406,7 +406,7 @@ function setStatus(data, what = null) {
     } else if (type === 'status' && status === 'error') {
         html = `<div class="alert alert-warning d-flex gap-2 mb-0" role="alert">
                     <span class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></span>
-                    <div>The printer reports an error${extra_info}</div>
+                    <div>${escapeHtml(data.title || 'The printer reports an error')}${extra_info}</div>
                 </div>`;
         state = 'error';
     }
@@ -595,7 +595,12 @@ function updatePrinterStatus() {
         }
     }
 
-    if (printer_status.errors && printer_status.errors.length > 0) {
+    if (missingPrinter) {
+        const used = $('#printer option:selected').text() || 'another printer';
+        const message = 'The printer ' + missingPrinter.replace(/^file:\/\//, '') + ' is not available. Labels are sent to ' + used + ' instead.';
+        setStatus({ type: 'status', status: 'error', title: 'Printer not available', errors: [message].concat(printer_status.errors || []) });
+    }
+    else if (printer_status.errors && printer_status.errors.length > 0) {
         setStatus({ type: 'status', status: 'error', errors: printer_status.errors });
     }
     else {
@@ -603,6 +608,11 @@ function updatePrinterStatus() {
         setStatus({ type: 'status', status: 'success' });
     }
 }
+
+// The printer chosen by the user or restored from the settings. If it is not
+// available, another printer is used and a warning is shown until it is back.
+var preferredPrinter = null;
+var missingPrinter = null;
 
 async function getPrinterStatus() {
     const response = await fetch(url_for_get_printer_status);
@@ -612,7 +622,7 @@ async function getPrinterStatus() {
         const select = document.getElementById('printer');
         if (select) {
             // remember current selection
-            const cur = select.value;
+            const cur = preferredPrinter || select.value;
             select.innerHTML = '';
             data.printers.forEach((p) => {
                 const opt = document.createElement('option');
@@ -629,6 +639,7 @@ async function getPrinterStatus() {
             } else if (data.printers[0]) {
                 select.value = data.printers[0].path;
             }
+            missingPrinter = cur && select.value !== cur ? cur : null;
         }
         // Choose active printer status based on the select value
         const chosenPath = (document.getElementById('printer') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
@@ -1114,6 +1125,10 @@ function updateMarginHints() {
 // Wire modal button on DOM ready
 $(document).ready(function () {
     $('#openRepoBtn').off('click').on('click', openRepositoryModal);
+    $('#printer').on('change', function () {
+        preferredPrinter = this.value;
+        missingPrinter = null;
+    });
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
 
