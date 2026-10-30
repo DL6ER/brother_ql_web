@@ -1,6 +1,10 @@
+import re
 import sys
+from io import BytesIO
+from urllib.parse import urljoin
 
 import pytest
+from PIL import Image
 
 from app import create_app, parse_args
 from config import Config
@@ -108,3 +112,29 @@ def test_navbar_without_build_info(monkeypatch, commit, date):
     monkeypatch.setattr(build_info, '_checkout_commit', lambda: '')
     html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
     assert 'id="buildInfo"' not in html
+
+
+def test_label_designer_can_be_installed_as_an_app():
+    # What browsers need to offer installing it, see web.dev/articles/install-criteria
+    client = create_app().test_client()
+    html = client.get('/labeldesigner/').get_data(as_text=True)
+    manifest_url = re.search(r'<link rel="manifest" href="([^"]+)"', html).group(1)
+    with client.get(manifest_url) as response:
+        manifest = response.get_json()
+    assert manifest['name'] and manifest['short_name']
+    assert manifest['display'] == 'standalone'
+    # Relative to the manifest, so that it also works behind a proxy that
+    # serves the label designer below a path
+    assert urljoin(manifest_url, manifest['start_url']) == '/labeldesigner/'
+    widths = {}
+    for icon in manifest['icons']:
+        with client.get(urljoin(manifest_url, icon['src'])) as response:
+            image = Image.open(BytesIO(response.data))
+        assert icon['sizes'] == f'{image.width}x{image.height}'
+        widths.setdefault(icon['purpose'], set()).add(image.width)
+    assert widths == {'any': {192, 512}, 'maskable': {512}}
+    # iOS shows transparent parts of the icon as black
+    apple_icon = re.search(r'<link rel="apple-touch-icon" href="([^"]+)"', html).group(1)
+    with client.get(apple_icon) as response:
+        image = Image.open(BytesIO(response.data))
+    assert image.size == (180, 180) and image.mode == 'RGB'
