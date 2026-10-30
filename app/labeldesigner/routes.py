@@ -11,6 +11,7 @@ from typing import BinaryIO
 from urllib.parse import urlparse
 from . import bp
 from app import get_fonts
+from app.fonts import FontNotFound
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
@@ -405,6 +406,8 @@ def repo_preview():
         content_type = 'image/png'
     response = make_response(response_data)
     response.headers.set('Content-type', content_type)
+    if label.warnings:
+        response.headers.set('X-Label-Warning', ' '.join(label.warnings))
     return response
 
 
@@ -677,6 +680,9 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         height, width = width, height
 
     # For each line in text, we determine and add the font path
+    fonts = get_fonts()
+    default_font = ','.join(fonts.get_default_font())
+    warnings = []
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
             raise ValueError("Font size is required")
@@ -684,8 +690,17 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
             raise ValueError("Font size must be at least 1")
         # Lines without a font, e.g. from the API, use the default font
         if not line.get('font'):
-            line['font'] = ','.join(get_fonts().get_default_font())
-        line['path'] = get_fonts().get_path(line['font'])
+            line['font'] = default_font
+        try:
+            line['path'] = fonts.get_path(line['font'])
+        except FontNotFound:
+            # e.g. a label saved on an installation with other fonts
+            warning = f'The font {_font_name(line["font"])} is not installed, {_font_name(default_font)} is used instead.'
+            if warning not in warnings:
+                current_app.logger.warning(warning)
+                warnings.append(warning)
+            line['font'] = default_font
+            line['path'] = fonts.get_path(default_font)
         if len(line.get('text', '')) > MAX_TEXT_LENGTH:
             raise ValueError("Text is too long")
 
@@ -736,8 +751,15 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         timestamp=context['timestamp'],
         counter=counter,
         code_text=context['code_text'],
-        template_env_vars=_template_env_vars()
+        template_env_vars=_template_env_vars(),
+        warnings=warnings
     )
+
+
+def _font_name(font: str) -> str:
+    """A font "<family>,<style>" as the font dropdown shows it."""
+    family, _, style = font.partition(',')
+    return f'{family} ({style})'
 
 
 def load_label_image(d: dict, files: dict) -> Image.Image | None:

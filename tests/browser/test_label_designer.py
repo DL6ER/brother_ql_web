@@ -1,6 +1,7 @@
 """The label designer in a browser. Most tests cover a bug that the tests of
 the API could not find, because it was in the page itself."""
 import json
+import os
 
 from browser_helpers import wait_until_ready
 
@@ -228,3 +229,29 @@ def test_pasted_image_becomes_the_label(page):
     wait_for_status(page, 'Preview updated')
     assert page.is_checked('#printTypeImage')
     assert page.evaluate('imageDropZone.files.length') == 1
+
+
+def test_label_with_a_font_that_is_not_installed(page, app):
+    # The preview failed with "Unknown font family"
+    repo = app.config['LABEL_REPOSITORY_DIR']
+    with open(os.path.join(repo, 'QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    for line in label['text']:
+        line['font'] = 'Not Installed,Regular'
+    with open(os.path.join(repo, 'Other-Fonts.json'), 'w', encoding='utf-8') as f:
+        json.dump(label, f)
+    try:
+        load_saved_label(page, 'Other-Fonts.json')
+        wait_for_status(page, 'is not installed')
+        assert 'The font Not Installed (Regular) is not installed' in page.inner_text('#statusPanel')
+        assert page.get_attribute('#previewImg', 'src').startswith('data:image/png;base64,')
+        # The dropdown was empty, now it names the font. The label keeps it.
+        assert page.evaluate("() => document.getElementById('font').selectedOptions[0].text") == \
+            'Not Installed (Regular), not installed'
+        assert page.evaluate('() => fontSettingsPerLine[0].font') == 'Not Installed,Regular'
+        # Choosing an installed font ends the warning
+        page.click('button[data-bs-target="#accordionFontSettings"]')
+        page.select_option('#font', page.get_attribute('#font', 'data-default'))
+        wait_for_status(page, 'Preview updated')
+    finally:
+        os.remove(os.path.join(repo, 'Other-Fonts.json'))

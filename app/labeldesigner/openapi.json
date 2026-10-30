@@ -58,7 +58,7 @@
             "description": "The label as it is printed.",
             "headers": {
               "X-Label-Warning": {
-                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "description": "Set when text, a code or an image does not fit on the label and is cut off, or when a font is not installed and the default font is used instead.",
                 "schema": {
                   "type": "string"
                 }
@@ -523,7 +523,7 @@
             "description": "The label as it is printed.",
             "headers": {
               "X-Label-Warning": {
-                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "description": "Set when text, a code or an image does not fit on the label and is cut off, or when a font is not installed and the default font is used instead.",
                 "schema": {
                   "type": "string"
                 }
@@ -609,7 +609,7 @@
             "description": "The label as it is printed.",
             "headers": {
               "X-Label-Warning": {
-                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "description": "Set when text, a code or an image does not fit on the label and is cut off, or when a font is not installed and the default font is used instead.",
                 "schema": {
                   "type": "string"
                 }
@@ -961,7 +961,7 @@
           },
           "font": {
             "type": "string",
-            "description": "Font as `<family>,<style>`, e.g. `DejaVu Sans,Book`. Default: the configured default font."
+            "description": "Font as `<family>,<style>`, e.g. `DejaVu Sans,Book`. Default: the configured default font, which also replaces fonts that are not installed."
           },
           "size": {
             "type": "string",

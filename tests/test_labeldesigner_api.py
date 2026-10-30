@@ -600,14 +600,23 @@ class TestLabelDesignerAPI:
         assert 'message' in response.get_json()
 
     def test_font_not_found(self, client: FlaskClient):
+        # A font that is not installed, e.g. in a label saved on another
+        # installation, is replaced by the default font
+        family, style = client.application.extensions['fonts'].get_default_font()
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
             {'font': 'NonExistentFont,Book', 'text': 'Test', 'size': '12', 'align': 'center'}
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-        assert response.is_json
-        assert 'message' in response.get_json()
+        assert response.status_code == 200
+        assert response.headers['X-Label-Warning'] == \
+            f'The font NonExistentFont (Book) is not installed, {family} ({style}) is used instead.'
+        data['text'] = json.dumps([
+            {'font': f'{family},{style}', 'text': 'Test', 'size': '12', 'align': 'center'}
+        ])
+        expected = client.post('/labeldesigner/api/preview', data=data)
+        assert 'X-Label-Warning' not in expected.headers
+        assert response.data == expected.data
 
     def test_method_enforcement(self, client: FlaskClient):
         # POST required for preview
@@ -969,24 +978,19 @@ class TestLabelDesignerAPI:
         assert response.status_code == 400
 
     def test_unknown_font(self, client: FlaskClient):
+        # Unknown families and styles are both replaced, each named once
+        family, style = client.application.extensions['fonts'].get_default_font()
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([
-            {'font': 'Droid Sand,Book', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
+            {'font': 'Droid Sand,Book', 'text': 'Item 1', 'size': '15', 'align': 'left'},
+            {'font': 'Droid Sans,Non-exist', 'text': 'Item 2', 'size': '15', 'align': 'left'},
+            {'font': 'Droid Sand,Book', 'text': 'Item 3', 'size': '15', 'align': 'left'},
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-        assert response.is_json
-        data = response.get_json()
-        assert data['message'] == 'Unknown font family: Droid Sand'
-
-        data['text'] = json.dumps([
-            {'font': 'Droid Sans,Non-exist', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-        assert response.is_json
-        data = response.get_json()
-        assert data['message'] == 'Unknown font style: Non-exist for font Droid Sans'
+        assert response.status_code == 200
+        assert response.headers['X-Label-Warning'] == (
+            f'The font Droid Sand (Book) is not installed, {family} ({style}) is used instead. '
+            f'The font Droid Sans (Non-exist) is not installed, {family} ({style}) is used instead.')
 
     def test_todo_list(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
