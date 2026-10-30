@@ -153,3 +153,78 @@ def test_600_dpi_printing_is_explained(page):
     assert 'only confirmed for the QL-800' in page.inner_text('#highResInfo')
     # The info button does not change the option
     assert not page.is_checked('#high_res')
+
+
+def fake_printer(page, **media):
+    """Answer the status queries with a QL-800 that reports the given media."""
+    status = {'errors': [], 'model': 'QL-800', 'path': 'simulation', 'red_support': True,
+              'media_width': None, 'media_length': 0, **media}
+    body = json.dumps({**status, 'printers': [status], 'selected': 'simulation'})
+    page.route('**/api/printer_status*', lambda route: route.fulfill(content_type='application/json', body=body))
+    reload(page)
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+
+
+def test_label_name_keeps_its_hyphens(page):
+    # Non-breaking hyphens showed as gaps in fonts that do not have them
+    assert page.inner_text('#previewLabelName') == '62 mm endless (DK-22205 / DK-2205)'
+    assert page.locator('#previewLabelName .text-nowrap').count() == 2
+
+
+def test_simulator_reports_no_loaded_label(page):
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+    assert not page.is_visible('#detectedLabel')
+    assert not page.is_visible('#labelMismatch')
+    assert not page.is_visible('#labelMismatchIcon')
+
+
+def test_loaded_label_can_be_chosen(page):
+    fake_printer(page, media_width=29, media_length=90)
+    assert page.inner_text('#detectedLabelName') == '29 x 90 mm die-cut (DK-11201 / DK-1201)'
+    assert page.is_visible('#labelMismatch') and page.is_visible('#labelMismatchIcon')
+    page.click('#useDetectedLabel')
+    assert page.input_value('#label_size') == '29x90'
+    assert not page.is_visible('#labelMismatch') and not page.is_visible('#labelMismatchIcon')
+    assert page.is_visible('#detectedLabel')
+
+
+def test_loaded_black_and_red_label_is_not_a_mismatch(page):
+    # The printer reports the same size for both 62 mm endless labels
+    fake_printer(page, media_width=62, media_length=0)
+    page.select_option('#label_size', '62red')
+    page.wait_for_load_state('networkidle')
+    assert page.is_visible('#detectedLabel')
+    assert not page.is_visible('#labelMismatch')
+
+
+def test_loaded_label_that_is_not_offered(page):
+    fake_printer(page, media_width=40, media_length=0)
+    assert page.inner_text('#detectedLabelName') == '40 mm endless'
+    assert page.is_visible('#labelMismatch')
+    assert not page.is_visible('#useDetectedLabel')
+
+
+def test_ctrl_enter_prints(page, monkeypatch, tmp_path):
+    monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
+    type_text(page, 'Hello')
+    wait_for_status(page, 'Preview updated')
+    page.keyboard.press('Control+Enter')
+    wait_for_status(page, 'Printed')
+    assert len(list(tmp_path.glob('*.png'))) == 1
+
+
+def test_pasted_image_becomes_the_label(page):
+    page.evaluate("""async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 200;
+        canvas.height = 100;
+        canvas.getContext('2d').fillRect(20, 20, 160, 60);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const data = new DataTransfer();
+        data.items.add(new File([blob], 'image.png', { type: 'image/png' }));
+        document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+    }""")
+    page.wait_for_function("() => !document.getElementById('labelStage').classList.contains('is-empty')")
+    wait_for_status(page, 'Preview updated')
+    assert page.is_checked('#printTypeImage')
+    assert page.evaluate('imageDropZone.files.length') == 1

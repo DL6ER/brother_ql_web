@@ -290,8 +290,11 @@ function updateLabelStage() {
     $('#labelStage').attr('data-form', form).toggleClass('is-empty', empty);
     $('#labelEmpty').text($('input[name=print_type]:checked').val() == 'image'
         ? 'Choose an image to see the label.' : 'Type a text to see the label.');
-    // Non-breaking hyphens keep codes like DK-22205 on one line
-    $('#previewLabelName').text(option.text().trim().replace(/-/g, '\u2011'));
+    // Codes like DK-22205 stay on one line. Non-breaking hyphens would do
+    // the same, but many fonts do not have them.
+    const parts = option.text().trim().split(/(\S*-\S*)/);
+    $('#previewLabelName').empty().append(parts.map(part =>
+        part.includes('-') ? $('<span class="text-nowrap">').text(part) : document.createTextNode(part)));
 }
 
 var lastPreviewData = null;
@@ -441,7 +444,7 @@ new Dropzone("#image-dropzone", {
         }
     },
     paramName: "image", // The name that will be used to transfer the file
-    dictDefaultMessage: 'Drop an image or PDF here, or click to choose one',
+    dictDefaultMessage: 'Drop an image or PDF here, click to choose one, or paste it with Ctrl+V',
     dictRemoveFile: 'Remove',
     acceptedFiles: 'image/*,application/pdf',
     maxFiles: 1,
@@ -559,6 +562,28 @@ function filterLabelSizes(model) {
     if (select.selectedOptions[0]) select.selectedOptions[0].hidden = false;
 }
 
+// The label the printer reports as loaded: the selected label size if it
+// matches, otherwise the first offered one that does (black only before
+// black/red, they have the same size). Labels the dropdown does not offer get
+// a name from their size and no value.
+function loadedLabel() {
+    const width = printer_status.media_width;
+    if (width === null || width === undefined) return null;
+    const length = printer_status.media_length || 0;
+    const fits = option => parseInt(option.dataset.x, 10) === width && parseInt(option.dataset.y, 10) === length;
+    const select = document.getElementById('label_size');
+    const selected = select.selectedOptions[0];
+    if (selected && fits(selected)) {
+        return { value: selected.value, name: selected.text.trim(), selected: true };
+    }
+    const offered = Array.from(select.options).filter(option => !option.hidden && fits(option));
+    const option = offered.find(o => !o.value.includes('red')) || offered[0];
+    if (option) {
+        return { value: option.value, name: option.text.trim(), selected: false };
+    }
+    return { value: null, name: length > 0 ? `${width} x ${length} mm` : `${width} mm endless`, selected: false };
+}
+
 function updatePrinterStatus() {
     filterLabelSizes(printer_status.model);
     if ($('#label_size option:selected').val().includes('red')) {
@@ -568,37 +593,14 @@ function updatePrinterStatus() {
         $(".red-support").hide();
     }
 
-    const labelSizeX = document.getElementById('label-width');
-    const labelSizeY = document.getElementById('label-height');
-    if (labelSizeX && labelSizeY) {
-        labelSizeX.textContent = (printer_status.media_width ?? "???") + " mm";
-        if (printer_status.media_length > 0) {
-            labelSizeY.textContent = printer_status.media_length + " mm";
-        }
-        else if (printer_status.media_type === 'Continuous length tape') {
-            labelSizeY.textContent = "endless";
-        }
-        else {
-            labelSizeY.textContent = "???";
-        }
-    }
-
-    // Check for label size mismatch compared to data-x property of select
-    const labelSizeSelect = document.getElementById('label_size');
-    const labelMismatch = document.getElementById('labelMismatch');
-    const labelMismatchIcon = document.getElementById('labelMismatchIcon');
-    if (labelSizeSelect && labelMismatch && labelMismatchIcon) {
-        const selectedOption = labelSizeSelect.options[labelSizeSelect.selectedIndex];
-        const dataX = selectedOption.getAttribute('data-x');
-        const dataY = selectedOption.getAttribute('data-y');
-        if (printer_status.media_width !== null && (printer_status.media_width !== parseInt(dataX) || printer_status.media_length !== parseInt(dataY))) {
-            labelMismatch.style.display = '';
-            labelMismatchIcon.style.display = '';
-        } else {
-            labelMismatch.style.display = 'none';
-            labelMismatchIcon.style.display = 'none';
-        }
-    }
+    // Name the label the printer reports and offer it when another one is
+    // selected. The simulator and network printers report none.
+    const loaded = loadedLabel();
+    const mismatch = loaded !== null && !loaded.selected;
+    $('#detectedLabel').prop('hidden', !(loaded && loaded.selected));
+    $('#detectedLabelName').text(loaded ? loaded.name : '');
+    $('#labelMismatch, #labelMismatchIcon').toggle(mismatch);
+    $('#useDetectedLabel').prop('hidden', !(mismatch && loaded.value));
 
     if (missingPrinter) {
         const used = $('#printer option:selected').text() || 'another printer';
@@ -850,9 +852,24 @@ function openRepositoryModal() {
     // show modal and load list
     const modalEl = document.getElementById('repoModal');
     if (!modalEl) return;
-    const modal = new bootstrap.Modal(modalEl);
-    modal.show();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
     loadRepositoryList();
+}
+
+// Bootstrap ignores hide() while the dialog is still opening, e.g. when a
+// label is loaded right after the dialog was opened
+let repoModalOpening = false;
+$('#repoModal').on('show.bs.modal', () => { repoModalOpening = true; });
+$('#repoModal').on('shown.bs.modal', () => { repoModalOpening = false; });
+
+function closeRepositoryModal() {
+    const modalEl = document.getElementById('repoModal');
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    if (repoModalOpening) {
+        modalEl.addEventListener('shown.bs.modal', () => modal.hide(), { once: true });
+    } else {
+        modal.hide();
+    }
 }
 
 function loadRepositoryList() {
@@ -1046,9 +1063,7 @@ function repoLoad(name) {
                         }).catch(e => console.warn('Failed to load image blob', e));
                 }
             } catch (e) { console.warn(e); }
-            // close modal
-            const modalEl = document.getElementById('repoModal');
-            bootstrap.Modal.getInstance(modalEl).hide();
+            closeRepositoryModal();
         }).catch(e => {
             console.error(e);
             alert('Failed to load label');
@@ -1206,6 +1221,36 @@ window.onload = async function () {
     getPrinterStatus();
     // ... and update it every 5 seconds
     setInterval(getPrinterStatus, 5000);
+
+    $('#useDetectedLabel').on('click', function () {
+        const loaded = loadedLabel();
+        if (loaded && loaded.value) {
+            $('#label_size').val(loaded.value).trigger('change');
+        }
+    });
+
+    // Ctrl+Enter (Cmd+Enter on macOS) prints from anywhere on the page
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.repeat) return;
+        if ($('#printButton').prop('disabled') || $('.modal.show').length > 0) return;
+        e.preventDefault();
+        print();
+    });
+
+    // An image or PDF pasted from the clipboard, e.g. a screenshot, becomes
+    // the image of the label. Text pasted into a field stays text.
+    document.addEventListener('paste', function (e) {
+        const clipboard = e.clipboardData;
+        if (!clipboard || !imageDropZone) return;
+        if ($(e.target).is('input, textarea') && clipboard.types.includes('text/plain')) return;
+        const file = Array.from(clipboard.files).find(f => f.type.startsWith('image/') || f.type === 'application/pdf');
+        if (!file) return;
+        e.preventDefault();
+        if ($('input[name=print_type]:checked').val() !== 'image') {
+            $('#printTypeImage').prop('checked', true).trigger('change');
+        }
+        imageDropZone.addFile(file);
+    });
 }
 
 function init2() {

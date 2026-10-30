@@ -212,7 +212,7 @@ def repo_list():
         label_size = data.get('label_size') or data.get('labelSize')
         if label_size:
             label_size_human = next(
-                (label.name for label in ALL_LABELS if label.identifier == label_size), None
+                (label_name(label) for label in ALL_LABELS if label.identifier == label_size), None
             )
             if label_size_human:
                 label_size = f"{label_size_human}"
