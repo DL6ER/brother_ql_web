@@ -756,6 +756,17 @@ function restoreAllSettingsFromLocalStorage() {
     $('input, select, textarea').each(function () {
         const key = this.type === 'radio' && this.name.length > 0 ? this.name : this.id;
         if (!(key in data)) return;
+        if (this.id === 'printer') {
+            // The printer list arrives with the next status query, the stored
+            // printer is chosen then if it is available
+            preferredPrinter = data[key] || null;
+            if (Array.from(this.options).some(o => o.value === data[key])) this.value = data[key];
+            return;
+        }
+        if (this.tagName === 'SELECT' && !Array.from(this.options).some(o => o.value == data[key])) {
+            // e.g. a font or label size that is not available here
+            return;
+        }
         if (this.type === 'checkbox') {
             $(this).prop('checked', !!data[key]);
         } else if (this.type === 'radio') {
@@ -1002,6 +1013,8 @@ function repoLoad(name) {
         .then(data => {
             try {
                 data['fontSettingsPerLine'] = data['text'] || '[]';
+                // A saved label does not change the printer
+                data['printer'] = $('#printer').val() || null;
                 localStorage.setItem(LS_KEY, JSON.stringify(data));
             } catch (e) { }
             restoreAllSettingsFromLocalStorage();

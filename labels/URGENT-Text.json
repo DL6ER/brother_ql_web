@@ -44,7 +44,6 @@
   "orientation": "standard",
   "print_count": "20",
   "print_type": "text",
-  "printer": "file:///dev/usb/lp3",
   "qrcode_correction": "H",
   "qrcode_size": "10",
   "repo_save_name": "URGENT-Text",
