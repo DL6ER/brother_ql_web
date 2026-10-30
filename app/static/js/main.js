@@ -262,9 +262,35 @@ function updatePreview(data) {
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
     img.onload = function () {
-        $('#labelWidth').html((img.naturalWidth / get_dpi() * 2.54).toFixed(1));
-        $('#labelHeight').html((img.naturalHeight / get_dpi() * 2.54).toFixed(1));
+        $('#labelWidth').text(Math.round(img.naturalWidth / get_dpi() * 25.4));
+        $('#labelHeight').text(Math.round(img.naturalHeight / get_dpi() * 25.4));
     };
+}
+
+// Nothing to print yet: no text, no code content and no image
+function isLabelEmpty() {
+    if ($('input[name=print_type]:checked').val() == 'image') {
+        return !imageDropZone || imageDropZone.files.length === 0;
+    }
+    return ($('#label_text').val() || '').trim() === '' && ($('#code_text').val() || '').trim() === '';
+}
+
+// Show the label on the stage like the roll in the printer: endless, die-cut
+// or round, with a hint while there is nothing to print
+function updateLabelStage() {
+    const option = $('#label_size option:selected');
+    let form = 'endless';
+    if (option.data('round') == 'True') {
+        form = 'round';
+    } else if (parseInt(option.data('y'), 10) > 0) {
+        form = 'die-cut';
+    }
+    const empty = isLabelEmpty();
+    $('#labelStage').attr('data-form', form).toggleClass('is-empty', empty);
+    $('#labelEmpty').text($('input[name=print_type]:checked').val() == 'image'
+        ? 'Choose an image to see the label.' : 'Type a text to see the label.');
+    // Non-breaking hyphens keep codes like DK-22205 on one line
+    $('#previewLabelName').text(option.text().trim().replace(/-/g, '\u2011'));
 }
 
 var lastPreviewData = null;
@@ -275,15 +301,6 @@ function gen_label(preview = true, cut_once = false) {
     // Update font settings for each line
     setFontSettingsPerLine();
 
-    if (preview) {
-        // Update preview image based on label size
-        if ($('#label_size option:selected').data('round') == 'True') {
-            $('img#previewImg').addClass('roundPreviewImage');
-        } else {
-            $('img#previewImg').removeClass('roundPreviewImage');
-        }
-    }
-
     // Show or hide image upload box
     if ($('input[name=print_type]:checked').val() == 'image') {
         $('#groupLabelImage').show();
@@ -291,12 +308,17 @@ function gen_label(preview = true, cut_once = false) {
         $('#groupLabelImage').hide();
     }
 
-    // Update status box
+    if (preview) {
+        updateLabelStage();
+        updateMarginHints();
+    }
+
     let type = preview ? 'preview' : 'printing';
-    setStatus({ type: type, 'status': 'pending' });
 
     // Process image upload
     if ($('input[name=print_type]:checked').val() == 'image') {
+        // Without an image there is nothing to send
+        setStatus({ type: type, 'status': imageDropZone.files.length > 0 ? 'pending' : '' });
         dropZoneMode = preview ? 'preview' : 'printing';
         imageDropZone.processQueue();
         return;
@@ -312,6 +334,7 @@ function gen_label(preview = true, cut_once = false) {
     }
     // Update lastPreviewData
     lastPreviewData = dataJson;
+    setStatus({ type: type, 'status': 'pending' });
 
     // Send printing request
     const url = preview ? (url_for_preview + '?return_format=base64') : url_for_print;
@@ -351,82 +374,55 @@ function setStatus(data, what = null) {
     let status = data.status || '';
     let message = data.message || '';
     let errors = data?.errors || [];
-    let extra_info = message ? ':<br />' + escapeHtml(message) : '';
+    let extra_info = message ? ': ' + escapeHtml(message) : '';
     if (errors.length > 0) {
         extra_info += '<br />' + errors.map(escapeHtml).join('<br />');
     }
 
-    // Default: clear status
     let html = '';
-    let iconClass = '';
+    // State of the printer dot in the navbar: idle, busy, success or error
+    let state = '';
 
     if (type === 'preview' || type === 'printing') {
         if (status === 'pending') {
-            // Busy preparing preview or printing
-            let action = type === 'printing' ? "Printing" : "Generating preview";
-            html = `<div id="statusBox" class="alert alert-info" role="alert">
-                        <i class="fas fa-hourglass-half"></i>
-                        <span>${action}...</span>
-                    </div>`;
-            iconClass = 'float-end fas fa-hourglass-half text-muted';
+            const action = type === 'printing' ? 'Printing' : 'Updating preview';
+            html = `<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>${action}</span>`;
+            state = type === 'printing' ? 'busy' : '';
         } else if (status === 'success') {
-            // Success for preview or printing
             if (type === 'preview') {
-                html = `<div id="statusBox" class="alert alert-info" role="alert">
-                            <i class="fas fa-eye"></i>
-                            <span>Preview generated successfully.</span>
-                        </div>`;
-                iconClass = 'float-end fas fa-check text-success';
+                html = `<span class="fas fa-check text-success" aria-hidden="true"></span><span>Preview updated</span>`;
             } else {
-                html = `<div id="statusBox" class="alert alert-success" role="alert">
-                            <i class="fas fa-check"></i>
-                            <span>Printing was successful.</span>
-                        </div>`;
-                iconClass = 'float-end fas fa-print text-success';
+                html = `<span class="fas fa-check-circle text-success" aria-hidden="true"></span><span>Printed</span>`;
+                state = 'success';
             }
         } else if (status === 'error') {
-            // Error for preview or printing
-            let action = type === 'preview' ? "Preview generation failed" : "Printing failed";
-            html = `<div id="statusBox" class="alert alert-warning" role="alert">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span>${action}${extra_info}</span>
+            const action = type === 'preview' ? 'The preview failed' : 'Printing failed';
+            html = `<div class="alert alert-danger d-flex gap-2 mb-0" role="alert">
+                        <span class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></span>
+                        <div>${action}${extra_info}</div>
                     </div>`;
-            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
-        } else {
-            // Unknown status, clear
-            html = "";
-            iconClass = "";
+            state = 'error';
         }
-    } else if (type === 'status') {
-        if (status === 'error') {
-            let action = "Error";
-            html = `<div id="statusBox" class="alert alert-warning" role="alert">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <span>${action}${extra_info}</span>
-                    </div>`;
-            iconClass = 'float-end fas fa-exclamation-triangle text-danger';
-        } else {
-            html = "";
-            iconClass = "";
-        }
-    } else {
-        html = "";
-        iconClass = "";
+    } else if (type === 'status' && status === 'error') {
+        html = `<div class="alert alert-warning d-flex gap-2 mb-0" role="alert">
+                    <span class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></span>
+                    <div>The printer reports an error${extra_info}</div>
+                </div>`;
+        state = 'error';
     }
 
-    let elem = null;
-    if (type === 'status') {
-        elem = $('#printerStatusPanel');
-    } else {
-        elem = $('#statusPanel');
-    }
+    const elem = type === 'status' ? $('#printerStatusPanel') : $('#statusPanel');
     elem.html(html);
-    if (html.length > 0)
-        elem.show();
-    else
-        elem.hide();
+    elem.toggle(html.length > 0);
 
-    $('#statusIcon').removeClass().addClass(iconClass);
+    // Printer errors keep the dot red until they are gone
+    const dot = $('#printerIcon');
+    if (type === 'status') {
+        dot.toggleClass('has-error', state === 'error');
+    } else if (state !== '' || status === 'pending') {
+        dot.removeClass('is-busy is-success is-error');
+        if (state) dot.addClass('is-' + state);
+    }
     $('#printButton').prop('disabled', false);
     $('#dropdownPrintButton').prop('disabled', false);
 }
@@ -441,6 +437,8 @@ new Dropzone("#image-dropzone", {
         }
     },
     paramName: "image", // The name that will be used to transfer the file
+    dictDefaultMessage: 'Drop an image or PDF here, or click to choose one',
+    dictRemoveFile: 'Remove',
     acceptedFiles: 'image/*,application/pdf',
     maxFiles: 1,
     addRemoveLinks: true,
@@ -732,7 +730,7 @@ function updateUndoButton() {
         history = JSON.parse(localStorage.getItem(LS_HISTORY_KEY)) || [];
     } catch { history = []; }
     const steps = Math.max(0, history.length - 1);
-    $('#undoCounter').text(steps);
+    $('#undoCounter').text(steps).prop('hidden', steps === 0);
     $('#undoSettingsBtn').prop('disabled', steps === 0);
 }
 
@@ -828,39 +826,44 @@ function loadRepositoryList() {
         });
 }
 
+// Name of a saved label without the file ending
+function repoDisplayName(name) {
+    return String(name).replace(/\.json$/i, '');
+}
+
 function renderRepoList(files) {
     const body = $('#repoListBody');
     if (!files || files.length === 0) {
-        body.html('<p class="text-muted">No labels in repository.</p>');
+        body.html('<p class="text-body-secondary mb-0">No saved labels yet. Enter a name above to save the current label.</p>');
         return;
     }
-    const table = $('<div class="list-group"></div>');
+    const list = $('<div class="list-group repo-list"></div>');
     files.forEach(f => {
+        const name = escapeHtml(f.name);
         const item = $(
-            ` <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div class="d-flex gap-3 align-items-center">
-                        <img class="repo-thumb" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
-                        <div>
-                            <strong class="repo-name">${escapeHtml(f.name)}</strong><br/>
-                            <small class="text-muted">${new Date(f.mtime * 1000).toLocaleString()} - ${escapeHtml(f.size)} bytes</small><br/>
-                            <small class="text-muted">Label size: ${f.label_size ? escapeHtml(f.label_size) : 'unknown'}</small>
-                        </div>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-sm btn-outline-success repo-load" data-name="${escapeHtml(f.name)}">Load</button>
-                        <button class="btn btn-sm btn-outline-primary repo-print" data-name="${escapeHtml(f.name)}">Print</button>
-                        <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${escapeHtml(f.name)}">Delete</button>
-                    </div>
-                </div>`
+            `<div class="list-group-item repo-item" data-search="${escapeHtml(repoDisplayName(f.name).toLowerCase())}">
+                <img class="repo-thumb" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
+                <div class="repo-info">
+                    <div class="repo-name">${escapeHtml(repoDisplayName(f.name))}</div>
+                    <div class="small text-body-secondary">${f.label_size ? escapeHtml(f.label_size) : 'Unknown label size'}</div>
+                    <div class="small text-body-secondary">Saved ${new Date(f.mtime * 1000).toLocaleString()}</div>
+                </div>
+                <div class="repo-actions">
+                    <button class="btn btn-sm btn-primary repo-load" data-name="${name}">Load</button>
+                    <button class="btn btn-sm btn-outline-secondary repo-print" data-name="${name}"><span class="fas fa-print me-1" aria-hidden="true"></span>Print</button>
+                    <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${name}" title="Delete" aria-label="Delete ${escapeHtml(repoDisplayName(f.name))}"><span class="fas fa-trash" aria-hidden="true"></span></button>
+                </div>
+            </div>`
         );
-        table.append(item);
+        list.append(item);
         // fetch thumbnail asynchronously (do not override main preview)
         const img = item.find('.repo-thumb')[0];
         if (img) {
             repoFetchThumbnail(f.name, img);
         }
     });
-    body.html(table);
+    body.html(list);
+    filterRepoList();
 
     // Attach handlers
     $('.repo-preview').off('click').on('click', function () {
@@ -873,7 +876,7 @@ function renderRepoList(files) {
     });
     $('.repo-delete').off('click').on('click', function () {
         const name = $(this).data('name');
-        if (!confirm('Delete ' + name + '?')) return;
+        if (!confirm('Delete the saved label "' + repoDisplayName(name) + '"?')) return;
         repoDelete(name);
     });
     $('.repo-print').off('click').on('click', function () {
@@ -1085,10 +1088,40 @@ function repoFetchThumbnail(name, imgEl) {
         });
 }
 
+// Show only the saved labels whose name contains the search text
+function filterRepoList() {
+    const query = ($('.repo-search').val() || '').trim().toLowerCase();
+    $('#repoListBody .repo-item').each(function () {
+        this.hidden = query !== '' && !this.dataset.search.includes(query);
+    });
+}
+
+// Show the margins in mm, the unit of the label sizes
+function updateMarginHints() {
+    const dpi = get_dpi();
+    $('[data-mm-for]').each(function () {
+        const px = parseInt($('#' + this.dataset.mmFor).val(), 10);
+        this.textContent = isNaN(px) ? '' : (px / dpi * 25.4).toFixed(1) + ' mm';
+    });
+}
+
 // Wire modal button on DOM ready
 $(document).ready(function () {
     $('#openRepoBtn').off('click').on('click', openRepositoryModal);
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
+    $('.repo-search').on('input', filterRepoList);
+
+    // Copies: buttons next to the number field
+    $('#printCountDown, #printCountUp').on('click', function () {
+        const input = $('#print_count');
+        const step = this.id === 'printCountUp' ? 1 : -1;
+        const min = parseInt(input.attr('min'), 10) || 1;
+        const max = parseInt(input.attr('max'), 10) || 100;
+        const value = (parseInt(input.val(), 10) || min) + step;
+        input.val(Math.min(max, Math.max(min, value))).trigger('change');
+    });
+
+    $('#margin_top, #margin_bottom, #margin_left, #margin_right, #high_res').on('input change', updateMarginHints);
 });
 
 function resetSettings() {

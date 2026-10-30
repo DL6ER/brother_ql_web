@@ -12,8 +12,8 @@ function _ensureSymbolPickerExists() {
     const style = document.createElement('style');
     style.innerHTML = `
     .symbol-grid { display: grid; grid-template-columns: repeat(auto-fill, 36px); gap:6px; }
-    .symbol-btn { width:34px; height:34px; border:1px solid #ddd; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; background:#fff; }
-    .symbol-btn:hover { background:#f1f1f1; }
+    .symbol-btn { width:34px; height:34px; border:1px solid var(--bs-border-color); border-radius:4px; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; font-size:18px; background:var(--bs-body-bg); color:var(--bs-body-color); }
+    .symbol-btn:hover { background:var(--bs-tertiary-bg); }
     `;
     document.head.appendChild(style);
 

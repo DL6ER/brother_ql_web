@@ -1,68 +1,377 @@
-#statusBox.alert {
-    margin-bottom: 0;
+/* Colours that differ between the light and the dark theme. Everything else
+   uses the colour variables of Bootstrap, which follow data-bs-theme. */
+:root,
+[data-bs-theme="light"] {
+    --ld-page-bg: #eef0f3;
+    --ld-stage-bg: #e9ecef;
+    --ld-stage-stripe: rgba(0, 0, 0, 0.025);
+    --ld-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 6px 16px rgba(0, 0, 0, 0.08);
+    --ld-segmented-bg: #e9ecef;
 }
 
-.alert .fas {
-    display: table-cell;
+[data-bs-theme="dark"] {
+    --ld-page-bg: #15181b;
+    --ld-stage-bg: #16191c;
+    --ld-stage-stripe: rgba(255, 255, 255, 0.025);
+    --ld-label-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), 0 6px 18px rgba(0, 0, 0, 0.45);
+    --ld-segmented-bg: #16191c;
 }
 
-.alert div,
-.alert span {
-    padding-left: 10px;
-    display: table-cell;
+/* The grey outline buttons of Bootstrap are too faint on the dark background */
+[data-bs-theme="dark"] .btn-outline-secondary {
+    --bs-btn-color: #b8c0c8;
+    --bs-btn-border-color: #5c636a;
 }
 
-textarea#label_text {
-    resize: none;
+/* --- Page --------------------------------------------------------------- */
+
+/* Grey page with the settings, the text and the preview on white panels.
+   Only the page background changes, form fields keep --bs-body-bg. */
+body {
+    background-color: var(--ld-page-bg);
 }
 
-.roundPreviewImage {
-    border-radius: 100%;
+.panel {
+    padding: 1.1rem;
+    border: 1px solid var(--bs-border-color-translucent);
+    border-radius: 0.75rem;
+    background: var(--bs-body-bg);
 }
 
-label {
-    font-weight: 700;
+@media (max-width: 575.98px) {
+    .panel {
+        padding: 0.875rem;
+    }
+}
+
+.designer .accordion {
+    --bs-accordion-border-radius: 0.75rem;
+    --bs-accordion-inner-border-radius: calc(0.75rem - 1px);
 }
 
 .navbar {
-    margin-bottom: 20px;
+    margin-bottom: 1.5rem;
 }
 
-/* Repository thumbnail and modal tweaks (light mode) */
-.repo-thumb {
-    width: 160px;
-    height: auto;
-    object-fit: contain;
-    border: 1px solid #ddd;
-    padding: 8px;
-    background: #fff;
-}
-
-.modal-body {
-    padding: 1rem 1.25rem;
-}
-
-/* Make thumbnails responsive on small screens */
-.list-group-item .d-flex {
-    flex-wrap: wrap;
+.navbar-collapse {
     gap: 0.5rem;
 }
 
-.repo-thumb {
+@media (max-width: 991.98px) {
+    .navbar-collapse > * {
+        margin-top: 0.75rem;
+    }
+}
+
+.navbar-actions {
+    margin-left: 0.5rem;
+}
+
+@media (max-width: 991.98px) {
+    .navbar-actions {
+        margin-left: 0;
+    }
+}
+
+.navbar-printer .form-select {
+    min-width: 14rem;
+}
+
+/* Printer state next to the printer list: hollow when idle, grey while
+   printing, green after printing, red on errors */
+.printer-dot {
+    display: inline-block;
+    width: 0.6rem;
+    height: 0.6rem;
+    margin-right: 0.25rem;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    vertical-align: 0.05em;
+}
+
+.printer-dot.is-busy {
+    background: #adb5bd;
+    border-color: #adb5bd;
+    animation: printer-busy 1s ease-in-out infinite alternate;
+}
+
+.printer-dot.is-success {
+    background: #2fb380;
+    border-color: #2fb380;
+}
+
+.printer-dot.is-error,
+.printer-dot.has-error {
+    background: #ff6b6b;
+    border-color: #ff6b6b;
+}
+
+@keyframes printer-busy {
+    to {
+        opacity: 0.35;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .printer-dot.is-busy {
+        animation: none;
+    }
+}
+
+/* --- Forms -------------------------------------------------------------- */
+
+.form-label {
+    margin-bottom: 0.3rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+.settings .accordion-button {
+    font-weight: 500;
+}
+
+.settings .accordion-body {
+    padding-top: 1.1rem;
+}
+
+.settings-group {
+    margin: 0 0 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+}
+
+.font-size {
+    width: 6.5rem;
+}
+
+textarea#label_text {
+    resize: vertical;
+}
+
+#print_count {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+#print_count::-webkit-inner-spin-button,
+#print_count::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* Segmented control for the choices made with radio buttons */
+.btn-group.segmented {
+    gap: 2px;
+    padding: 3px;
+    border-radius: 0.5rem;
+    background: var(--ld-segmented-bg);
+}
+
+.btn-group.segmented > .btn {
+    --bs-btn-padding-x: 0.7rem;
+    --bs-btn-padding-y: 0.3rem;
+    --bs-btn-font-size: 0.875rem;
+    --bs-btn-color: var(--bs-body-color);
+    --bs-btn-bg: transparent;
+    --bs-btn-border-color: transparent;
+    --bs-btn-hover-color: var(--bs-emphasis-color);
+    --bs-btn-hover-bg: rgba(var(--bs-emphasis-color-rgb), 0.06);
+    --bs-btn-hover-border-color: transparent;
+    --bs-btn-active-color: #ffffff;
+    --bs-btn-active-bg: var(--bs-primary);
+    --bs-btn-active-border-color: transparent;
+    --bs-btn-focus-shadow-rgb: var(--bs-primary-rgb);
+    margin-left: 0;
+    border-radius: 0.375rem;
+    line-height: 1.35;
+}
+
+.btn-group.segmented-fill {
+    display: flex;
+    width: 100%;
+}
+
+.btn-group.segmented-fill > .btn {
+    --bs-btn-font-size: 0.8125rem;
+    flex: 1 1 0;
+    min-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    white-space: nowrap;
+}
+
+.swatch {
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-right: 0.4rem;
+    border-radius: 50%;
+    vertical-align: -0.05em;
+}
+
+.swatch-black {
+    background: #212529;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.swatch-red {
+    background: #dc3545;
+}
+
+/* Image upload */
+.dropzone {
+    min-height: 8rem;
+    border: 2px dashed var(--bs-border-color);
+    border-radius: 0.5rem;
+    background: var(--bs-tertiary-bg);
+}
+
+.dropzone .dz-message {
+    margin: 2rem 0;
+    color: var(--bs-secondary-color);
+}
+
+/* --- Preview ------------------------------------------------------------ */
+
+@media (min-width: 1200px) {
+    .preview-column {
+        position: sticky;
+        top: 1rem;
+    }
+}
+
+/* The label on a surface, so that a white label stands out in both themes */
+.label-stage {
+    display: grid;
+    place-items: center;
+    min-height: 9rem;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    background: repeating-linear-gradient(45deg, var(--ld-stage-stripe) 0 6px, transparent 6px 12px), var(--ld-stage-bg);
+}
+
+.label-paper {
     max-width: 100%;
-    height: auto;
+    overflow: hidden;
+    line-height: 0;
+    background: #ffffff;
+    box-shadow: var(--ld-label-shadow);
+}
+
+.label-stage[data-form="die-cut"] .label-paper {
+    border-radius: 0.5rem;
+}
+
+.label-stage[data-form="round"] .label-paper {
+    border-radius: 50%;
+}
+
+#previewImg {
+    display: block;
+    max-width: 100%;
+    max-height: 350px;
+}
+
+.label-empty {
+    display: none;
+    margin: 0;
+    color: var(--bs-secondary-color);
+    text-align: center;
+}
+
+.label-stage.is-empty .label-paper {
+    display: none;
+}
+
+.label-stage.is-empty .label-empty {
+    display: block;
+}
+
+.label-stage.is-empty ~ .label-meta .label-size {
+    visibility: hidden;
+}
+
+.label-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+}
+
+.copies {
+    width: 9.5rem;
+    flex: none;
+}
+
+.copies .btn {
+    padding-left: 0.65rem;
+    padding-right: 0.65rem;
+}
+
+.status-line {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.5rem;
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+}
+
+.status-line > .alert {
+    flex: 1;
+    font-size: 1rem;
+}
+
+/* --- Saved labels ------------------------------------------------------- */
+
+.repo-search {
+    width: 12rem;
+}
+
+.repo-item {
+    display: grid;
+    grid-template-columns: 8rem 1fr auto;
+    align-items: center;
+    gap: 0.75rem 1rem;
+}
+
+.repo-item[hidden] {
+    display: none;
+}
+
+.repo-thumb {
+    width: 8rem;
+    max-height: 4.5rem;
+    padding: 0.25rem;
+    object-fit: contain;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.375rem;
+    background: #ffffff;
+}
+
+.repo-name {
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.repo-actions {
+    display: flex;
+    gap: 0.375rem;
 }
 
 @media (max-width: 576px) {
-    .repo-thumb {
-        width: 40vw; /* scale with viewport on very small screens */
-        max-width: 120px;
+    .repo-item {
+        grid-template-columns: 6rem 1fr;
     }
-    .list-group-item .btn-group {
-        width: 100%;
-        display: flex;
-        gap: 0.4rem;
-        justify-content: flex-start;
-        margin-top: 0.5rem;
+
+    .repo-thumb {
+        width: 6rem;
+    }
+
+    .repo-actions {
+        grid-column: 1 / -1;
     }
 }
