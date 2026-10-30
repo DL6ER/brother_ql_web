@@ -2,124 +2,50 @@
 
 [![Python tests](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml) [![Build and push images to GHCR.io](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml)
 
-This is a dockerized `python3` web service to print labels on Brother QL label printers.
-The web interface is [responsive](https://en.wikipedia.org/wiki/Responsive_web_design). The CI tests are run using `pytest` in [Python 3.15 for Alpine Linux](https://hub.docker.com/_/python), the base image of the published container.
+A web interface and REST API for Brother QL label printers. Design labels with text, QR codes, barcodes and images in the browser, check them in an exact preview and print them, from a computer or a phone. It runs as a Docker container.
 
-There are a lot of forks of the `brother_ql` and `brother_ql_web` repos from [`pklaus/brother_ql`](https://github.com/pklaus/brother_ql).
-This fork tries to support many more printers and provide additional features.
+![Label designer](./screenshots/image1.png)
 
-Additional printer support comes from [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree) as a dependency for communicating with the printers and [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web) as a base for the frontend as there have been a few fixes and improvements implemented over there. This fork also builds on enhancements from [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web) for which we are grateful, too.
+## Supported printers
+
+| Printers | Labels |
+|---|---|
+| QL-500, QL-550, QL-560, QL-570, QL-580N, QL-600, QL-650TD, QL-700, QL-710W, QL-720NW | up to 62 mm wide |
+| QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
+| QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
+
+USB printers are detected automatically, network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
+
+## Features
+
+- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels
+- **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
+- **Images:** PDFs and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
+- **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
+- **Label repository:** save, load and print labels, export and import them as JSON
+- **Printers:** several printers at once, and a simulator to try everything without a printer
+- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing
+- **Interface:** dark mode, works on phones, can be installed as an app (over HTTPS)
+- **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
 ## Screenshots
 
-### Barcode with text
+| Label repository | Image with auto-fit |
+|---|---|
+| ![Label repository](./screenshots/image2.png) | ![Image with auto-fit](./screenshots/image3.png) |
+| **Barcodes** | **Dark mode** |
+| ![Barcodes](./screenshots/image4.png) | ![Dark mode](./screenshots/image6.png) |
+| **Templates** | **Symbol picker** |
+| ![Templates](./screenshots/image7.png) | ![Symbol picker](./screenshots/image8.png) |
 
-![Barcode](./screenshots/image1.png)
+## Installation
 
-### Label repository
-
-![Label repository](./screenshots/image2.png)
-
-### Image with auto-fit
-
-![Image with auto-fit](./screenshots/image3.png)
-
-### Supported barcodes
-
-![Supported barcodes](./screenshots/image4.png)
-
-### Native dark mode
-
-![Native dark mode](./screenshots/image6.png)
-
-### Template support
-
-![Template support](./screenshots/image7.png)
-
-### UTF-8 symbol picker
-
-![UTF-8 symbol picker](./screenshots/image8.png)
-
-## New Features
-
-- Automatic printer and label detection (limited detection for network printers, see below)
-- Multi-printer support
-- Convenient label repository (save, load, edit and print labels easily)
-- Support for more printers via `brother_ql-inventree` (**new**)
-  - QL-500
-  - QL-550
-  - QL-560
-  - QL-570
-  - QL-580N
-  - **QL-600**
-  - QL-650TD
-  - QL-700
-  - QL-710W
-  - QL-720NW
-  - QL-800
-  - QL-810W
-  - QL-820NWB
-  - QL-1050
-  - QL-1060N
-  - **QL-1100**
-  - **QL-1110NWB**
-  - **QL-1115NWB**
-- 600 dpi printing
-- Support individual fonts/sizes and spacing for each line of text
-- Dynamic content replacement using templates (e.g., `{{datetime}}`, `{{counter}}`)
-- Import and export of labels in an easily editable format (JSON)
-- Allow text inversion for emphasized text even without color
-- Auto-fit images onto the labels to avoid cropping
-  - On die-cut labels, auto-fit also turns images without text to the orientation that makes them largest, e.g. a 4 x 6 in shipping label on a 103 x 164 mm label. The webhook does the same.
-- Arbitrary scaling of images with interpolation
-- Arbitrary rotation of images with interpolation
-- Automatic crop of images to the actual content to avoid unnecessary white space
-- Support for TODO list creation (tickable checkboxes)
-- Allow text together with images
-- Print text as QR Code or barcode
-- Support for a wide range of barcodes (CODABAR, CODE128, CODE39, EAN, EAN13, EAN13-GUARD, EAN14, EAN8, EAN8-GUARD, GS1, GS1-128, GTIN, ISBN, ISBN10, ISBN13, ISSN, ITF, JAN, NW-7, PZN, UPC, UPC-A, QR)
-  - Add text to QR Code
-  - Change size of QR Code
-- Upload files to print
-  - PDF files
-  - A larger number of image formats (PNG, JPG, JPEG, GIF, WEBP, AVIF, WMF, EPS, PS, BMP, GBR, ICB, FITS, PCX, TGA, PBM, FTU, VDA, PPM, VST, ICO, CUR, AVIFS, PGM, JPX, RAS, XPM, J2K, MPEG, IM, JPE, PNM, GRIB, TIF, PXR, RGBA, JP2, PFM, FTC, JFIF, JPC, JPF, BUFR, IIM, MPG, APNG, DDS, HDF, XBM, PSD, J2C, DIB, PCD, SGI, MSP, ICNS, FIT, H5, FLC, BW, QOI, DCX, RGB, BLP, TIFF, EMF, FLI)
-  - automatically convertion to black/white image
-- Change print color for black/white/red labels
-- Support borders (multi-color, also with rounded edges)
-- Print labels multiple times
-  - Cut every label
-  - Cut only after the last label
-- Better error handling
-- Native dark mode
-- A status icon indicating the current status
-  - no color = idle
-  - gray = busy
-  - green = printing successful
-  - red = error needing your attention
-- Migrated GUI to Bootstrap 5
-- Make preview for round labels... round
-- Print images on red/black paper
-- Dockerized
-- Devcontainer for ease of development/contributing
-
-### Supported templates
-
-- `{{counter[:<start>]}}` — Inserts the current counter value (automatically increments when printing multiple labels at the same time).
-- `{{datetime:<format>}}` — Inserts the current date and time, e.g. `%H:%M:%S %d.%m.%Y` (see [strftime](https://strftime.org/)).
-- `{{uuid}}` — Inserts a random UUID (Universally Unique Identifier).
-- `{{short-uuid}}` — Inserts a shortened version of a UUID.
-- `{{env:<var>}}` - Inserts the value of the environment variable `<var>`. Only variables listed in `LABEL_TEMPLATE_ENV_VARS` are inserted (comma-separated, e.g. `LABEL_TEMPLATE_ENV_VARS=ROOM,DEPARTMENT`), all others stay empty so that nobody can read secrets of the server through a label.
-- `{{random[:<len>][:shift]}}` - Inserts a random string of optional length `<len>` (defaulting to 64, at most 10000). The optional `shift` parameter can be used to shift the random string around to fill gaps.
-
-## Docker Compose
-
-You may also use the example [`docker-compose.yml`](./docker-compose.yml) file provided in this repository to quickly get started with Docker Compose:
+With Docker Compose, e.g. with the example [`docker-compose.yml`](./docker-compose.yml):
 
 ``` yaml
 services:
   brother_ql_web:
     image: ghcr.io/dl6er/brother-ql-web:latest
-    # build: . # you may also build the container locally
     container_name: brother_ql_web
     restart: always
     ports:
@@ -129,39 +55,23 @@ services:
     volumes:
       - ./labels:/app/labels
     environment:
-      - LABEL_DEFAULT_SIZE=62
-      - LABEL_DEFAULT_ORIENTATION=standard
       - PRINTER_MODEL=QL-800
       - PRINTER_PRINTER=file:///dev/usb/lp0
 ```
 
-Or, if you want to use automatic printer detection:
+Then open `http://<host>:8013`. Saved labels are kept in `./labels`.
+
+To detect printers automatically, also ones plugged in later and network printers, leave out `PRINTER_PRINTER`, `ports` and `devices` and give the container access to USB and the network instead:
 
 ``` yaml
-services:
-  brother_ql_web:
-    image: ghcr.io/dl6er/brother-ql-web:latest
-    # build: . # you may also build the container locally
-    container_name: brother_ql_web
-    restart: always
-    ports:
-      - "8013:8013"
     privileged: true
     network_mode: host
     volumes:
       - /dev/usb:/dev/usb
       - ./labels:/app/labels
-    environment:
-      - LABEL_DEFAULT_SIZE=62
-      - LABEL_DEFAULT_ORIENTATION=standard
-      - PRINTER_MODEL=QL-800
 ```
 
-The container will automatically show printers when they become available.
-
 ### Image tags
-
-The image `ghcr.io/dl6er/brother-ql-web` is published with several tags, so you can choose how often your installation changes:
 
 | Tag | Contains | Changes |
 |---|---|---|
@@ -171,49 +81,36 @@ The image `ghcr.io/dl6er/brother-ql-web` is published with several tags, so you 
 | `1.0.1` | exactly this release | never |
 | `dev` | the current state of `master` | with every change and every night |
 
-- `latest` is what the examples above use and the right choice for most installations.
-- Choose `1` or `1.0` to stay on one release series, and an exact version like `1.0.1` if you want to update only by hand.
-- `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Switch back to `latest` once the next release is out.
-- Pre-releases (e.g. `1.1.0-rc.1`) get only their exact tag and never move `latest`, `1` or `1.0`.
+`latest` is the right choice for most installations. `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Pre-releases (e.g. `1.1.0-rc.1`) only get their exact tag. To update, run `docker compose pull && docker compose up -d`. All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases).
 
-All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases). To switch tags, change the `image:` line in your `docker-compose.yml` and run `docker compose pull && docker compose up -d`. The navbar of the label designer shows the release (e.g. `v1.0`) or, for `dev`, the commit of the running image, together with its build time.
+The navbar shows the version and build time of the running image, please add them when you report an issue.
 
-To build the image locally:
+### Settings
 
-```bash
-git clone https://github.com/DL6ER/brother_ql_web.git
-cd brother_ql_web
-docker compose build
-```
+| Environment variable | Meaning | Default |
+|---|---|---|
+| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`, or `?` to detect printers automatically | `?` |
+| `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer | `QL-800` |
+| `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |
+| `LABEL_DEFAULT_ORIENTATION` | `standard` or `rotated` | `standard` |
+| `LABEL_TEMPLATE_ENV_VARS` | Environment variables labels may insert with `{{env:<var>}}`, comma-separated. All others stay empty, so that nobody can read secrets of the server through a label. | none |
+| `WEBHOOK_PASSWORD` | Turns on the webhook, see [API](#api) | off |
+| `TRUSTED_HOSTS` | Host names you open the label designer with, comma-separated, e.g. `labels.local,192.168.0.10`. Requests for other names are refused, which protects against DNS rebinding. | all |
+| `PRINT_MAX_COUNT` | Most labels per print request | `100` |
+| `MAX_CONTENT_LENGTH` | Largest request in bytes, e.g. for uploaded images | 32 MB |
+| `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` | `WARNING` |
 
-The navbar shows the release or commit and the build time of the image, so you can see which version is running (please add it when you report an issue). Images built locally only show them when you pass them in:
+Other settings, e.g. the default font and margins, go into `instance/application.py`, see [`config.py`](./config.py). Environment variables take precedence over it. An invalid value stops the server at startup with a message naming the variable.
 
-```bash
-docker compose build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-```
+Fonts: the label designer offers all `.ttf` and `.otf` fonts it finds in the system font folders when it starts. The image comes with DejaVu, Droid, FreeFont, Liberation, Noto and Inconsolata. To add fonts, mount a folder with them, e.g. `./fonts:/usr/local/share/fonts/custom:ro`, and restart the container. A saved label whose font is not installed is shown and printed with the default font, and the preview says so.
 
-When the app runs from a git checkout (e.g. in the devcontainer or with `python3 run.py`), the commit of the checkout is shown.
+Network printers are found by the Brother MAC address prefixes in the ARP table, which may miss some models. Add those with `tcp://<IP address>` and please open an issue, so that they can be detected, too. Network printers do not answer status queries, so the label designer cannot show their label or errors.
 
-### Usage
+The printer `simulation` saves the labels as PNG files in `simulated_labels` (the newest 100) instead of printing them.
 
-Once it's running, access the web interface by opening the page with your browser.
-If you run it on your local machine, go to <http://localhost:8013>.
-You will then be forwarded by default to the interactive web gui located at `/labeldesigner`.
+## API
 
-All in all, the web server offers:
-
--   a web GUI allowing you to print your labels, and
--   an API.
-
-### Network printer support
-
-Network printers are supported but with some limitations regarding automatic detection and status queries. The printer status is always shown as "Network Printer" for network printers as they do not support the usual USB-based status queries. Automatic detection of network printers is done by scanning the ARP table for devices with known Brother MAC address prefixes, which may not be exhaustive. If you have a Brother network printer that is not detected automatically, you can still add it manually by specifying its IP address in the printer configuration (e.g., `tcp://<IP_ADDRESS>`). Please also open an issue if you have a Brother network printer that is not detected automatically so that we can integrate detection for this model.
-
-### API
-
-All functionality of the web interface is also available via a REST API. It is described in OpenAPI format in [`app/labeldesigner/openapi.json`](app/labeldesigner/openapi.json), a running server returns the same description at `/labeldesigner/api/openapi.json`. Tools like Swagger UI, Postman or code generators can import it.
-
-Some examples:
+Everything the label designer does is also available as a REST API. It is described in OpenAPI format in [`app/labeldesigner/openapi.json`](app/labeldesigner/openapi.json), which a running server also serves at `/labeldesigner/api/openapi.json` for tools like Swagger UI, Postman or code generators.
 
 ```bash
 # Print a text label (lines of text as JSON, without "font" the default font is used)
@@ -236,58 +133,41 @@ curl -X POST http://localhost:8013/labeldesigner/api/webhook/print \
   -H "Authorization: Bearer $WEBHOOK_PASSWORD" -F label_size=62 -F images=@label.png
 ```
 
-Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request. To also protect against DNS rebinding, set `TRUSTED_HOSTS` to the host names you use to open the label designer (comma-separated, e.g. `TRUSTED_HOSTS=labels.local,192.168.0.10`). Requests for other host names are refused then.
+- A request selects a printer with the `printer` parameter: the configured printer, `simulation`, or a printer given as for `PRINTER_PRINTER`. Address each printer in one way only (e.g. always `file:///dev/usb/lp0`), two addresses of the same printer are not recognized as one, and their jobs could get in each other's way.
+- Requests that print, save or delete labels must be `POST` requests and are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and `curl` are not affected.
+- Text lines may have up to 10000 characters (100000 per label) after the templates are filled in, barcodes up to 1000. Labels and images may have up to 64 million pixels, enough for a 62 mm wide label of about 2 m at 600 dpi. Of PDFs only the first page is printed.
 
-A request can select a printer with the `printer` parameter. Accepted are the configured printer, `simulation`, USB printers (`file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`) and network printers on the raw printing port 9100 (`tcp://<host>`).
+## Development
 
-The following environment variables limit what a single request may do:
+The repository has a development container for [VS Code](https://code.visualstudio.com/) with everything needed. It does not mount USB printers, add them in `.devcontainer/devcontainer.json` if you need them. The tests run in Python 3.15 for Alpine Linux, the base image of the published container:
 
-- `PRINT_MAX_COUNT` - maximum number of labels per print request (default: `100`)
-- `MAX_CONTENT_LENGTH` - maximum size of a request in bytes, e.g. for uploaded images (default: 32 MB)
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
 
-Text lines are limited to 10000 characters (100000 per label) after the templates are filled in, and barcodes to 1000 characters. Labels and uploaded images may have at most 64 million pixels, which is enough for a 62 mm wide label of about 2 m length at 600 dpi. Of PDFs only the first page is used. The simulator keeps the 100 newest labels in `simulated_labels`.
+The tests in `tests/browser` open the label designer in Chromium and are skipped unless Playwright is installed. Playwright does not run on Alpine, so outside the devcontainer:
 
-The log level is set with the `LOG_LEVEL` environment variable (`DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL`, default: `WARNING`).
+```bash
+pip install -r requirements-browser.txt
+python -m playwright install --with-deps chromium
+pytest tests/browser
+```
 
-All environment variables mentioned here take precedence over settings in `instance/application.py`. An invalid value stops the server at startup with a message naming the variable.
+To build the image yourself, with the commit and build time shown in the navbar:
 
-Print jobs and status queries of a printer are serialized, so they do not get in each other's way. Address each printer in one way only (e.g. always `file:///dev/usb/lp0` or always `usb://0x04f9:0x209b`), the two cannot be recognized as the same device.
+```bash
+docker compose build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+```
 
-### Contributing / Development
+Pull requests are welcome: [fork the repository](https://github.com/DL6ER/brother_ql_web/fork), make your changes with tests and open a pull request with a clear description.
 
-To contribute to this project, follow these steps:
+## Credits and license
 
-1. Create a [fork in your own namespace](https://github.com/DL6ER/brother_ql_web/fork)
+This fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web) talks to the printers with [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree) and builds on improvements from [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web), [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web), for which we are grateful.
 
-2. Clone the repository:
-   ```bash
-   git clone https://github.com/<your name goes here>/brother_ql_web.git
-   cd brother_ql_web
-   ```
+It is published under the terms of the GPLv3, see [LICENSE](./LICENSE). It includes software of third parties under other licenses:
 
-2. Make your changes and test them locally, preferably inside the convenient devcontainer. Run the tests with:
-   ```bash
-   pip install -r requirements-dev.txt
-   pytest
-   ```
-
-   The tests in `tests/browser` open the label designer in Chromium and are skipped unless Playwright is installed. Playwright does not run on Alpine, so outside the devcontainer:
-   ```bash
-   pip install -r requirements-browser.txt
-   python -m playwright install --with-deps chromium
-   pytest tests/browser
-   ```
-
-3. Submit a pull request with a clear description of your changes.
-
-This project offers a **Development Container** for easy local development. You can right away start coding without worrying about the environment setup using the free and open source IDE [VSCode](https://code.visualstudio.com/). Other editors may be able to utilize the provided Dockerfile for a similar setup. Note that the provided devcontainer does not mount any possibly existing local USB printers for compatibility reasons. You may want to edit `.devcontainer/devcontainer.json` to mount such local devices.
-
-### License
-
-This software is published under the terms of the GPLv3, see the LICENSE file in the repository.
-
-Parts of this package are redistributed software products from 3rd parties. They are subject to different licenses:
-
--   [Bootstrap](https://github.com/twbs/bootstrap), MIT License
--   [Font Awesome](https://github.com/FortAwesome/Font-Awesome), CC BY 4.0 License
--   [jQuery](https://github.com/jquery/jquery), MIT License
+- [Bootstrap](https://github.com/twbs/bootstrap), MIT License
+- [Font Awesome](https://github.com/FortAwesome/Font-Awesome), CC BY 4.0 License
+- [jQuery](https://github.com/jquery/jquery), MIT License
