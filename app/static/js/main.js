@@ -1259,11 +1259,46 @@ window.onload = async function () {
         const file = Array.from(clipboard.files).find(f => f.type.startsWith('image/') || f.type === 'application/pdf');
         if (!file) return;
         e.preventDefault();
-        if ($('input[name=print_type]:checked').val() !== 'image') {
-            $('#printTypeImage').prop('checked', true).trigger('change');
-        }
-        imageDropZone.addFile(file);
+        useImageFile(file);
     });
+}
+
+// Make a file the image of the label, e.g. one pasted or shared
+function useImageFile(file) {
+    if ($('input[name=print_type]:checked').val() !== 'image') {
+        $('#printTypeImage').prop('checked', true).trigger('change');
+    }
+    imageDropZone.addFile(file);
+}
+
+// Content shared with the installed app from the share menu of a phone
+// (share_target in the manifest) arrives as ?shared=<token>: a file becomes
+// the image, a link a QR code, a text the label text
+async function receiveSharedContent() {
+    const params = new URLSearchParams(location.search);
+    const token = params.get('shared');
+    if (!token) return;
+    // Reloading the page must not fetch it again
+    params.delete('shared');
+    history.replaceState(null, '', location.pathname + (params.toString() ? '?' + params : ''));
+    const response = await fetch(url_for_shared + '?token=' + encodeURIComponent(token));
+    const shared = await response.json();
+    if (!response.ok) {
+        setStatus({ type: 'preview', status: 'error', message: shared.message });
+        return;
+    }
+    if (shared.data) {
+        const bytes = Uint8Array.from(atob(shared.data), c => c.charCodeAt(0));
+        useImageFile(new File([bytes], shared.name, { type: shared.type }));
+        return;
+    }
+    $('#label_text').val(shared.url || shared.text).trigger('input');
+    if (shared.url) {
+        $('#barcode_type').val('QR');
+        $('#printTypeQrCode').prop('checked', true).trigger('change');
+    } else {
+        $('#printTypeText').prop('checked', true).trigger('change');
+    }
 }
 
 function init2() {
@@ -1296,6 +1331,8 @@ function init2() {
 
     // Trigger initial preview
     preview();
+
+    receiveSharedContent();
 };
 
 // Simple hash function to generate a hash from a string

@@ -133,6 +133,11 @@ def test_label_designer_can_be_installed_as_an_app():
         assert icon['sizes'] == f'{image.width}x{image.height}'
         widths.setdefault(icon['purpose'], set()).add(image.width)
     assert widths == {'any': {192, 512}, 'maskable': {512}}
+    # Android offers the installed app in its share menu
+    share = manifest['share_target']
+    assert urljoin(manifest_url, share['action']) == '/labeldesigner/share'
+    assert share['method'] == 'POST' and share['enctype'] == 'multipart/form-data'
+    assert share['params']['files'][0]['name'] == 'file'
     # iOS shows transparent parts of the icon as black
     apple_icon = re.search(r'<link rel="apple-touch-icon" href="([^"]+)"', html).group(1)
     with client.get(apple_icon) as response:

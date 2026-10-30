@@ -3,9 +3,13 @@ import re
 import hmac
 import math
 import uuid
+import time
 import base64
+import secrets
 import logging
 import barcode
+import threading
+from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
 from urllib.parse import urlparse
@@ -19,7 +23,7 @@ from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
 from .label_names import label_name, label_printers, label_size_problem
-from flask import Request, current_app, json, jsonify, render_template, request, make_response
+from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
 from app.utils import (
@@ -72,6 +76,10 @@ def reject_cross_origin_requests():
     (curl, scripts, webhooks) are not affected."""
     if request.method in ('GET', 'HEAD', 'OPTIONS'):
         return None
+    # Android sends what is shared with the installed app from its own share
+    # menu, possibly with "Origin: null". It is only kept for the page.
+    if request.endpoint == 'labeldesigner.share':
+        return None
     origin = request.headers.get('Origin')
     if not origin or request.headers.get('X-Requested-With'):
         return None
@@ -93,6 +101,60 @@ def open_image(file: FileStorage | BinaryIO, filename: str, dpi: int) -> Image.I
     if ext and ext not in {ex for ex, f in Image.registered_extensions().items() if f in Image.OPEN}:
         raise ValueError("Unsupported file type")
     return imgfile_to_image(file)
+
+
+# What is shared with the installed app from the share menu of a phone
+# (share_target in the manifest), kept until the label designer fetches it.
+# The page fetches it right away, the limits only matter if it never does.
+SHARE_MAX_AGE = 600
+SHARE_MAX_ITEMS = 5
+_shared: OrderedDict[str, tuple[float, dict]] = OrderedDict()
+_shared_lock = threading.Lock()
+_URL = re.compile(r'https?://\S+')
+
+
+@bp.route('/share', methods=['POST'])
+def share():
+    """Receive a file, link or text from the share menu and open the label
+    designer with it: a file becomes the image, a link a QR code, a text the
+    label text."""
+    item = {}
+    file = request.files.get('file')
+    if file and file.filename:
+        data = file.read()
+        if data:
+            item = {'name': file.filename, 'type': file.mimetype or 'application/octet-stream',
+                    'data': base64.b64encode(data).decode('ascii')}
+    if not item:
+        # Android puts a shared link into the text, often after a title
+        text = request.form.get('text', '').strip()
+        url = request.form.get('url', '').strip() or (text if _URL.fullmatch(text) else '')
+        if url:
+            item = {'url': url}
+        elif text:
+            item = {'text': text[:MAX_TEXT_LENGTH]}
+    if not item:
+        return redirect(url_for('.index'), code=303)
+    token = secrets.token_urlsafe(16)
+    now = time.monotonic()
+    with _shared_lock:
+        for key in [key for key, (stored, _) in _shared.items() if now - stored > SHARE_MAX_AGE]:
+            del _shared[key]
+        _shared[token] = (now, item)
+        while len(_shared) > SHARE_MAX_ITEMS:
+            _shared.popitem(last=False)
+    return redirect(url_for('.index', shared=token), code=303)
+
+
+@bp.route('/share', methods=['GET'])
+def shared():
+    """Hand what was shared to the label designer, once."""
+    token = request.args.get('token', '')
+    with _shared_lock:
+        stored = _shared.pop(token, None)
+    if stored is None or time.monotonic() - stored[0] > SHARE_MAX_AGE:
+        return make_response(jsonify({'message': 'The shared content is no longer available, share it again.'}), 404)
+    return jsonify(stored[1])
 
 
 @bp.route('/')
