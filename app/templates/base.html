@@ -66,8 +66,10 @@
     <nav class="navbar navbar-expand-lg bg-dark" data-bs-theme="dark" id="mainNavbar">
         <div class="container">
             <div class="d-flex flex-column me-3">
-                <a class="navbar-brand{% if build.commit or build.date %} py-0{% endif %}" href="#">Label Designer</a>
-                {% if build.commit %}<a class="text-decoration-none" id="buildInfo" style="font-size: 0.7rem; color: var(--bs-navbar-color);" href="https://github.com/DL6ER/brother_ql_web/commit/{{ build.commit }}" target="_blank"
+                <a class="navbar-brand{% if build.release or build.commit or build.date %} py-0{% endif %}" href="#">Label Designer</a>
+                {% if build.release %}<a class="text-decoration-none" id="buildInfo" style="font-size: 0.7rem; color: var(--bs-navbar-color);" href="https://github.com/DL6ER/brother_ql_web/releases/tag/{{ build.release }}" target="_blank"
+                    title="Release {{ build.release }}{% if build.commit %}, commit {{ build.commit }}{% endif %}{% if build.date %}, built {{ build.date }}{% endif %}">{{ build.release }}{% if build.date %}, {{ build.date }}{% endif %}</a>
+                {%- elif build.commit %}<a class="text-decoration-none" id="buildInfo" style="font-size: 0.7rem; color: var(--bs-navbar-color);" href="https://github.com/DL6ER/brother_ql_web/commit/{{ build.commit }}" target="_blank"
                     title="Commit {{ build.commit }}{% if build.date %}, built {{ build.date }}{% endif %}">{{ build.commit[:7] }}{% if build.date %}, {{ build.date }}{% endif %}</a>
                 {%- elif build.date %}<span id="buildInfo" style="font-size: 0.7rem; color: var(--bs-navbar-color);" title="Build time">{{ build.date }}</span>{% endif %}
             </div>

@@ -61,6 +61,7 @@ def test_invalid_environment_values(monkeypatch, key, value):
 
 
 def test_navbar_shows_commit_and_build_time(monkeypatch):
+    monkeypatch.delenv('RELEASE', raising=False)
     monkeypatch.setenv('GIT_COMMIT', '1c0ea1aba5f663c8534b3d44cad4e0ed2af47397')
     monkeypatch.setenv('BUILD_DATE', '2026-10-29T02:37:05Z')
     html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
@@ -70,15 +71,38 @@ def test_navbar_shows_commit_and_build_time(monkeypatch):
 
 def test_build_info_falls_back_to_the_checkout(monkeypatch):
     from app import build_info
+    monkeypatch.delenv('RELEASE', raising=False)
     monkeypatch.setenv('GIT_COMMIT', '')
     monkeypatch.setenv('BUILD_DATE', '')
     monkeypatch.setattr(build_info, '_checkout_commit', lambda: 'ca2bac4')
-    assert build_info.get_build_info() == {'commit': 'ca2bac4', 'date': ''}
+    assert build_info.get_build_info() == {'release': '', 'commit': 'ca2bac4', 'date': ''}
+
+
+def test_navbar_shows_the_release_instead_of_the_commit(monkeypatch):
+    monkeypatch.setenv('RELEASE', 'v1.0')
+    monkeypatch.setenv('GIT_COMMIT', '55e8900424aa9314eb99aa8343cbd35de78b7ca2')
+    monkeypatch.setenv('BUILD_DATE', '2026-10-30T15:40:32Z')
+    html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
+    assert 'href="https://github.com/DL6ER/brother_ql_web/releases/tag/v1.0"' in html
+    assert 'title="Release v1.0, commit 55e8900424aa9314eb99aa8343cbd35de78b7ca2, built 2026-10-30 15:40 UTC"' in html
+    assert '>v1.0, 2026-10-30 15:40 UTC</a>' in html
+    assert '/commit/' not in html
+
+
+@pytest.mark.parametrize('release', ['latest', '1.0', 'v1.0;x', 'v1'])
+def test_navbar_ignores_an_invalid_release(monkeypatch, release):
+    monkeypatch.setenv('RELEASE', release)
+    monkeypatch.setenv('GIT_COMMIT', '1c0ea1aba5f663c8534b3d44cad4e0ed2af47397')
+    monkeypatch.setenv('BUILD_DATE', '')
+    html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
+    assert '>1c0ea1a</a>' in html
+    assert '/releases/tag/' not in html
 
 
 @pytest.mark.parametrize('commit, date', [('not a commit', 'yesterday'), ('', '')])
 def test_navbar_without_build_info(monkeypatch, commit, date):
     from app import build_info
+    monkeypatch.delenv('RELEASE', raising=False)
     monkeypatch.setenv('GIT_COMMIT', commit)
     monkeypatch.setenv('BUILD_DATE', date)
     monkeypatch.setattr(build_info, '_checkout_commit', lambda: '')

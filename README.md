@@ -176,7 +176,7 @@ The image `ghcr.io/dl6er/brother-ql-web` is published with several tags, so you 
 - `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Switch back to `latest` once the next release is out.
 - Pre-releases (e.g. `1.1.0-rc.1`) get only their exact tag and never move `latest`, `1` or `1.0`.
 
-All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases). To switch tags, change the `image:` line in your `docker-compose.yml` and run `docker compose pull && docker compose up -d`. The navbar of the label designer shows the commit and build time of the running image.
+All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases). To switch tags, change the `image:` line in your `docker-compose.yml` and run `docker compose pull && docker compose up -d`. The navbar of the label designer shows the release (e.g. `v1.0`) or, for `dev`, the commit of the running image, together with its build time.
 
 To build the image locally:
 
@@ -186,7 +186,7 @@ cd brother_ql_web
 docker compose build
 ```
 
-The navbar shows the commit and build time of the image, so you can see which version is running (please add it when you report an issue). Images built locally only show them when you pass them in:
+The navbar shows the release or commit and the build time of the image, so you can see which version is running (please add it when you report an issue). Images built locally only show them when you pass them in:
 
 ```bash
 docker compose build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
