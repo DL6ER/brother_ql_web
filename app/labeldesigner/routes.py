@@ -391,7 +391,7 @@ def repo_preview():
 
     try:
         label = create_label_from_request(data)
-        im = label.generate(rotate=True)
+        im = label.generate()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'message': str(e)}), 400)
@@ -486,7 +486,7 @@ def preview_from_image():
         values = request.values.to_dict(flat=True)
         files = request.files.to_dict(flat=True)
         label = create_label_from_request(values, files)
-        im = label.generate(rotate=True)
+        im = label.generate()
     except HTTPException:
         # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
         raise

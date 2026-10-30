@@ -1649,3 +1649,19 @@ def test_webhook_turns_images_on_die_cut_labels(tmp_path, monkeypatch):
     assert client.post('/labeldesigner/api/webhook/print', json=payload).get_json() == {'success': True, 'count': 2}
     assert [(label._width, label._height, label.label_orientation) for label in labels] == [
         (1200, 1822, LabelOrientation.ROTATED), (1822, 1200, LabelOrientation.STANDARD)]
+
+
+@pytest.mark.parametrize('size, orientation, expected', [
+    # Die-cut labels in standard orientation were shown turned by 90 degrees
+    ('62x29', 'standard', (696, 271)),
+    ('62x29', 'rotated', (271, 696)),
+    ('103x164', 'standard', (1822, 1200)),
+])
+def test_preview_shows_the_label_upright(tmp_path, size, orientation, expected):
+    # The preview shows the label the way it is read, as it is printed
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'label_size': size, 'orientation': orientation})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert Image.open(io.BytesIO(response.data)).size == expected

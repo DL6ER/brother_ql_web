@@ -669,9 +669,10 @@ function saveAllSettingsToLocalStorage() {
             data[key] = $(this).val();
         }
     });
-    // Save fontSettingsPerLine if available
-    if (window.fontSettingsPerLine) {
-        data['fontSettingsPerLine'] = JSON.stringify(window.fontSettingsPerLine);
+    // Save the font settings of each line. fontSettingsPerLine is declared
+    // with let, so it is not available as window.fontSettingsPerLine.
+    if (fontSettingsPerLine) {
+        data['fontSettingsPerLine'] = JSON.stringify(fontSettingsPerLine);
     }
     // Store image metadata and persist base64 into IndexedDB (avoid large localStorage entries)
     try {
@@ -762,13 +763,20 @@ function restoreAllSettingsFromLocalStorage() {
         }
     });
 
-    // Restore fontSettingsPerLine if available
-    if (data['fontSettingsPerLine'] && window.fontSettingsPerLine) {
+    // Restore the font settings of each line and show those of the first
+    // line in the font controls, otherwise the next preview would copy the
+    // controls into the first line
+    if (data['fontSettingsPerLine']) {
         try {
-            window.fontSettingsPerLine = JSON.parse(data['fontSettingsPerLine']);
-            console.log(window.fontSettingsPerLine);
-            $('#lineSelect').val(0);
-            preview();
+            const restored = JSON.parse(data['fontSettingsPerLine']);
+            if (Array.isArray(restored) && restored.length > 0) {
+                fontSettingsPerLine = restored;
+                const lineSelect = $('#lineSelect').empty();
+                restored.forEach((line, index) => {
+                    lineSelect.append($('<option></option>').attr('value', index).text(line.text || '(line ' + (index + 1) + ' is empty)'));
+                });
+                lineSelect.val(0).trigger('change');
+            }
         } catch { }
     }
 
@@ -899,8 +907,6 @@ function repoSaveCurrent() {
         if (!payload.hasOwnProperty('text')) {
             if (payload.hasOwnProperty('fontSettingsPerLine')) {
                 payload['text'] = payload['fontSettingsPerLine'];
-            } else if (window.fontSettingsPerLine) {
-                payload['text'] = window.fontSettingsPerLine;
             } else if (typeof fontSettingsPerLine !== 'undefined') {
                 payload['text'] = fontSettingsPerLine;
             } else {
@@ -1095,7 +1101,7 @@ function resetSettings() {
     if (confirm('Really reset all label settings to default?')) {
         localStorage.removeItem(LS_KEY);
         // Reset font settings
-        window.fontSettingsPerLine = {};
+        fontSettingsPerLine = [];
         set_all_inputs_default(true);
         saveAllSettingsToLocalStorage();
         location.reload();

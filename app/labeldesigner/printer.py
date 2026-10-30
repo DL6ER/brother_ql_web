@@ -225,7 +225,7 @@ class PrinterQueue:
                 rotate = 0 if label.label_orientation == LabelOrientation.STANDARD else 90
             else:
                 rotate = 'auto'
-            img = label.generate(rotate=False)
+            img = label.generate()
             if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
