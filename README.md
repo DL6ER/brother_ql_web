@@ -18,7 +18,7 @@ USB printers are detected automatically, network printers with some limits. The 
 
 ## Features
 
-- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels
+- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels, optionally shrunk to fit the label
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing

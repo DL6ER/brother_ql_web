@@ -87,6 +87,7 @@ class SimpleLabel:
         code_text: str = '',
         template_env_vars: frozenset = frozenset(),
         warnings: list[str] | None = None,
+        shrink_text: bool = False,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed."""
@@ -132,6 +133,10 @@ class SimpleLabel:
         self._red_support = red_support
         self._code_text = code_text
         self._template_env_vars = template_env_vars
+        # Text that does not fit is drawn smaller by this factor instead of
+        # being cut off
+        self._shrink_text = shrink_text
+        self._text_scale = 1.0
 
     @property
     def label_content(self):
@@ -365,8 +370,12 @@ class SimpleLabel:
             img_width, img_height = (0, 0)
 
         if self.want_text(img):
+            self._text_scale = 1.0
             bboxes = self._draw_text(None, [])
             textsize = self._compute_bbox(bboxes)
+            if self._shrink_text:
+                max_width, max_height = self._text_space(width, height, img_width, img_height)
+                bboxes, textsize = self._shrink_text_to_fit(bboxes, textsize, max_width, max_height)
         else:
             bboxes = []
             textsize = (0, 0, 0, 0)
@@ -528,10 +537,10 @@ class SimpleLabel:
         # Iterate over lines of text
         for i, line in enumerate(self.text):
             # Calculate spacing
-            spacing = int(int(line['size'])*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
+            spacing = int(self._line_size(line)*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
 
             # Get font
-            font = self._get_font(line['path'], line['size'])
+            font = self._get_font(line['path'], self._line_size(line))
 
             # Determine anchors
             anchor = None
@@ -574,7 +583,7 @@ class SimpleLabel:
                 elif anchor == "rt":
                     max_bbox_x = text_offset[0] + max(bbox[0][2] for bbox in bboxes)
                     min_bbox_x = max_bbox_x - (bboxes[i][0][2] - bboxes[i][0][0])
-                shift = 0.1 * int(line['size'])
+                shift = 0.1 * self._line_size(line)
                 y_min = bboxes[i][0][1] + text_offset[1] - shift
                 y_max = bboxes[i][0][3] + text_offset[1] - shift
                 draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=color)
@@ -618,7 +627,7 @@ class SimpleLabel:
 
                 # Draw checkbox if needed
                 if checkbox:
-                    checkbox_box_dimensions = 8 * int(line['size']) // 10
+                    checkbox_box_dimensions = 8 * self._line_size(line) // 10
                     bbox = draw.textbbox((x - 1.2 * checkbox_box_dimensions, y), line['text'], font=font, align=align, anchor=anchor)
                     box_dimensions = bbox[0], y, bbox[0] + checkbox_box_dimensions, y + checkbox_box_dimensions
                     draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, checkbox_box_dimensions//10), fill=(255,255,255))
@@ -628,7 +637,7 @@ class SimpleLabel:
                 # Shift text around if requested
                 if "shift" in line:
                     def get_shift_amount():
-                        return 0.03 * random.randint(5, 10) * int(line['size'])
+                        return 0.03 * random.randint(5, 10) * self._line_size(line)
                     for x_shift in [-get_shift_amount(), get_shift_amount()]:
                         for y_shift in [-get_shift_amount(), get_shift_amount()]:
                             new_random_text = ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=len(line['text'])))
@@ -637,6 +646,42 @@ class SimpleLabel:
         # Return total bbox
         # each in form (x0, y0, x1, y1)
         return bboxes
+
+    def _line_size(self, line) -> int:
+        """Font size of a line, made smaller when the text is shrunk to fit."""
+        return max(1, int(int(line['size']) * self._text_scale))
+
+    def _text_space(self, width, height, img_width, img_height):
+        """Width and height the text may take within the margins, beside or
+        below an image or code. None where an endless label grows with the
+        text."""
+        margin_left, margin_right, margin_top, margin_bottom = self._label_margin
+        endless = self._label_type == LabelType.ENDLESS_LABEL
+        if self._label_orientation == LabelOrientation.STANDARD:
+            max_width = width - margin_left - margin_right
+            max_height = None if endless else height - img_height - margin_top - margin_bottom
+        else:
+            max_width = None if endless else width - img_width - margin_left - margin_right
+            max_height = height - margin_top - margin_bottom
+        return max_width, max_height
+
+    def _shrink_text_to_fit(self, bboxes, textsize, max_width, max_height):
+        """Make all lines smaller by the same factor until the text fits into
+        max_width x max_height. Font sizes are whole numbers and text does not
+        scale exactly, so it may take a few steps."""
+        for _ in range(10):
+            factor = 1.0
+            if max_width is not None and textsize[2] > max_width:
+                factor = min(factor, max(max_width, 1) / textsize[2])
+            if max_height is not None and textsize[3] > max_height:
+                factor = min(factor, max(max_height, 1) / textsize[3])
+            if factor >= 1.0 or all(self._line_size(line) == 1 for line in self.text):
+                break
+            # At least a few percent per step, otherwise rounding can stall it
+            self._text_scale *= min(factor, 0.98)
+            bboxes = self._draw_text(None, [])
+            textsize = self._compute_bbox(bboxes)
+        return bboxes, textsize
 
     def _compute_bbox(self, bboxes):
         # Edge case: No text
