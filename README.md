@@ -64,7 +64,7 @@ Additional printer support comes from [`matmair/brother_ql-inventree`](https://g
   - **QL-1100**
   - **QL-1110NWB**
   - **QL-1115NWB**
-- High-resolution (600dpi) printing support
+- 600 dpi printing
 - Support individual fonts/sizes and spacing for each line of text
 - Dynamic content replacement using templates (e.g., `{{datetime}}`, `{{counter}}`)
 - Import and export of labels in an easily editable format (JSON)
