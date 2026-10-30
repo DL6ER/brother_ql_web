@@ -28,7 +28,7 @@ from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
-    pdffile_to_image, imgfile_to_image, image_to_png_bytes
+    pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
 )
 
 LINE_SPACINGS = (100, 150, 200, 250, 300)
@@ -90,17 +90,33 @@ def reject_cross_origin_requests():
 
 
 def open_image(file: FileStorage | BinaryIO, filename: str, dpi: int) -> Image.Image:
+    """Open an uploaded or stored image, of a PDF the first page."""
+    return open_images(file, filename, dpi, first_only=True)[0][0]
+
+
+def open_images(file: FileStorage | BinaryIO, filename: str, dpi: int, pdf_pages: str = '',
+                first_only: bool = False, copies: int = 1) -> tuple[list[Image.Image], int | None]:
     """Open an uploaded or stored image. PDFs are recognized by extension or
-    content and rendered with the given resolution. Files without extension
-    are left to Pillow to identify."""
+    content and rendered with the given resolution, one image for each page
+    pdf_pages selects (only the first of them with first_only). The second
+    value is the page count of a PDF, None for other files. Files without
+    extension are left to Pillow to identify."""
     ext = os.path.splitext(filename or '')[1].lower()
     stream = file.stream if isinstance(file, FileStorage) else file
     stream.seek(0)
     if ext == '.pdf' or stream.read(5) == b'%PDF-':
-        return pdffile_to_image(file, dpi)
+        page_count = pdf_page_count(file)
+        pages = selected_pdf_pages(pdf_pages, page_count)
+        if first_only:
+            pages = pages[:1]
+        elif len(pages) * copies > current_app.config['PRINT_MAX_COUNT']:
+            # Checked before any page is rendered
+            raise PageSelectionError(f"A print job must not have more than {current_app.config['PRINT_MAX_COUNT']} labels, "
+                                     f"{len(pages)} pages and {copies} copies would be {len(pages) * copies}")
+        return [pdffile_to_image(file, dpi, page) for page in pages], page_count
     if ext and ext not in {ex for ex, f in Image.registered_extensions().items() if f in Image.OPEN}:
         raise ValueError("Unsupported file type")
-    return imgfile_to_image(file)
+    return [imgfile_to_image(file)], None
 
 
 # What is shared with the installed app from the share menu of a phone
@@ -512,10 +528,12 @@ def repo_print():
 
     status = ""
     try:
-        image = load_label_image(data, {})
-        for i in range(print_count):
+        # Of a PDF each selected page is a label of its own
+        images, _ = load_label_images(data, {}, copies=print_count)
+        labels = [image for _ in range(print_count) for image in images]
+        for i, image in enumerate(labels):
             label = create_label_from_request(data, {}, i, image)
-            cut = not cut_once or (cut_once and i == print_count - 1)
+            cut = not cut_once or (cut_once and i == len(labels) - 1)
             printer.add_label_to_queue(label, cut, high_res)
         status = printer.process_queue()
     except Exception as e:
@@ -550,7 +568,9 @@ def preview_from_image():
     try:
         values = request.values.to_dict(flat=True)
         files = request.files.to_dict(flat=True)
-        label = create_label_from_request(values, files)
+        # Of a PDF the first selected page
+        images, page_count = load_label_images(values, files, first_only=True)
+        label = create_label_from_request(values, files, image=images[0])
         im = label.generate()
     except HTTPException:
         # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
@@ -572,6 +592,9 @@ def preview_from_image():
     # e.g. text that does not fit on the label, shown by the label designer
     if label.warnings:
         response.headers.set('X-Label-Warning', ' '.join(label.warnings))
+    # The label designer offers to choose pages of a PDF with several
+    if page_count:
+        response.headers.set('X-PDF-Pages', str(page_count))
     return response
 
 
@@ -613,14 +636,16 @@ def print_label():
     try:
         values = request.values.to_dict(flat=True)
         files = request.files.to_dict(flat=True)
-        # Decode the image once, all labels of the job share it
-        image = load_label_image(values, files)
-        for i in range(print_count):
+        # Decode the image once, all labels of the job share it. Of a PDF
+        # each selected page is a label of its own, the copies are collated.
+        images, _ = load_label_images(values, files, copies=print_count)
+        labels = [image for _ in range(print_count) for image in images]
+        for i, image in enumerate(labels):
             label = create_label_from_request(values, files, i, image)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
-            cut = not cut_once or (cut_once and i == print_count - 1)
+            cut = not cut_once or (cut_once and i == len(labels) - 1)
             printer.add_label_to_queue(label, cut, high_res)
         status = printer.process_queue()
     except Exception as e:
@@ -828,15 +853,29 @@ def _font_name(font: str) -> str:
 
 def load_label_image(d: dict, files: dict) -> Image.Image | None:
     """Return the uploaded image, or the image stored with a repository label,
-    converted to the image mode of the request."""
+    converted to the image mode of the request. Of a PDF the first selected
+    page."""
+    return load_label_images(d, files, first_only=True)[0][0]
+
+
+def load_label_images(d: dict, files: dict, first_only: bool = False,
+                      copies: int = 1) -> tuple[list[Image.Image | None], int | None]:
+    """The images of a label like load_label_image(), of a PDF one for each
+    page pdf_pages selects, e.g. "1-3, 5" or "all", each printed as a label
+    of its own. The second value is the page count of a PDF, None
+    otherwise. Labels without image get [None]."""
     image_mode = d.get('image_mode', 'grayscale')
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
     dpi = HIGH_RES_DPI if int(d.get('high_res', 0)) != 0 else DEFAULT_DPI
+    pdf_pages = str(d.get('pdf_pages') or '')
+    # Pages only make several labels of an image label
+    first_only = first_only or d.get('print_type', 'text') != 'image'
 
     uploaded = files.get('image', None)
     if uploaded is not None:
-        return _convert_image(open_image(uploaded, uploaded.filename, dpi), image_mode, bw_threshold)
+        images, page_count = open_images(uploaded, uploaded.filename, dpi, pdf_pages, first_only, copies)
+        return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
 
     # If no uploaded FileStorage was provided but the data references an
     # image filename (stored in repository), attempt to load it from the
@@ -847,10 +886,13 @@ def load_label_image(d: dict, files: dict) -> Image.Image | None:
             image_path = os.path.join(_get_repo_dir(), secure_filename(image_ref))
             if os.path.exists(image_path):
                 with open(image_path, 'rb') as fh:
-                    return _convert_image(open_image(fh, image_path, dpi), image_mode, bw_threshold)
+                    images, page_count = open_images(fh, image_path, dpi, pdf_pages, first_only, copies)
+                    return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
+        except PageSelectionError:
+            raise
         except Exception:
             current_app.logger.exception('Failed to load repository image')
-    return None
+    return [None], None
 
 
 def _placed_image_size(image: Image.Image, crop: bool, rotation: int) -> tuple[float, float]:

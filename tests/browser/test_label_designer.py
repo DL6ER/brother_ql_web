@@ -1,5 +1,6 @@
 """The label designer in a browser. Most tests cover a bug that the tests of
 the API could not find, because it was in the page itself."""
+import base64
 import io
 import json
 import os
@@ -302,3 +303,39 @@ def test_shared_link_becomes_a_qr_code(page, server):
     assert page.is_checked('#printTypeQrCode')
     assert page.input_value('#barcode_type') == 'QR'
     wait_for_status(page, 'Preview updated')
+
+
+def add_file(page, data: bytes, name: str, mime: str):
+    page.click('label[for=printTypeImage]')
+    page.evaluate("""([b64, name, mime]) => {
+        const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+        imageDropZone.addFile(new File([bytes], name, { type: mime }));
+    }""", [base64.b64encode(data).decode('ascii'), name, mime])
+
+
+def pdf(*sizes) -> bytes:
+    pages = [Image.new('L', size, 'black') for size in sizes]
+    out = io.BytesIO()
+    pages[0].save(out, format='PDF', save_all=True, append_images=pages[1:], resolution=100)
+    return out.getvalue()
+
+
+def test_pages_of_a_pdf_can_be_chosen(page):
+    add_file(page, pdf((300, 200), (200, 300), (400, 100)), 'pages.pdf', 'application/pdf')
+    page.wait_for_selector('#pdfPagesGroup', state='visible')
+    assert page.inner_text('#pdfPageCount') == '3'
+    height = "() => document.getElementById('previewImg').naturalHeight"
+    first = page.evaluate(height)
+    page.fill('#pdf_pages', '2')
+    page.dispatch_event('#pdf_pages', 'change')
+    # Page 2 is portrait, fitted to the label width it is higher
+    page.wait_for_function(f"() => document.getElementById('previewImg').naturalHeight > {first}")
+    page.fill('#pdf_pages', '7')
+    page.dispatch_event('#pdf_pages', 'change')
+    wait_for_status(page, 'The PDF has 3 pages, there is no page 7')
+
+
+def test_page_choice_is_hidden_for_a_single_page(page):
+    add_file(page, pdf((300, 200)), 'one.pdf', 'application/pdf')
+    wait_for_status(page, 'Preview updated')
+    assert not page.is_visible('#pdfPagesGroup')

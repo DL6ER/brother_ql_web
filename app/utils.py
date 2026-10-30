@@ -44,18 +44,55 @@ def imgfile_to_image(file: FileStorage | BinaryIO) -> Image.Image:
     return Image.open(BytesIO(read_file(file)))
 
 
-def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int) -> Image.Image:
+class PageSelectionError(ValueError):
+    """A selection of PDF pages that cannot be printed."""
+
+
+def pdf_page_count(file: FileStorage | BinaryIO) -> int:
+    return int(pdfinfo_from_bytes(read_file(file))['Pages'])
+
+
+def selected_pdf_pages(selection: str, page_count: int) -> list[int]:
+    """The pages a selection like "1-3, 5", "4-" or "all" names, in its
+    order. Without a selection the first page, as before pages could be
+    chosen."""
+    selection = (selection or '').strip().lower()
+    if not selection:
+        return [1]
+    if selection == 'all':
+        return list(range(1, page_count + 1))
+    pages = []
+    for part in (part.strip() for part in selection.split(',')):
+        if not part:
+            continue
+        match = re.fullmatch(r'(\d+)\s*(-\s*(\d*))?', part)
+        if not match or (match.group(3) and int(match.group(3)) < int(match.group(1))):
+            raise PageSelectionError(f'"{part}" is not a page selection, give pages like 1-3, 5 or all')
+        first = int(match.group(1))
+        last = first if match.group(2) is None else int(match.group(3) or page_count)
+        if first < 1 or last > page_count:
+            pages_of_pdf = f'{page_count} page' + ('s' if page_count != 1 else '')
+            raise PageSelectionError(f'The PDF has {pages_of_pdf}, there is no page {last if first >= 1 else first}')
+        pages.extend(range(first, last + 1))
+    if not pages:
+        raise PageSelectionError(f'"{selection}" is not a page selection, give pages like 1-3, 5 or all')
+    return pages
+
+
+def pdffile_to_image(file: FileStorage | BinaryIO, dpi: int, page: int = 1) -> Image.Image:
     data = read_file(file)
     # Check the page size before rendering. Pillow's pixel limit only applies
     # after pdftoppm rendered the whole page into memory, and a tiny PDF can
     # declare a huge page.
-    match = re.match(r'([\d.]+) x ([\d.]+)', str(pdfinfo_from_bytes(data).get('Page size', '')))
+    info = pdfinfo_from_bytes(data, first_page=page, last_page=page)
+    size = next((value for key, value in info.items() if re.fullmatch(r'Page\s+\d+ size', key)), info.get('Page size', ''))
+    match = re.match(r'([\d.]+) x ([\d.]+)', str(size))
     if not match:
         raise ValueError("Cannot read the page size of the PDF")
     width_pt, height_pt = (float(value) for value in match.groups())
     check_image_size(width_pt / 72 * dpi, height_pt / 72 * dpi)
-    # Only the first page is used, rendering all pages could exhaust the memory
-    return convert_from_bytes(data, dpi=dpi, first_page=1, last_page=1)[0]
+    # One page at a time, rendering all pages could exhaust the memory
+    return convert_from_bytes(data, dpi=dpi, first_page=page, last_page=page)[0]
 
 
 def image_to_png_bytes(im: Image.Image) -> bytes:

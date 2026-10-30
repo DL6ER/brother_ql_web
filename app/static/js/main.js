@@ -244,6 +244,7 @@ function formData(cut_once = false) {
         border_distance_y: parseInt($('#border_distance_y').val(), 10) || 0,
         high_res: $('#high_res').is(':checked') ? 1 : 0,
         shrink_text: $('#shrink_text').is(':checked') ? 1 : 0,
+        pdf_pages: $('#pdf_pages').val() || '',
         image_scaling_factor: parseInt($('#image_scaling_factor').val(), 10) || 0,
         image_rotation: parseInt($('#image_rotation').val(), 10) || 0,
         sync_font_settings: $('#sync_font_settings').is(':checked') ? 1 : 0
@@ -472,6 +473,9 @@ new Dropzone("#image-dropzone", {
                 this.removeFile(this.files[0]);
             }
         });
+        this.on("removedfile", function () {
+            if (this.files.length === 0) $('#pdfPagesGroup').prop('hidden', true);
+        });
     },
 
     sending: function (file, xhr, data) {
@@ -505,6 +509,10 @@ new Dropzone("#image-dropzone", {
         setStatus({ type: dropZoneMode, status: status, warning: warning });
         if (dropZoneMode == 'preview') {
             updatePreview(response);
+            // Pages can be chosen of a PDF with several
+            const pages = parseInt(file.xhr ? file.xhr.getResponseHeader('X-PDF-Pages') : '', 10) || 0;
+            $('#pdfPageCount').text(pages);
+            $('#pdfPagesGroup').prop('hidden', pages < 2);
         }
         file.status = Dropzone.QUEUED;
     },
