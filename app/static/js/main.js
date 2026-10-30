@@ -152,6 +152,18 @@ function setFontSettingsPerLine() {
     }
 }
 
+// Select a font in the font dropdown. A font that is not installed here, e.g.
+// in a label saved on another installation, gets an entry of its own, so the
+// line keeps it and every preview names the font used instead.
+function selectFont(font) {
+    const select = document.getElementById('font');
+    if (!Array.from(select.options).some(option => option.value === font)) {
+        const [family, style] = font.split(',');
+        $('<option>').val(font).text(`${family} (${style || ''}), not installed`).prependTo(select);
+    }
+    select.value = font;
+}
+
 // Update font controls when a line is selected
 $(document).ready(function () {
     $('#lineSelect').on('change', function () {
@@ -159,7 +171,7 @@ $(document).ready(function () {
         if (isNaN(idx) || !fontSettingsPerLine || !fontSettingsPerLine[idx]) return;
         var fs = fontSettingsPerLine[idx];
         // Set font
-        $('#font').val(fs.font || DEFAULT_FONT);
+        selectFont(fs.font || DEFAULT_FONT);
         // Set font size
         $('#font_size').val(fs.size);
         // Set alignment

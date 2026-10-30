@@ -402,3 +402,20 @@ def test_repository_print_uses_requested_resolution(tmp_path, monkeypatch):
     assert resp.get_json() == {'success': True}
     # The labels are generated with the 600 dpi width they are printed with
     assert queued and all(entry == (1392, True) for entry in queued)
+
+
+def test_repository_label_with_a_font_that_is_not_installed(tmp_path):
+    # e.g. a label saved on an installation with other fonts
+    client = make_client(tmp_path, empty_repo=True)
+    with open(os.path.join(os.path.dirname(__file__), '../labels/QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    for line in label['text']:
+        line['font'] = 'Not Installed,Regular'
+    label['name'] = 'other_fonts.json'
+    assert client.post('/labeldesigner/api/repository/save', json=label).status_code == 200
+    response = client.get('/labeldesigner/api/repository/preview?name=other_fonts.json')
+    assert response.status_code == 200
+    assert response.headers['X-Label-Warning'].startswith('The font Not Installed (Regular) is not installed')
+    response = client.post('/labeldesigner/api/repository/print', json={'name': 'other_fonts.json'})
+    assert response.status_code == 200
+    assert response.get_json()['success'] is True

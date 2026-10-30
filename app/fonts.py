@@ -4,6 +4,10 @@ from fontTools.ttLib import TTFont
 from collections import defaultdict
 
 
+class FontNotFound(LookupError):
+    """A font given as "<family>,<style>" that is not installed."""
+
+
 class Fonts:
     def __init__(self,
                  logger: logging.Logger,
@@ -116,7 +120,7 @@ class Fonts:
             raise LookupError(f'Font must be given as "<family>,<style>": {font}')
         family_name, style_name = font.split(",", 1)
         if family_name not in self.fonts:
-            raise LookupError(f"Unknown font family: {family_name}")
+            raise FontNotFound(f"Unknown font family: {family_name}")
         if style_name not in self.fonts[family_name]:
-            raise LookupError(f"Unknown font style: {style_name} for font {family_name}")
+            raise FontNotFound(f"Unknown font style: {style_name} for font {family_name}")
         return self.fonts[family_name][style_name]

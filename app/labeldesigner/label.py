@@ -86,8 +86,10 @@ class SimpleLabel:
         red_support: bool = False,
         code_text: str = '',
         template_env_vars: frozenset = frozenset(),
+        warnings: list[str] | None = None,
     ):
-        """Initialize a SimpleLabel object."""
+        """Initialize a SimpleLabel object. warnings are problems found
+        before, e.g. a font that is not installed."""
         # Input validation
         if width < 0 or height < 0:
             raise ValueError("Width and height must be non-negative.")
@@ -118,8 +120,9 @@ class SimpleLabel:
         self._image_crop = image_crop
         self._image_scaling_factor = image_scaling_factor
         self._image_rotation = image_rotation
-        # Problems found by generate(), e.g. text that does not fit
-        self.warnings = []
+        # Problems found before and by generate(), e.g. text that does not fit
+        self._given_warnings = list(warnings or [])
+        self.warnings = list(self._given_warnings)
         self._border_thickness = border_thickness
         self._border_roundness = border_roundness
         self._border_distance = border_distance
@@ -419,7 +422,7 @@ class SimpleLabel:
 
         # Content beyond the label is cut off, which is easy to miss in the
         # preview
-        self.warnings = []
+        self.warnings = list(self._given_warnings)
         if self.want_text(img) and bboxes:
             x, y = text_offset
             if x + textsize[0] < 0 or y + textsize[1] < 0 or x + textsize[2] > width or y + textsize[3] > height:
