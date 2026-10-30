@@ -1723,3 +1723,14 @@ def test_default_font_is_selected(tmp_path):
     family, style = client.application.extensions['fonts'].get_default_font()
     assert f'{family},{style}' in selected
     assert f'data-default="{family},{style}"' in html
+
+
+def test_text_line_without_font_uses_the_default_font(tmp_path):
+    # The label designer always sends a font, requests to the API need not
+    client = make_client(tmp_path)
+    data = {'text': json.dumps([{'text': 'Hello', 'size': '70'}])}
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    data = {'text': json.dumps([{'text': 'Hello', 'size': '70', 'font': 'DejaVu Sans'}])}
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Font must be given as "<family>,<style>": DejaVu Sans'
