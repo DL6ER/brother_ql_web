@@ -112,6 +112,8 @@ class Fonts:
         return bool(self.fonts)
 
     def get_path(self, font: str):
+        if ',' not in font:
+            raise LookupError(f'Font must be given as "<family>,<style>": {font}')
         family_name, style_name = font.split(",", 1)
         if family_name not in self.fonts:
             raise LookupError(f"Unknown font family: {family_name}")

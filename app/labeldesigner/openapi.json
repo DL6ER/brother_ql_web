@@ -1,0 +1,1362 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "brother_ql_web",
+    "version": "1",
+    "description": "Everything the label designer does is available through this API. The label designer itself sends the same requests.\n\nRequests that print, save or delete labels are refused when a browser sends them from another website. Scripts and tools like `curl` are not affected. With `TRUSTED_HOSTS` set, requests for other host names are refused.\n\nErrors are returned with status 400 (or 404, 413, 500) and a JSON object with `message`."
+  },
+  "paths": {
+    "/labeldesigner/api/preview": {
+      "post": {
+        "summary": "Generate the label image without printing",
+        "operationId": "preview",
+        "parameters": [
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` returns the image, `base64` the image as base64 text.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "base64"
+              ],
+              "default": "png"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Label"
+                  }
+                ]
+              },
+              "encoding": {
+                "text": {
+                  "contentType": "text/plain"
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Label"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The label as it is printed.",
+            "headers": {
+              "X-Label-Warning": {
+                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "description": "The PNG image as base64 (`return_format=base64`)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters, e.g. \"Font size is required\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request or the text is too large.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/print": {
+      "post": {
+        "summary": "Print a label",
+        "operationId": "print",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Label"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "printer": {
+                        "type": "string",
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                      },
+                      "print_count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1,
+                        "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "cut_once": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "1 cuts only after the last label."
+                      }
+                    }
+                  }
+                ]
+              },
+              "encoding": {
+                "text": {
+                  "contentType": "text/plain"
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/Label"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "printer": {
+                        "type": "string",
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                      },
+                      "print_count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1,
+                        "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "cut_once": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "1 cuts only after the last label."
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Printed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not printed, `message` says why, e.g. \"The printer reports: Replace media error\".",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/printer_status": {
+      "get": {
+        "summary": "Status of the printers",
+        "description": "With automatic detection (`PRINTER_PRINTER` not set), `printers` lists the detected printers and the simulator, the top-level fields describe the first one.",
+        "operationId": "printerStatus",
+        "responses": {
+          "200": {
+            "description": "The status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrinterStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/barcodes": {
+      "get": {
+        "summary": "Supported code types",
+        "operationId": "barcodes",
+        "responses": {
+          "200": {
+            "description": "The code types for `barcode_type`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "barcodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "examples": [
+                        [
+                          "QR",
+                          "CODE128",
+                          "EAN13"
+                        ]
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/list": {
+      "get": {
+        "summary": "List the saved labels",
+        "operationId": "repositoryList",
+        "responses": {
+          "200": {
+            "description": "The saved labels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavedLabelFile"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/save": {
+      "post": {
+        "summary": "Save a label",
+        "description": "Saves the label parameters under `name`. An image is sent as base64 in `image_data`.",
+        "operationId": "repositorySave",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavedLabel"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "File name of the saved label."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/load": {
+      "get": {
+        "summary": "Load a saved label",
+        "operationId": "repositoryLoad",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "File name of the saved label, e.g. `EAN-Label.json`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The saved label, its image as base64 in `image_data`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedLabel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/delete": {
+      "post": {
+        "summary": "Delete a saved label",
+        "operationId": "repositoryDelete",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "File name of the saved label, also accepted as `name` in a JSON body.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/preview": {
+      "get": {
+        "summary": "Generate the image of a saved label",
+        "operationId": "repositoryPreview",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "File name of the saved label, e.g. `EAN-Label.json`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` returns the image, `base64` the image as base64 text.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "base64"
+              ],
+              "default": "png"
+            }
+          },
+          {
+            "name": "printer",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Printer the label is generated for."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The label as it is printed.",
+            "headers": {
+              "X-Label-Warning": {
+                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "description": "The PNG image as base64 (`return_format=base64`)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Generate the image of a saved label",
+        "description": "Same as GET.",
+        "operationId": "repositoryPreviewPost",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": true,
+            "description": "File name of the saved label, e.g. `EAN-Label.json`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` returns the image, `base64` the image as base64 text.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "base64"
+              ],
+              "default": "png"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The label as it is printed.",
+            "headers": {
+              "X-Label-Warning": {
+                "description": "Set when text, a code or an image does not fit on the label and is cut off.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "description": "The PNG image as base64 (`return_format=base64`)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/repository/print": {
+      "post": {
+        "summary": "Print a saved label",
+        "operationId": "repositoryPrint",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "required": false,
+            "description": "File name of the saved label, also accepted as `name` in a JSON body or form.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "high_res": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "printer": {
+                    "type": "string",
+                    "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                  },
+                  "print_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                  },
+                  "cut_once": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 0,
+                    "description": "1 cuts only after the last label."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Printed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/webhook/print": {
+      "post": {
+        "summary": "Print images, for other services",
+        "description": "Prints one label per image, each image scaled to fit the label. On die-cut labels each image is turned to the orientation that shows it largest. The webhook is disabled unless `WEBHOOK_PASSWORD` is set. The password is sent as `Authorization: Bearer <password>`, as form field or as JSON field `password`, not in the URL.",
+        "operationId": "webhookPrint",
+        "security": [
+          {
+            "webhookPassword": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookOptions",
+                "properties": {
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/WebhookOptions"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "images": {
+                        "type": "array",
+                        "items": {
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "Image or PDF as base64."
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "data": {
+                                  "type": "string",
+                                  "description": "Image or PDF as base64."
+                                },
+                                "mime": {
+                                  "type": "string",
+                                  "examples": [
+                                    "image/png",
+                                    "application/pdf"
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Printed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "count": {
+                      "type": "integer",
+                      "description": "Number of labels."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong or missing password.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The webhook is disabled, `WEBHOOK_PASSWORD` is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/openapi.json": {
+      "get": {
+        "summary": "This description of the API",
+        "operationId": "openapi",
+        "responses": {
+          "200": {
+            "description": "OpenAPI description.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "webhookPassword": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The value of `WEBHOOK_PASSWORD`."
+      }
+    },
+    "schemas": {
+      "Result": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string",
+            "description": "Why it failed."
+          }
+        }
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "TextLine": {
+        "type": "object",
+        "description": "One line of text. Templates like `{{datetime:%d.%m.%Y}}`, `{{counter}}`, `{{uuid}}`, `{{short-uuid}}`, `{{env:<var>}}` and `{{random}}` are filled in when the label is generated.",
+        "required": [
+          "text",
+          "size"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10000
+          },
+          "font": {
+            "type": "string",
+            "description": "Font as `<family>,<style>`, e.g. `DejaVu Sans,Book`. Default: the configured default font."
+          },
+          "size": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Font size in dots (300 dpi), e.g. `70`."
+          },
+          "align": {
+            "type": "string",
+            "enum": [
+              "left",
+              "center",
+              "right"
+            ],
+            "default": "center"
+          },
+          "line_spacing": {
+            "type": "string",
+            "enum": [
+              "100",
+              "150",
+              "200",
+              "250",
+              "300"
+            ],
+            "default": "100",
+            "description": "Line spacing in percent."
+          },
+          "inverted": {
+            "type": "boolean",
+            "default": false,
+            "description": "White text on black."
+          },
+          "checkbox": {
+            "type": "boolean",
+            "default": false,
+            "description": "A checkbox in front of the line (to-do item)."
+          },
+          "color": {
+            "type": "string",
+            "enum": [
+              "black",
+              "red"
+            ],
+            "default": "black",
+            "description": "Red needs a black/red/white roll and a printer that prints red."
+          }
+        }
+      },
+      "Label": {
+        "type": "object",
+        "description": "Parameters of a label. All are optional, the defaults are those of the label designer.",
+        "properties": {
+          "label_size": {
+            "type": "string",
+            "default": "62",
+            "description": "Label size identifier of brother_ql, e.g. `62`, `62x29`, `103x164`, `d24`. The label designer lists them."
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "rotated"
+            ],
+            "default": "standard"
+          },
+          "high_res": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "600 dpi printing along the label. Labels usually come out much darker, it is only confirmed for the QL-800."
+          },
+          "print_type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "qrcode",
+              "qrcode_text",
+              "image"
+            ],
+            "default": "text",
+            "description": "`qrcode` prints a code, `qrcode_text` a code with text, `image` an uploaded image or PDF (with optional text)."
+          },
+          "text": {
+            "type": "string",
+            "contentMediaType": "application/json",
+            "description": "The lines of text as JSON array of `TextLine` objects.",
+            "examples": [
+              "[{\"text\": \"Hello\", \"size\": \"70\", \"font\": \"DejaVu Sans,Book\"}]"
+            ]
+          },
+          "code_text": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "Content of the code. Without it the code contains the text of all lines."
+          },
+          "barcode_type": {
+            "type": "string",
+            "default": "QR",
+            "description": "One of `/labeldesigner/api/barcodes`."
+          },
+          "qrcode_size": {
+            "type": "integer",
+            "default": 10,
+            "description": "Size of a QR code module in dots."
+          },
+          "qrcode_correction": {
+            "type": "string",
+            "enum": [
+              "L",
+              "M",
+              "Q",
+              "H"
+            ],
+            "default": "L"
+          },
+          "image": {
+            "type": "string",
+            "format": "binary",
+            "description": "Image or PDF (first page) for `print_type=image`, as file upload."
+          },
+          "image_mode": {
+            "type": "string",
+            "enum": [
+              "grayscale",
+              "black_and_white",
+              "red_and_black",
+              "colored"
+            ],
+            "default": "grayscale"
+          },
+          "image_bw_threshold": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255,
+            "default": 70,
+            "description": "Brightness below which pixels print black in `black_and_white` mode."
+          },
+          "image_fit": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 1,
+            "description": "Fit the image to the label. On die-cut labels an image without text is also turned to the orientation that shows it largest."
+          },
+          "image_crop": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Crop the image to its content."
+          },
+          "image_scaling_factor": {
+            "type": "number",
+            "default": 100,
+            "description": "Scale in percent, only without `image_fit`."
+          },
+          "image_rotation": {
+            "type": "integer",
+            "default": 0,
+            "description": "Rotation in degrees."
+          },
+          "margin_top": {
+            "type": "integer",
+            "default": 24,
+            "description": "Margins in dots, at 300 dpi about 12 dots are 1 mm."
+          },
+          "margin_bottom": {
+            "type": "integer",
+            "default": 24
+          },
+          "margin_left": {
+            "type": "integer",
+            "default": 35
+          },
+          "margin_right": {
+            "type": "integer",
+            "default": 35
+          },
+          "border_thickness": {
+            "type": "integer",
+            "default": 0,
+            "description": "Border in dots, 0 prints no border."
+          },
+          "border_roundness": {
+            "type": "integer",
+            "default": 0,
+            "description": "Corner radius of the border in dots."
+          },
+          "border_distance_x": {
+            "type": "integer",
+            "default": 0
+          },
+          "border_distance_y": {
+            "type": "integer",
+            "default": 0
+          },
+          "border_color": {
+            "type": "string",
+            "enum": [
+              "black",
+              "red"
+            ],
+            "default": "black"
+          },
+          "print_color": {
+            "type": "string",
+            "enum": [
+              "black",
+              "red"
+            ],
+            "default": "black"
+          }
+        }
+      },
+      "SavedLabel": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Label"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Name to save the label under."
+              },
+              "image_data": {
+                "type": "string",
+                "description": "Image as base64."
+              },
+              "image_mime": {
+                "type": "string",
+                "examples": [
+                  "image/png"
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "SavedLabelFile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "examples": [
+              "EAN-Label.json"
+            ]
+          },
+          "mtime": {
+            "type": "integer",
+            "description": "Time saved, Unix time."
+          },
+          "size": {
+            "type": "integer",
+            "description": "File size in bytes."
+          },
+          "label_size": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the label size."
+          }
+        }
+      },
+      "PrinterState": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Printer to pass as `printer`, e.g. `file:///dev/usb/lp0` or `simulation`."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model reported by the printer, `Unknown` if it has not answered yet."
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Errors reported by the printer, or why it does not answer."
+          },
+          "media_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "media_width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Width of the loaded roll in mm."
+          },
+          "media_length": {
+            "type": "integer",
+            "description": "Length of die-cut labels in mm, 0 for endless rolls."
+          },
+          "status_type": {
+            "type": "string",
+            "description": "e.g. `Reply to status request`, `Printing`, `Error`, `Simulator`."
+          },
+          "phase_type": {
+            "type": "string"
+          },
+          "red_support": {
+            "type": "boolean",
+            "description": "The printer prints red."
+          }
+        }
+      },
+      "PrinterStatus": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PrinterState"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "printers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PrinterState"
+                }
+              },
+              "selected": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Printer used when a request names none."
+              }
+            }
+          }
+        ]
+      },
+      "WebhookOptions": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Alternative to the Authorization header."
+          },
+          "label_size": {
+            "type": "string",
+            "description": "Default: `LABEL_DEFAULT_SIZE`."
+          },
+          "orientation": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "rotated"
+            ]
+          },
+          "image_mode": {
+            "type": "string",
+            "enum": [
+              "grayscale",
+              "black_and_white",
+              "red_and_black",
+              "colored"
+            ]
+          },
+          "bw_threshold": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 255
+          },
+          "high_res": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "printer": {
+            "type": "string",
+            "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+          },
+          "model": {
+            "type": "string",
+            "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+          }
+        }
+      }
+    }
+  }
+}

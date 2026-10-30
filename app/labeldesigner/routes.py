@@ -510,6 +510,16 @@ def preview_from_image():
     return response
 
 
+# Description of the API (OpenAPI), kept next to the routes it describes
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'openapi.json'), encoding='utf-8') as _spec_file:
+    OPENAPI_SPEC = json.load(_spec_file)
+
+
+@bp.route('/api/openapi.json', methods=['GET'])
+def openapi_spec():
+    return jsonify(OPENAPI_SPEC)
+
+
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
     return get_ptr_status(current_app.config)
@@ -562,9 +572,10 @@ def print_label():
 
 def _log_refused_request(what: str, error: Exception):
     """Log why a request was refused. Invalid input like a missing font size
-    raises ValueError, it is logged without a traceback, which would look
-    like a crash in the log. Everything else is logged with its traceback."""
-    if isinstance(error, ValueError):
+    or an unknown font raises ValueError or LookupError, it is logged without
+    a traceback, which would look like a crash in the log. Everything else
+    is logged with its traceback."""
+    if isinstance(error, (ValueError, LookupError)):
         current_app.logger.warning('%s refused: %s', what, error)
         current_app.logger.debug('%s refused', what, exc_info=True)
     else:
@@ -671,7 +682,10 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
-        line['path'] = get_fonts().get_path(line.get('font', ''))
+        # Lines without a font, e.g. from the API, use the default font
+        if not line.get('font'):
+            line['font'] = ','.join(get_fonts().get_default_font())
+        line['path'] = get_fonts().get_path(line['font'])
         if len(line.get('text', '')) > MAX_TEXT_LENGTH:
             raise ValueError("Text is too long")
 

@@ -192,7 +192,30 @@ Network printers are supported but with some limitations regarding automatic det
 
 ### API
 
-All functionality of the web interface is also available via a REST API. Currently, the API is not documented in a separate documentation but can be explored using the web interface when the container is running.
+All functionality of the web interface is also available via a REST API. It is described in OpenAPI format in [`app/labeldesigner/openapi.json`](app/labeldesigner/openapi.json), a running server returns the same description at `/labeldesigner/api/openapi.json`. Tools like Swagger UI, Postman or code generators can import it.
+
+Some examples:
+
+```bash
+# Print a text label (lines of text as JSON, without "font" the default font is used)
+curl -X POST http://localhost:8013/labeldesigner/api/print \
+  -F label_size=62 -F 'text=[{"text": "Hello", "size": "70"}]'
+
+# Print the first page of a PDF on a 103 x 164 mm label
+curl -X POST http://localhost:8013/labeldesigner/api/print \
+  -F label_size=103x164 -F model=QL-1100 -F print_type=image -F image=@label.pdf
+
+# Generate the label image without printing
+curl -X POST http://localhost:8013/labeldesigner/api/preview \
+  -F 'text=[{"text": "Hello", "size": "70"}]' -o label.png
+
+# Status of the printers
+curl http://localhost:8013/labeldesigner/api/printer_status
+
+# Print images with the webhook (needs WEBHOOK_PASSWORD)
+curl -X POST http://localhost:8013/labeldesigner/api/webhook/print \
+  -H "Authorization: Bearer $WEBHOOK_PASSWORD" -F label_size=62 -F images=@label.png
+```
 
 Requests that print, save or delete labels are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and tools like `curl` are not affected. Printing requires a `POST` request. To also protect against DNS rebinding, set `TRUSTED_HOSTS` to the host names you use to open the label designer (comma-separated, e.g. `TRUSTED_HOSTS=labels.local,192.168.0.10`). Requests for other host names are refused then.
 
