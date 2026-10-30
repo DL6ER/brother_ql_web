@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
-from .label_names import label_name, label_printers
+from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -491,7 +491,7 @@ def preview_from_image():
         # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
         raise
     except Exception as e:
-        current_app.logger.exception(e)
+        _log_refused_request('Preview', e)
         error = 413 if "too long" in str(e) else 400
         return make_response(jsonify({'message': str(e)}), error)
 
@@ -547,7 +547,7 @@ def print_label():
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
-        current_app.logger.exception(e)
+        _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
     return_dict['success'] = len(status) == 0
@@ -555,6 +555,17 @@ def print_label():
         return_dict['message'] = status
         return make_response(jsonify(return_dict), 400)
     return return_dict
+
+
+def _log_refused_request(what: str, error: Exception):
+    """Log why a request was refused. Invalid input like a missing font size
+    raises ValueError, it is logged without a traceback, which would look
+    like a crash in the log. Everything else is logged with its traceback."""
+    if isinstance(error, ValueError):
+        current_app.logger.warning('%s refused: %s', what, error)
+        current_app.logger.debug('%s refused', what, exc_info=True)
+    else:
+        current_app.logger.exception(error)
 
 
 def _printer_device(requested) -> str:
@@ -654,7 +665,6 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     # For each line in text, we determine and add the font path
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
-            current_app.logger.error(line)
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")
@@ -911,6 +921,11 @@ def webhook_print():
         kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
         if kind is None:
             return make_response(jsonify({'success': False, 'message': f'Unknown label_size: {label_size}'}), 400)
+        # The message is returned without an exception, those may contain
+        # details that should not reach the client
+        problem = label_size_problem(label_size, model)
+        if problem:
+            return make_response(jsonify({'success': False, 'message': problem}), 400)
 
         # Determine label content type from image_mode
         if image_mode == 'grayscale':

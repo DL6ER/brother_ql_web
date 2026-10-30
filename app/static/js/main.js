@@ -406,7 +406,7 @@ function setStatus(data, what = null) {
     } else if (type === 'status' && status === 'error') {
         html = `<div class="alert alert-warning d-flex gap-2 mb-0" role="alert">
                     <span class="fas fa-exclamation-triangle mt-1" aria-hidden="true"></span>
-                    <div>The printer reports an error${extra_info}</div>
+                    <div>${escapeHtml(data.title || 'The printer reports an error')}${extra_info}</div>
                 </div>`;
         state = 'error';
     }
@@ -595,7 +595,12 @@ function updatePrinterStatus() {
         }
     }
 
-    if (printer_status.errors && printer_status.errors.length > 0) {
+    if (missingPrinter) {
+        const used = $('#printer option:selected').text() || 'another printer';
+        const message = 'The printer ' + missingPrinter.replace(/^file:\/\//, '') + ' is not available. Labels are sent to ' + used + ' instead.';
+        setStatus({ type: 'status', status: 'error', title: 'Printer not available', errors: [message].concat(printer_status.errors || []) });
+    }
+    else if (printer_status.errors && printer_status.errors.length > 0) {
         setStatus({ type: 'status', status: 'error', errors: printer_status.errors });
     }
     else {
@@ -603,6 +608,11 @@ function updatePrinterStatus() {
         setStatus({ type: 'status', status: 'success' });
     }
 }
+
+// The printer chosen by the user or restored from the settings. If it is not
+// available, another printer is used and a warning is shown until it is back.
+var preferredPrinter = null;
+var missingPrinter = null;
 
 async function getPrinterStatus() {
     const response = await fetch(url_for_get_printer_status);
@@ -612,7 +622,7 @@ async function getPrinterStatus() {
         const select = document.getElementById('printer');
         if (select) {
             // remember current selection
-            const cur = select.value;
+            const cur = preferredPrinter || select.value;
             select.innerHTML = '';
             data.printers.forEach((p) => {
                 const opt = document.createElement('option');
@@ -629,6 +639,7 @@ async function getPrinterStatus() {
             } else if (data.printers[0]) {
                 select.value = data.printers[0].path;
             }
+            missingPrinter = cur && select.value !== cur ? cur : null;
         }
         // Choose active printer status based on the select value
         const chosenPath = (document.getElementById('printer') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
@@ -745,6 +756,17 @@ function restoreAllSettingsFromLocalStorage() {
     $('input, select, textarea').each(function () {
         const key = this.type === 'radio' && this.name.length > 0 ? this.name : this.id;
         if (!(key in data)) return;
+        if (this.id === 'printer') {
+            // The printer list arrives with the next status query, the stored
+            // printer is chosen then if it is available
+            preferredPrinter = data[key] || null;
+            if (Array.from(this.options).some(o => o.value === data[key])) this.value = data[key];
+            return;
+        }
+        if (this.tagName === 'SELECT' && !Array.from(this.options).some(o => o.value == data[key])) {
+            // e.g. a font or label size that is not available here
+            return;
+        }
         if (this.type === 'checkbox') {
             $(this).prop('checked', !!data[key]);
         } else if (this.type === 'radio') {
@@ -755,6 +777,10 @@ function restoreAllSettingsFromLocalStorage() {
                 this.checked = false;
                 $(`label[for="${this.id}"]`).removeClass('active');
             }
+        } else if (this.type === 'number' && $(this).data('default') !== undefined && String(data[key] ?? '').trim() === '') {
+            // An emptied number field, e.g. the font size, would make every
+            // preview fail after reloading, it keeps its default instead
+            return;
         } else {
             this.value = data[key];
             console.log(key + ": " + data[key]);
@@ -768,6 +794,10 @@ function restoreAllSettingsFromLocalStorage() {
         try {
             const restored = JSON.parse(data['fontSettingsPerLine']);
             if (Array.isArray(restored) && restored.length > 0) {
+                // Lines with an emptied font size get the default size
+                restored.forEach(line => {
+                    if (String(line.size ?? '').trim() === '') line.size = String($('#font_size').data('default'));
+                });
                 fontSettingsPerLine = restored;
                 const lineSelect = $('#lineSelect').empty();
                 restored.forEach((line, index) => {
@@ -983,6 +1013,8 @@ function repoLoad(name) {
         .then(data => {
             try {
                 data['fontSettingsPerLine'] = data['text'] || '[]';
+                // A saved label does not change the printer
+                data['printer'] = $('#printer').val() || null;
                 localStorage.setItem(LS_KEY, JSON.stringify(data));
             } catch (e) { }
             restoreAllSettingsFromLocalStorage();
@@ -1114,6 +1146,10 @@ function updateMarginHints() {
 // Wire modal button on DOM ready
 $(document).ready(function () {
     $('#openRepoBtn').off('click').on('click', openRepositoryModal);
+    $('#printer').on('change', function () {
+        preferredPrinter = this.value;
+        missingPrinter = null;
+    });
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
 

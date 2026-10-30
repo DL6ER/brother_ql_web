@@ -26,7 +26,6 @@
   "print_color": "black",
   "print_count": "1",
   "print_type": "image",
-  "printer": "simulation",
   "qrcode_correction": "L",
   "qrcode_size": "10",
   "repoSaveName": "Kopie-vorab",

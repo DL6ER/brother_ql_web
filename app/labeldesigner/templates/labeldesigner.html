@@ -42,9 +42,23 @@
                                     </label>
                                 </div>
                             </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="checkbox" onchange="preview()" id="high_res" data-default="0">
-                                <label class="form-check-label" for="high_res">High resolution (600 dpi)</label>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="form-check mb-0">
+                                    <input class="form-check-input" type="checkbox" onchange="preview()" id="high_res" data-default="0">
+                                    <label class="form-check-label" for="high_res">600 dpi printing</label>
+                                </div>
+                                <button type="button" class="btn btn-link p-0 info-button" data-bs-toggle="collapse" data-bs-target="#highResInfo"
+                                    aria-expanded="false" aria-controls="highResInfo" title="About 600 dpi printing">
+                                    <span class="fas fa-circle-info" aria-hidden="true"></span>
+                                    <span class="visually-hidden">About 600 dpi printing</span>
+                                </button>
+                            </div>
+                            <div id="highResInfo" class="collapse">
+                                <div class="alert alert-info small mt-2 mb-0">
+                                    600 dpi printing prints twice as many lines along the label. Labels usually come out much
+                                    darker, printing is slower, and the result is often worse than with standard printing.
+                                    It does not seem to work on all printers, it is only confirmed for the QL-800.
+                                </div>
                             </div>
                         </div>
                     </div>

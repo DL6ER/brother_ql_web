@@ -222,3 +222,62 @@ def test_label_offset_corrections():
     # Other labels keep the offsets of brother_ql
     assert label_type_specs['104']['right_margin_dots'] == -8
     assert label_type_specs['102x152']['right_margin_dots'] == 12
+
+
+def test_printer_without_status_answer_stays_listed(client, monkeypatch):
+    # A printer that does not answer is shown with its error instead of
+    # disappearing, the label designer would otherwise switch to the simulator
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, 'exists', lambda path: path == '/dev/usb/lp0' or real_exists(path))
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    client.application.config['PRINTER_PRINTER'] = '?'
+    printer._status_cache[printer._lock_key(DEVICE)] = {'model': 'QL-1100', 'media_width': 104, 'media_length': 164}
+
+    def no_answer(device):
+        raise TimeoutError('No complete status response within 2.0 s')
+    monkeypatch.setattr(printer, 'get_status', no_answer)
+
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
+    assert lp0['model'] == 'QL-1100'
+    assert lp0['media_width'] == 104
+    assert lp0['errors'] == ['The printer does not answer the status query (No complete status response within 2.0 s)']
+
+
+def test_print_error_of_the_printer_is_reported(client, monkeypatch):
+    def replace_media(self, data):
+        # Error information 2, bit 0: "Replace media error"
+        packet = bytearray(_status_packet(0x02))
+        packet[9] = 0x01
+        self.responses.append(bytes(packet))
+    monkeypatch.setattr(ExclusiveUsbPrinter, 'write', replace_media)
+    response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'The printer reports: Replace media error'
+
+
+@pytest.mark.parametrize('info, message', [
+    ({'printer_state': None, 'did_print': False},
+     'The printer did not answer after receiving the label, check whether it was printed'),
+    ({'printer_state': {'errors': [], 'status_type': 'Phase change', 'phase_type': 'Printing state'}, 'did_print': False},
+     'The printer did not confirm that the label was printed (last status: Phase change, Printing state)'),
+    ({'printer_state': {'errors': [], 'status_type': 'Printing completed', 'phase_type': 'Printing state'}, 'did_print': True},
+     'The label was printed, but the printer did not report that it is ready for the next one'),
+])
+def test_print_failure_messages(info, message):
+    assert printer._print_failure(info) == message
+
+
+def test_detected_printer_busy_before_first_answer_has_unknown_model(client, monkeypatch):
+    # The configured model need not be the model of a detected printer
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, 'exists', lambda path: path == '/dev/usb/lp0' or real_exists(path))
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    client.application.config['PRINTER_PRINTER'] = '?'
+    with printer.device_lock(DEVICE):
+        status = client.get('/labeldesigner/api/printer_status').get_json()
+    lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
+    assert lp0['status_type'] == 'Printing'
+    assert lp0['model'] == 'Unknown'

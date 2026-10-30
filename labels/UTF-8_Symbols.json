@@ -28,7 +28,6 @@
   "print_color": "black",
   "print_count": "1",
   "print_type": "text",
-  "printer": "file:///dev/usb/lp3",
   "qrcode_correction": "L",
   "qrcode_size": "10",
   "repoSaveName": "UTF-8 Symbols",

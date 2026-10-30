@@ -14,8 +14,8 @@ brother_ql (tape width x label length) with Brother's official values where
 brother_ql rounds differently.
 """
 
-from brother_ql.labels import Color, Label
-from brother_ql.models import ALL_MODELS
+from brother_ql.labels import ALL_LABELS, Color, Label
+from brother_ql.models import ALL_MODELS, Model
 
 LABEL_NAMES = {
     # Endless DK rolls
@@ -77,16 +77,39 @@ def label_name(label: Label) -> str:
     return LABEL_NAMES.get(label.identifier, label.name)
 
 
-def label_printers(label: Label) -> list:
-    """Printer models that can print a label size."""
-    if label.identifier in HIDDEN_LABELS:
-        return []
-    return [
-        model.identifier for model in ALL_MODELS
-        if (not label.restricted_to_models or model.identifier in label.restricted_to_models)
+def label_fits(label: Label, model: Model) -> bool:
+    """Whether a printer model can print a label size."""
+    return (
+        (not label.restricted_to_models or model.identifier in label.restricted_to_models)
         and (label.identifier in PTOUCH_LABELS) == model.identifier.startswith('PT-')
         and (label.color != Color.BLACK_RED_WHITE or model.two_color)
         # brother_ql does not restrict the TZe tapes to the printers with a
         # wide enough print head (36 mm needs a PT-P900 series printer)
         and label.dots_printable[0] <= model.number_bytes_per_row * 8
-    ]
+    )
+
+
+def label_printers(label: Label) -> list:
+    """Printer models the label designer offers a label size for."""
+    if label.identifier in HIDDEN_LABELS:
+        return []
+    return [model.identifier for model in ALL_MODELS if label_fits(label, model)]
+
+
+def label_size_problem(label_size: str, model: str) -> str:
+    """Why the printer model cannot print the label size, or an empty string
+    if it can. Unknown models are left to brother_ql."""
+    label = next((label for label in ALL_LABELS if label.identifier == label_size), None)
+    if label is None:
+        return f'Unknown label size: {label_size}'
+    printer_model = next((m for m in ALL_MODELS if m.identifier == model), None)
+    if printer_model is not None and not label_fits(label, printer_model):
+        return f'The label size {label_name(label)} cannot be printed on a {model}'
+    return ''
+
+
+def check_label_size(label_size: str, model: str):
+    """Raise ValueError if the printer model cannot print the label size."""
+    problem = label_size_problem(label_size, model)
+    if problem:
+        raise ValueError(problem)

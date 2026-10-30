@@ -13,6 +13,7 @@ from brother_ql.reader import interpret_response
 from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
+from .label_names import check_label_size
 from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
@@ -199,6 +200,8 @@ def _prune_simulated_labels():
 
 class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
+        # A clear message instead of "Wrong pixel width" from brother_ql
+        check_label_size(label_size, model)
         self.model = model
         self.device_specifier = device_specifier
         self.label_size = label_size
@@ -241,9 +244,11 @@ class PrinterQueue:
             )
         return qlr, generated_images
 
-    def _send_raster(self, qlr, generated_images, batch_index=0) -> str:
+    def _send_raster(self, qlr, generated_images, batch_index=0, batch_count=1) -> str:
         """Send rasterized data to the printer or simulator.
         Returns an empty string on success, or an error message."""
+        # Only jobs split into several batches name the batch
+        batch = f' (batch {batch_index} of {batch_count})' if batch_count > 1 else ''
         try:
             # Simulator: pretend we sent data, save labels as PNG, and return success
             if is_simulation(self.device_specifier):
@@ -270,11 +275,12 @@ class PrinterQueue:
             if info.get('did_print') and info.get('ready_for_next_job'):
                 logger.info('Label printed successfully and printer is ready for next job')
                 return ""
-            logger.warning("Failed to print label (batch %d)", batch_index)
-            return f"Failed to print label (batch {batch_index})"
+            message = _print_failure(info) + batch
+            logger.warning('Printing failed: %s', message)
+            return message
         except Exception as e:
             logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
-            return f"Exception during sending to printer (batch {batch_index}): {e}"
+            return f"Could not send the label to the printer{batch}: {e}"
 
     def process_queue(self, batch_size: int = 0) -> str:
         if not self._print_queue:
@@ -290,6 +296,7 @@ class PrinterQueue:
         entries = list(self._print_queue)
         self._print_queue.clear()
 
+        batch_count = (total + batch_size - 1) // batch_size
         # Hold the device for the whole job so that neither status queries nor
         # other jobs get in between the batches
         lock = contextlib.nullcontext(True) if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
@@ -305,11 +312,24 @@ class PrinterQueue:
                 logger.info('Processing batch %d (%d labels, %d/%d)',
                             batch_index, len(batch), start + len(batch), total)
                 qlr, generated_images = self._rasterize_entries(batch)
-                status = self._send_raster(qlr, generated_images, batch_index)
+                status = self._send_raster(qlr, generated_images, batch_index, batch_count)
                 if status:
                     return status
 
         return ""
+
+
+def _print_failure(info: dict) -> str:
+    """Why a print job was not confirmed, from the status brother_ql read back
+    from the printer while printing."""
+    state = info.get('printer_state') or {}
+    if state.get('errors'):
+        return 'The printer reports: ' + ', '.join(state['errors'])
+    if info.get('did_print'):
+        return 'The label was printed, but the printer did not report that it is ready for the next one'
+    if state:
+        return f"The printer did not confirm that the label was printed (last status: {state.get('status_type')}, {state.get('phase_type')})"
+    return 'The printer did not answer after receiving the label, check whether it was printed'
 
 
 def get_printer(printer_identifier=None, backend_identifier=None):
@@ -387,6 +407,22 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     return state
 
 
+def _failed_printer_state(device_specifier: str, error: Exception) -> dict:
+    """Status of a printer that did not answer the status query: model and
+    media from its last answer, if there was one, and the error."""
+    known = _status_cache.get(_lock_key(device_specifier), {})
+    return {
+        'path': device_specifier,
+        'model': known.get('model', 'Unknown'),
+        'media_width': known.get('media_width'),
+        'media_length': known.get('media_length', 0),
+        'media_type': known.get('media_type'),
+        'errors': [f'The printer does not answer the status query ({error})'],
+        'status_type': 'Error',
+        'phase_type': 'Unknown',
+    }
+
+
 _last_scan_ts = 0
 _cached_printers = []
 
@@ -449,12 +485,20 @@ def get_ptr_status(config: Config):
                         continue
                     spec = f"file://{dev}"
                     try:
-                        printer_state = query_status(spec, default_model)
+                        # The configured model need not be the model of this
+                        # printer. If it is busy before it ever answered, its
+                        # model is unknown.
+                        printer_state = query_status(spec, 'Unknown')
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))
-                    except Exception:
-                        logger.debug('Device %s exists but is not a compatible printer or failed to query', dev, exc_info=True)
+                    except Exception as e:
+                        # Keep the printer in the list with the error, otherwise
+                        # the label designer switches to another printer (often
+                        # the simulator) without telling why
+                        logger.info('Status query of %s failed: %s', spec, e)
+                        logger.debug('Status query of %s failed', spec, exc_info=True)
+                        found_list.append(_failed_printer_state(spec, e))
 
                 # scan ARP table for network printers with known Brother MAC
                 # address prefixes

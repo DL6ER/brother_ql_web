@@ -1,3 +1,4 @@
+import pytest
 import re
 
 from PIL import Image
@@ -50,3 +51,18 @@ def test_label_designer_shows_brother_codes_and_printers(tmp_path):
     assert 'data-models="QL-1100,QL-1110NWB"' in options['103x164']
     assert 'data-models=""' in options['103']
     assert 'data-models="PT-P900W,PT-P950NW"' in options['pt36']
+
+
+def test_check_label_size():
+    from app.labeldesigner.label_names import check_label_size
+    check_label_size('103x164', 'QL-1100')
+    # "103" is not offered in the label designer, but saved labels may use it
+    check_label_size('103', 'QL-1100')
+    # Models brother_ql does not know are left to brother_ql
+    check_label_size('62', 'QL-9999')
+    with pytest.raises(ValueError, match=r'^The label size 103 x 164 mm die-cut \(DK-11247 / DK-1247\) cannot be printed on a QL-800$'):
+        check_label_size('103x164', 'QL-800')
+    with pytest.raises(ValueError, match='cannot be printed on a PT-P700'):
+        check_label_size('pt36', 'PT-P700')
+    with pytest.raises(ValueError, match='^Unknown label size: 99x99$'):
+        check_label_size('99x99', 'QL-800')
