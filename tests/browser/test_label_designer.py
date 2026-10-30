@@ -389,3 +389,29 @@ def test_pasted_image_replaces_the_files(page):
     }""")
     page.wait_for_function("() => imageDropZone.files.length === 1 && imageDropZone.files[0].name === 'image.png'")
     assert not page.is_visible('#imageFilesNote')
+
+
+def test_saved_labels_of_the_selected_label_size(page, app):
+    repo = app.config['LABEL_REPOSITORY_DIR']
+    with open(os.path.join(repo, 'QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    label['label_size'] = '29'
+    with open(os.path.join(repo, 'Small.json'), 'w', encoding='utf-8') as f:
+        json.dump(label, f)
+    del label['label_size']
+    with open(os.path.join(repo, 'No-Size.json'), 'w', encoding='utf-8') as f:
+        json.dump(label, f)
+    shown = "() => Array.from(document.querySelectorAll('#repoListBody .repo-item')).filter(i => !i.hidden).map(i => i.querySelector('.repo-load').dataset.name)"
+    try:
+        page.click('#openRepoBtn')
+        page.wait_for_selector('.repo-load[data-name="Small.json"]', state='attached')
+        # 62 mm is selected: no 29 mm or black/red labels, but those without a size
+        names = page.evaluate(shown)
+        assert 'QR-Example.json' in names and 'No-Size.json' in names
+        assert 'Small.json' not in names and 'URGENT-Text.json' not in names
+        page.check('#repoAllSizes')
+        names = page.evaluate(shown)
+        assert 'Small.json' in names and 'URGENT-Text.json' in names
+    finally:
+        os.remove(os.path.join(repo, 'Small.json'))
+        os.remove(os.path.join(repo, 'No-Size.json'))

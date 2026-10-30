@@ -903,7 +903,7 @@ function renderRepoList(files) {
     files.forEach(f => {
         const name = escapeHtml(f.name);
         const item = $(
-            `<div class="list-group-item repo-item" data-search="${escapeHtml(repoDisplayName(f.name).toLowerCase())}">
+            `<div class="list-group-item repo-item" data-search="${escapeHtml(repoDisplayName(f.name).toLowerCase())}" data-size="${escapeHtml(f.label_size_id || '')}">
                 <img class="repo-thumb" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
                 <div class="repo-info">
                     <div class="repo-name">${escapeHtml(repoDisplayName(f.name))}</div>
@@ -1148,11 +1148,16 @@ function repoFetchThumbnail(name, imgEl) {
         });
 }
 
-// Show only the saved labels whose name contains the search text
+// Show only the saved labels whose name contains the search text and that
+// fit the selected label size
 function filterRepoList() {
     const query = ($('.repo-search').val() || '').trim().toLowerCase();
+    // Only labels for the selected label size, unless "All sizes" is on.
+    // Labels saved without a size are always shown.
+    const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
     $('#repoListBody .repo-item').each(function () {
-        this.hidden = query !== '' && !this.dataset.search.includes(query);
+        this.hidden = (query !== '' && !this.dataset.search.includes(query)) ||
+            (size !== null && this.dataset.size !== '' && this.dataset.size !== size);
     });
 }
 
@@ -1174,6 +1179,7 @@ $(document).ready(function () {
     });
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
+    $('.repo-all-sizes').on('change', filterRepoList);
 
     // Copies: buttons next to the number field
     $('#printCountDown, #printCountUp').on('click', function () {
