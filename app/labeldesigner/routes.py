@@ -510,6 +510,16 @@ def preview_from_image():
     return response
 
 
+# Description of the API (OpenAPI), kept next to the routes it describes
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'openapi.json'), encoding='utf-8') as _spec_file:
+    OPENAPI_SPEC = json.load(_spec_file)
+
+
+@bp.route('/api/openapi.json', methods=['GET'])
+def openapi_spec():
+    return jsonify(OPENAPI_SPEC)
+
+
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
     return get_ptr_status(current_app.config)
