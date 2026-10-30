@@ -1,6 +1,6 @@
 services:
   brother_ql_web:
-    image: ghcr.io/dl6er/brother-ql-web:latest # latest online version
+    image: ghcr.io/dl6er/brother-ql-web:latest # newest release, see "Image tags" in the README
     # build: . # building locally from source (see git clone below))
     container_name: brother_ql_web
     restart: always
