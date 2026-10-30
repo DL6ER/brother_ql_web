@@ -1645,7 +1645,7 @@ def test_webhook_turns_images_on_die_cut_labels(tmp_path, monkeypatch):
     client.application.config['WEBHOOK_PASSWORD'] = 'secret'
     images = [base64.b64encode(_upload(Image.new('L', size, 'black'), 'image.png').stream.read()).decode('ascii')
               for size in ((1200, 1800), (1800, 1200))]
-    payload = {'password': 'secret', 'label_size': '103x164', 'orientation': 'standard', 'images': images}
+    payload = {'password': 'secret', 'label_size': '103x164', 'model': 'QL-1100', 'orientation': 'standard', 'images': images}
     assert client.post('/labeldesigner/api/webhook/print', json=payload).get_json() == {'success': True, 'count': 2}
     assert [(label._width, label._height, label.label_orientation) for label in labels] == [
         (1200, 1822, LabelOrientation.ROTATED), (1822, 1200, LabelOrientation.STANDARD)]
@@ -1679,3 +1679,18 @@ def test_invalid_input_is_logged_without_traceback(tmp_path, caplog):
     assert [(r.levelname, r.getMessage(), r.exc_info) for r in refused if r.levelname != 'DEBUG'] == [
         ('WARNING', 'Preview refused: Font size is required', None)]
     assert not any(r.levelname == 'ERROR' for r in caplog.records)
+
+
+def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'label_size': '103x164', 'model': 'QL-800'})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
+
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '103x164', 'model': 'QL-800'})
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'

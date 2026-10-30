@@ -13,6 +13,7 @@ from brother_ql.reader import interpret_response
 from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
 from .label import LabelOrientation, LabelType, LabelContent
+from .label_names import check_label_size
 from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
@@ -199,6 +200,8 @@ def _prune_simulated_labels():
 
 class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
+        # A clear message instead of "Wrong pixel width" from brother_ql
+        check_label_size(label_size, model)
         self.model = model
         self.device_specifier = device_specifier
         self.label_size = label_size

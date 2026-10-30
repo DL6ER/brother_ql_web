@@ -132,7 +132,8 @@ def test_repository_print_wrong_label(tmp_path):
     assert resp.is_json
     data = resp.get_json()
     assert 'message' in data
-    assert "Printing in red is not supported with the selected model." in data['message']
+    # The QL-500 cannot print in red
+    assert data['message'] == 'The label size 62 mm endless, black/red/white (DK-22251 / DK-2251) cannot be printed on a QL-500'
     assert data.get('success') is False
 
 

@@ -17,7 +17,7 @@ from werkzeug.exceptions import HTTPException
 from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import ALL_LABELS, FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
-from .label_names import label_name, label_printers
+from .label_names import check_label_size, label_name, label_printers
 from flask import Request, current_app, json, jsonify, render_template, request, make_response
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -921,6 +921,10 @@ def webhook_print():
         kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
         if kind is None:
             return make_response(jsonify({'success': False, 'message': f'Unknown label_size: {label_size}'}), 400)
+        try:
+            check_label_size(label_size, model)
+        except ValueError as e:
+            return make_response(jsonify({'success': False, 'message': str(e)}), 400)
 
         # Determine label content type from image_mode
         if image_mode == 'grayscale':
