@@ -482,7 +482,10 @@ def get_ptr_status(config: Config):
                         continue
                     spec = f"file://{dev}"
                     try:
-                        printer_state = query_status(spec, default_model)
+                        # The configured model need not be the model of this
+                        # printer. If it is busy before it ever answered, its
+                        # model is unknown.
+                        printer_state = query_status(spec, 'Unknown')
                         printer_state.setdefault('path', spec)
                         found_list.append(printer_state)
                         logger.debug('Found compatible printer at %s -> %s', spec, printer_state.get('model'))

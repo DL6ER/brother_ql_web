@@ -267,3 +267,17 @@ def test_print_error_of_the_printer_is_reported(client, monkeypatch):
 ])
 def test_print_failure_messages(info, message):
     assert printer._print_failure(info) == message
+
+
+def test_detected_printer_busy_before_first_answer_has_unknown_model(client, monkeypatch):
+    # The configured model need not be the model of a detected printer
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, 'exists', lambda path: path == '/dev/usb/lp0' or real_exists(path))
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    client.application.config['PRINTER_PRINTER'] = '?'
+    with printer.device_lock(DEVICE):
+        status = client.get('/labeldesigner/api/printer_status').get_json()
+    lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
+    assert lp0['status_type'] == 'Printing'
+    assert lp0['model'] == 'Unknown'
