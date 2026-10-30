@@ -1697,6 +1697,24 @@ def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
     assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
 
 
+@pytest.mark.parametrize('values, warning', [
+    ({'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'A' * 40, 'size': '60'}])},
+     'The text does not fit on the label, part of it is cut off.'),
+    ({'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Fits', 'size': '60'}])}, None),
+    ({'print_type': 'image', 'image_fit': '0', 'image_scaling_factor': '400', 'text': '[]'},
+     'The image does not fit on the label, part of it is cut off.'),
+])
+def test_preview_warns_about_content_that_does_not_fit(tmp_path, values, warning):
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update(values)
+    if data['print_type'] == 'image':
+        data['image'] = _upload(Image.new('L', (400, 100), 'black'), 'wide.png')
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.headers.get('X-Label-Warning') == warning
+
+
 def test_default_font_is_selected(tmp_path):
     client = make_client(tmp_path)
     client.application.config['LABEL_DEFAULT_FONT_FAMILY'] = 'DejaVu Serif'

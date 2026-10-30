@@ -504,6 +504,9 @@ def preview_from_image():
         content_type = 'image/png'
     response = make_response(response_data)
     response.headers.set('Content-type', content_type)
+    # e.g. text that does not fit on the label, shown by the label designer
+    if label.warnings:
+        response.headers.set('X-Label-Warning', ' '.join(label.warnings))
     return response
 
 

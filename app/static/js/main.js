@@ -344,14 +344,14 @@ function gen_label(preview = true, cut_once = false) {
         url: url,
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         data: formData(cut_once),
-        success: function (data) {
+        success: function (data, _textStatus, xhr) {
             // Check if response is JSON and has a key "success"
             const status = typeof data === "object" &&
                 data !== null &&
                 "success" in data &&
                 data.success === false ?
                 'error' : 'success';
-            setStatus({ type: type, 'status': status });
+            setStatus({ type: type, 'status': status, warning: xhr.getResponseHeader('X-Label-Warning') });
             updatePreview(data);
         },
         error: function (xhr, _status, error) {
@@ -390,7 +390,10 @@ function setStatus(data, what = null) {
             html = `<span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>${action}</span>`;
             state = type === 'printing' ? 'busy' : '';
         } else if (status === 'success') {
-            if (type === 'preview') {
+            if (type === 'preview' && data.warning) {
+                // e.g. text that does not fit on the label
+                html = `<span class="fas fa-exclamation-triangle text-warning" aria-hidden="true"></span><span>${escapeHtml(data.warning)}</span>`;
+            } else if (type === 'preview') {
                 html = `<span class="fas fa-check text-success" aria-hidden="true"></span><span>Preview updated</span>`;
             } else {
                 html = `<span class="fas fa-check-circle text-success" aria-hidden="true"></span><span>Printed</span>`;
@@ -482,7 +485,8 @@ new Dropzone("#image-dropzone", {
             "success" in response &&
             response.success === false ?
             'error' : 'success';
-        setStatus({ type: dropZoneMode, status: status });
+        const warning = file.xhr ? file.xhr.getResponseHeader('X-Label-Warning') : null;
+        setStatus({ type: dropZoneMode, status: status, warning: warning });
         if (dropZoneMode == 'preview') {
             updatePreview(response);
         }

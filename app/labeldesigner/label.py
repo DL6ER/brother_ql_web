@@ -118,6 +118,8 @@ class SimpleLabel:
         self._image_crop = image_crop
         self._image_scaling_factor = image_scaling_factor
         self._image_rotation = image_rotation
+        # Problems found by generate(), e.g. text that does not fit
+        self.warnings = []
         self._border_thickness = border_thickness
         self._border_roundness = border_roundness
         self._border_distance = border_distance
@@ -414,6 +416,19 @@ class SimpleLabel:
         # width/height dimensions
         width = max(int(width), 1)
         height = max(int(height), 1)
+
+        # Content beyond the label is cut off, which is easy to miss in the
+        # preview
+        self.warnings = []
+        if self.want_text(img) and bboxes:
+            x, y = text_offset
+            if x + textsize[0] < 0 or y + textsize[1] < 0 or x + textsize[2] > width or y + textsize[3] > height:
+                self.warnings.append('The text does not fit on the label, part of it is cut off.')
+        if img is not None:
+            x, y = image_offset
+            if x < 0 or y < 0 or x + img_width > width or y + img_height > height:
+                what = 'code' if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE) else 'image'
+                self.warnings.append(f'The {what} does not fit on the label, part of it is cut off.')
 
         logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
         check_image_size(width, height)
