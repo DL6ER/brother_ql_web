@@ -96,12 +96,20 @@ def label_printers(label: Label) -> list:
     return [model.identifier for model in ALL_MODELS if label_fits(label, model)]
 
 
-def check_label_size(label_size: str, model: str):
-    """Raise ValueError if the printer model cannot print the label size,
-    with a message naming both. Unknown models are left to brother_ql."""
+def label_size_problem(label_size: str, model: str) -> str:
+    """Why the printer model cannot print the label size, or an empty string
+    if it can. Unknown models are left to brother_ql."""
     label = next((label for label in ALL_LABELS if label.identifier == label_size), None)
     if label is None:
-        raise ValueError(f'Unknown label size: {label_size}')
+        return f'Unknown label size: {label_size}'
     printer_model = next((m for m in ALL_MODELS if m.identifier == model), None)
     if printer_model is not None and not label_fits(label, printer_model):
-        raise ValueError(f'The label size {label_name(label)} cannot be printed on a {model}')
+        return f'The label size {label_name(label)} cannot be printed on a {model}'
+    return ''
+
+
+def check_label_size(label_size: str, model: str):
+    """Raise ValueError if the printer model cannot print the label size."""
+    problem = label_size_problem(label_size, model)
+    if problem:
+        raise ValueError(problem)
