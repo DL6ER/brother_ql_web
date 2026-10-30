@@ -433,7 +433,12 @@ def get_status(printer, timeout: float = 2.0):
     brother_ql's own helper reads only twice, 10 ms apart, but printers such
     as the QL-1100 need ~100 ms to answer and return empty reads until then.
     Poll until the full 32-byte response arrives or the timeout expires.
+
+    Invalidate + initialize first, as Brother's command reference recommends:
+    the QL-560 answers the first status request after power-on, but no
+    further ones without it.
     """
+    printer.write(b"\x00" * 200 + b"\x1b\x40")  # Invalidate, "ESC @" Initialize
     printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
     data = b''
     deadline = time.time() + timeout

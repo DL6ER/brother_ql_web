@@ -1437,7 +1437,7 @@ class TestPrinterStatus:
         from app.labeldesigner.printer import get_status
         printer = FakeSlowPrinter(empty_reads=5, response=make_status_packet())
         status = get_status(printer)
-        assert printer.written == b'\x1b\x69\x53'
+        assert printer.written == b'\x00' * 200 + b'\x1b\x40\x1b\x69\x53'
         assert status['media_width'] == 62
         assert status['errors'] == []
 

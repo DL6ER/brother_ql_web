@@ -34,6 +34,8 @@ class ExclusiveUsbPrinter:
         self.responses = []
 
     def write(self, data):
+        if data == b'\x00' * 200 + b'\x1b\x40':  # Invalidate + initialize
+            return
         if data == b'\x1b\x69\x53':  # Status information request
             time.sleep(self.status_seconds)
             self.responses.append(_status_packet(0x00))
