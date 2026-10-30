@@ -1,33 +1,36 @@
 // --- Dark mode logic ---
+// Uses the colour modes of Bootstrap (data-bs-theme on <html>). The initial
+// mode is already set by a script in the page head.
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
 function setDarkMode(mode) {
-    const navbar = document.getElementById('mainNavbar');
-    if (mode === 'dark') {
-        document.body.classList.add('dark-mode');
-        document.getElementById('darkModeIcon').innerHTML = '<span class="fas fa-moon"></span>';
-        document.getElementById('darkModeIcon').style.color = '#f8d90f';
-    } else {
-        document.body.classList.remove('dark-mode');
-        document.getElementById('darkModeIcon').innerHTML = '<span class="fas fa-sun"></span>';
-        document.getElementById('darkModeIcon').style.color = '#f8d90f';
+    document.documentElement.setAttribute('data-bs-theme', mode);
+    const icon = document.getElementById('darkModeIcon');
+    if (icon) {
+        icon.className = mode === 'dark' ? 'fas fa-moon' : 'fas fa-sun';
     }
 }
 
 function getStoredMode() {
-    return localStorage.getItem('themeMode');
+    try {
+        return localStorage.getItem('themeMode');
+    } catch (e) {
+        return null;
+    }
 }
 function storeMode(mode) {
-    localStorage.setItem('themeMode', mode);
+    try {
+        localStorage.setItem('themeMode', mode);
+    } catch (e) { }
 }
 function getPreferredMode() {
     const stored = getStoredMode();
-    if (stored) return stored;
+    if (stored === 'dark' || stored === 'light') return stored;
     return prefersDark.matches ? 'dark' : 'light';
 }
 
 function toggleDarkMode() {
-    const current = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+    const current = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light';
     const next = current === 'dark' ? 'light' : 'dark';
     setDarkMode(next);
     storeMode(next);
@@ -38,13 +41,12 @@ document.addEventListener('DOMContentLoaded', function () {
     setDarkMode(getPreferredMode());
     // Listen for system changes
     prefersDark.addEventListener('change', function (e) {
-            if (!getStoredMode()) setDarkMode(e.matches ? 'dark' : 'light');
+        if (!getStoredMode()) setDarkMode(e.matches ? 'dark' : 'light');
     });
 
     // Toggle button
     const toggle = document.getElementById('darkModeToggle');
     if (toggle) {
         toggle.onclick = toggleDarkMode;
-        toggle.title = 'Toggle dark mode';
     }
 });
