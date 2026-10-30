@@ -7,6 +7,8 @@ import datetime
 import tempfile
 import threading
 import contextlib
+import http.client
+from urllib.parse import urlsplit
 from brother_ql.backends.helpers import send
 from brother_ql import BrotherQLRaster, create_label
 from brother_ql.reader import interpret_response
@@ -18,6 +20,7 @@ from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
 from werkzeug.security import safe_join
+from . import ipp
 
 try:
     import fcntl
@@ -428,6 +431,119 @@ def _failed_printer_state(device_specifier: str, error: Exception) -> dict:
     }
 
 
+# Network printers answer status requests over IPP, if at all
+IPP_PORT = 631
+
+# Messages for the reasons a network printer gives over IPP why it cannot
+# print (printer-state-reasons, RFC 8011), without the -error suffix
+IPP_REASON_MESSAGES = {
+    'cover-open': 'The cover is open',
+    'media-empty': 'There are no labels in the printer',
+    'media-needed': 'There are no labels in the printer',
+    'media-jam': 'The labels are jammed',
+    'offline': 'The printer is offline',
+    'paused': 'The printer is paused',
+    'shutdown': 'The printer is shutting down',
+    # e.g. a QL-810W after a job for labels other than the loaded ones
+    'other': 'See the lights or display of the printer',
+}
+
+# media-type values of endless rolls (PWG 5100.7)
+IPP_ENDLESS_MEDIA_TYPES = {'continuous', 'continuous-long', 'continuous-short', 'roll'}
+
+
+def _network_printer(device_specifier: str, model: str) -> dict:
+    """Status of a network printer that tells nothing about itself."""
+    return {
+        'errors': [],
+        'path': device_specifier,
+        'media_category': None,
+        'media_length': 0,
+        'media_type': None,
+        'media_width': None,
+        'model': model,
+        'model_code': None,
+        'phase_type': 'Network Printer',
+        'series_code': None,
+        'setting': None,
+        'status_code': 0,
+        'status_type': 'Network Printer',
+        'tape_color': '',
+        'text_color': '',
+        'red_support': model in [m.identifier for m in ALL_MODELS if m.two_color],
+    }
+
+
+def _ipp_media(media) -> tuple:
+    """Width across the print head and length of the loaded labels in mm
+    (length 0 for endless rolls), and their type, from media-col-ready.
+    IPP gives the size of the label as x by y, and with
+    long-edge-first the longer side runs across the print head, e.g.
+    29 x 62 mm for the 62 mm wide DK-11209."""
+    if isinstance(media, list):
+        media = media[0] if media else None
+    if not isinstance(media, dict):
+        return None, 0, None
+    size = media.get('media-size') or {}
+    x, y = size.get('x-dimension'), size.get('y-dimension')
+    if not isinstance(x, int) or x <= 0:
+        return None, 0, None
+    feed = (media.get('media-source-properties') or {}).get('media-source-feed-direction')
+    endless = media.get('media-type') in IPP_ENDLESS_MEDIA_TYPES or not isinstance(y, int) or y <= 0
+    if endless:
+        return round(x / 100), 0, 'Continuous length tape'
+    across, along = (max(x, y), min(x, y)) if feed == 'long-edge-first' else (x, y)
+    return round(across / 100), round(along / 100), 'Die-cut labels'
+
+
+def _ipp_errors(attributes: dict) -> list:
+    """Messages for the reasons why the printer cannot print. Reasons with
+    the suffix -report or -warning do not stop it, the others do."""
+    reasons = attributes.get('printer-state-reasons') or []
+    if isinstance(reasons, str):
+        reasons = [reasons]
+    errors = []
+    for reason in reasons:
+        if reason == 'none' or reason.endswith(('-report', '-warning')):
+            continue
+        keyword = reason.removesuffix('-error')
+        message = IPP_REASON_MESSAGES.get(keyword, f'The printer reports "{keyword}"')
+        if message not in errors:
+            errors.append(message)
+    if not errors and attributes.get('printer-state') == ipp.STOPPED:
+        errors.append('The printer is stopped')
+    return errors
+
+
+def query_network_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
+    """Status of a network printer over IPP: model, loaded labels and why it
+    cannot print. Printers without IPP only take jobs on port 9100 and tell
+    nothing about themselves. Raises OSError if the printer does not
+    answer at all."""
+    host = urlsplit(device_specifier).hostname
+    try:
+        attributes = ipp.get_printer_attributes(host, IPP_PORT)
+    except (ConnectionRefusedError, ipp.IPPError, http.client.HTTPException) as e:
+        logger.debug('No IPP status from %s: %s', device_specifier, e)
+        return _network_printer(device_specifier, default_model)
+    make_and_model = str(attributes.get('printer-make-and-model') or '')
+    model = make_and_model.removeprefix('Brother ').strip()
+    if model not in [m.identifier for m in ALL_MODELS]:
+        model = default_model
+    status = _network_printer(device_specifier, model)
+    status['media_width'], status['media_length'], status['media_type'] = _ipp_media(attributes.get('media-col-ready'))
+    status['errors'] = _ipp_errors(attributes)
+    busy = attributes.get('printer-state') == ipp.PROCESSING
+    if status['errors']:
+        status['status_type'] = 'Error occurred'
+    else:
+        status['status_type'] = BUSY_STATUS_TYPE if busy else 'Reply to status request'
+    status['phase_type'] = 'Printing state' if busy else 'Waiting to receive'
+    # Kept for when the printer does not answer
+    _status_cache[_lock_key(device_specifier)] = status
+    return dict(status)
+
+
 _last_scan_ts = 0
 _cached_printers = []
 
@@ -514,13 +630,14 @@ def get_ptr_status(config: Config):
                                 continue
                             ip, _, _, mac, _, _ = parts
                             if any(mac.startswith(prefix) for prefix in BROTHER_MAC_ADDRESS_PREFIXES):
-                                device_specifier = f"tcp://{ip}"
-                                printer = SIMULATOR_PRINTER.copy()
-                                printer['path'] = device_specifier
-                                printer['phase_type'] = 'Network Printer'
-                                printer['status_type'] = 'Network Printer'
+                                spec = f"tcp://{ip}"
+                                try:
+                                    printer = query_network_status(spec, default_model)
+                                except OSError as e:
+                                    logger.info('Status query of %s failed: %s', spec, e)
+                                    printer = _failed_printer_state(spec, e)
                                 found_list.append(printer)
-                                logger.debug('Found network printer candidate at %s -> %s', device_specifier, printer.get('model'))
+                                logger.debug('Found network printer candidate at %s -> %s', spec, printer.get('model'))
                 except Exception:
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
 
@@ -555,14 +672,13 @@ def get_ptr_status(config: Config):
                     **status
                 }
         elif device_specifier.startswith('tcp://'):
-            # TCP printers are not supported for status queries
-            status['status_type'] = 'Unknown'
-            printer = SIMULATOR_PRINTER.copy()
-            printer['path'] = device_specifier
-            printer['phase_type'] = 'Network Printer'
-            printer['status_type'] = 'Network Printer'
-            sim = SIMULATOR_PRINTER.copy()
-            status['printers'] = [printer, sim]
+            try:
+                printer = query_network_status(device_specifier, default_model)
+            except OSError as e:
+                logger.info('Status query of %s failed: %s', device_specifier, e)
+                printer = _failed_printer_state(device_specifier, e)
+            status.update(printer)
+            status['printers'] = [printer, SIMULATOR_PRINTER.copy()]
             status['selected'] = device_specifier
             return status
         else:
