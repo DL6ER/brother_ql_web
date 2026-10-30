@@ -83,5 +83,6 @@ jobs:
           tags: ${{ steps.tags.outputs.tags }}
           platforms: linux/amd64,linux/arm64
           build-args: |
+            RELEASE=${{ env.RELEASE }}
             GIT_COMMIT=${{ steps.build_info.outputs.commit }}
             BUILD_DATE=${{ steps.build_info.outputs.date }}
