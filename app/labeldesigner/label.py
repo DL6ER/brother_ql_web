@@ -274,7 +274,7 @@ class SimpleLabel:
                 raise ValueError("Text is too long")
             line['text'] = text_val
 
-    def generate(self, rotate: bool = False):
+    def generate(self):
         # Process possible templates in the text
         self.process_templates()
 
@@ -424,15 +424,6 @@ class SimpleLabel:
 
         if self.want_text(img):
             self._draw_text(imgResult, bboxes, text_offset)
-
-        # Check if the image needs rotation (only applied when generating
-        # preview images)
-        preview_needs_rotation = (
-            self._label_orientation == LabelOrientation.ROTATED and self._label_type not in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL) or \
-            self._label_orientation == LabelOrientation.STANDARD and self._label_type in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL)
-        )
-        if rotate and preview_needs_rotation:
-            imgResult = imgResult.rotate(-90, expand=True)
 
         # Draw border if thickness > 0
         if self._border_thickness > 0:
