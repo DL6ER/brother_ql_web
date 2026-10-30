@@ -766,6 +766,10 @@ function restoreAllSettingsFromLocalStorage() {
                 this.checked = false;
                 $(`label[for="${this.id}"]`).removeClass('active');
             }
+        } else if (this.type === 'number' && $(this).data('default') !== undefined && String(data[key] ?? '').trim() === '') {
+            // An emptied number field, e.g. the font size, would make every
+            // preview fail after reloading, it keeps its default instead
+            return;
         } else {
             this.value = data[key];
             console.log(key + ": " + data[key]);
@@ -779,6 +783,10 @@ function restoreAllSettingsFromLocalStorage() {
         try {
             const restored = JSON.parse(data['fontSettingsPerLine']);
             if (Array.isArray(restored) && restored.length > 0) {
+                // Lines with an emptied font size get the default size
+                restored.forEach(line => {
+                    if (String(line.size ?? '').trim() === '') line.size = String($('#font_size').data('default'));
+                });
                 fontSettingsPerLine = restored;
                 const lineSelect = $('#lineSelect').empty();
                 restored.forEach((line, index) => {

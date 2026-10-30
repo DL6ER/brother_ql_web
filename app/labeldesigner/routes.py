@@ -491,7 +491,7 @@ def preview_from_image():
         # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
         raise
     except Exception as e:
-        current_app.logger.exception(e)
+        _log_refused_request('Preview', e)
         error = 413 if "too long" in str(e) else 400
         return make_response(jsonify({'message': str(e)}), error)
 
@@ -547,7 +547,7 @@ def print_label():
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
-        current_app.logger.exception(e)
+        _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
     return_dict['success'] = len(status) == 0
@@ -555,6 +555,17 @@ def print_label():
         return_dict['message'] = status
         return make_response(jsonify(return_dict), 400)
     return return_dict
+
+
+def _log_refused_request(what: str, error: Exception):
+    """Log why a request was refused. Invalid input like a missing font size
+    raises ValueError, it is logged without a traceback, which would look
+    like a crash in the log. Everything else is logged with its traceback."""
+    if isinstance(error, ValueError):
+        current_app.logger.warning('%s refused: %s', what, error)
+        current_app.logger.debug('%s refused', what, exc_info=True)
+    else:
+        current_app.logger.exception(error)
 
 
 def _printer_device(requested) -> str:
@@ -654,7 +665,6 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     # For each line in text, we determine and add the font path
     for line in context['text']:
         if 'size' not in line or not str(line['size']).isdigit():
-            current_app.logger.error(line)
             raise ValueError("Font size is required")
         if int(line['size']) < 1:
             raise ValueError("Font size must be at least 1")

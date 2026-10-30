@@ -1665,3 +1665,17 @@ def test_preview_shows_the_label_upright(tmp_path, size, orientation, expected):
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert Image.open(io.BytesIO(response.data)).size == expected
+
+
+def test_invalid_input_is_logged_without_traceback(tmp_path, caplog):
+    # A missing font size is an input error, not a crash
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Text', 'size': ''}])
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'Font size is required'
+    refused = [r for r in caplog.records if 'refused' in r.getMessage()]
+    assert [(r.levelname, r.getMessage(), r.exc_info) for r in refused if r.levelname != 'DEBUG'] == [
+        ('WARNING', 'Preview refused: Font size is required', None)]
+    assert not any(r.levelname == 'ERROR' for r in caplog.records)
