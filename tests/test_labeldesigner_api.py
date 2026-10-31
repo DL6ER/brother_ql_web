@@ -1941,3 +1941,30 @@ def test_preview_says_when_the_orientation_is_chosen_automatically(tmp_path, val
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 200
     assert response.headers.get('X-Label-Orientation') == ('auto' if auto else None)
+
+
+def test_several_files_are_printed_one_after_the_other(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'image_fit': '1', 'border_thickness': '0', 'text': '[]',
+            'printer': 'simulation', 'print_count': '2', 'pdf_pages': 'all'}
+    files = [(io.BytesIO(_pdf((300, 200), (200, 300))), 'two.pdf', 'application/pdf'),
+             (io.BytesIO(_upload(Image.new('L', (400, 100), 'black'), 'wide.png').stream.read()), 'wide.png', 'image/png')]
+    response = client.post('/labeldesigner/api/print', data={**data, 'image': files})
+    assert response.status_code == 200, response.get_json()
+    names = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
+    heights = [Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).height for name in names]
+    # Both pages of the PDF and the image, twice, collated
+    assert len(heights) == 6
+    assert heights[:3] == heights[3:]
+    assert heights[1] > heights[0] > heights[2]
+
+
+def test_several_files_count_against_the_print_limit(tmp_path):
+    client = make_client(tmp_path)
+    data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'text': '[]', 'printer': 'simulation', 'print_count': '40', 'pdf_pages': 'all',
+            'image': [(io.BytesIO(_pdf((300, 200), (200, 300))), 'two.pdf', 'application/pdf'),
+                      (io.BytesIO(_pdf((300, 200))), 'one.pdf', 'application/pdf')]}
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'A print job must not have more than 100 labels, 2 files with 3 labels and 40 copies would be 120'
