@@ -515,8 +515,7 @@ def repo_print():
 
     # Prepare printer queue using requested or default device/model and label_size from data
     try:
-        device = _printer_device(request.values.get('printer'))
-        model = request.values.get('model') or current_app.config['PRINTER_MODEL']
+        device, model = _printer(request.values.get('printer'), request.values.get('model'))
         label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
@@ -681,22 +680,27 @@ def _log_refused_request(what: str, error: Exception):
         current_app.logger.exception(error)
 
 
-def _printer_device(requested) -> str:
-    """Return the printer selected by a request, or the configured one."""
-    configured = current_app.config['PRINTER_PRINTER']
-    if not requested or requested in (configured, 'simulation', '?'):
-        return requested or configured
-    if any(pattern.fullmatch(requested) for pattern in PRINTER_DEVICE_PATTERNS):
-        return requested
-    raise ValueError(f"Unsupported printer: {requested}")
+def _printer(requested_device, requested_model) -> tuple[str, str]:
+    """Return the device and model selected by a request, or the configured
+    ones. With PRINTERS, the model of a listed device is the configured one."""
+    printers = current_app.config.get('PRINTERS') or []
+    if printers:
+        configured, model = printers[0][1], printers[0][0]
+    else:
+        configured, model = current_app.config['PRINTER_PRINTER'], current_app.config['PRINTER_MODEL']
+    device = requested_device or configured
+    listed = [d for _, d in printers]
+    if device not in (configured, 'simulation', '?', *listed) and \
+            not any(pattern.fullmatch(device) for pattern in PRINTER_DEVICE_PATTERNS):
+        raise ValueError(f"Unsupported printer: {device}")
+    model = next((m for m, d in printers if d == device), model)
+    return device, requested_model or model
 
 
 def create_printer_from_request(request: Request):
     label_size = request.values.get('label_size', '62')
     # Allow overriding the device specifier via the request (frontend selection)
-    device = _printer_device(request.values.get('printer'))
-    # Allow overriding model via request if provided
-    model = request.values.get('model') or current_app.config['PRINTER_MODEL']
+    device, model = _printer(request.values.get('printer'), request.values.get('model'))
     return PrinterQueue(
         model=model,
         device_specifier=device,
@@ -1088,8 +1092,7 @@ def webhook_print():
         image_mode = _param('image_mode', current_app.config['IMAGE_DEFAULT_MODE'])
         bw_threshold = int(_param('bw_threshold', current_app.config['IMAGE_DEFAULT_BW_THRESHOLD']))
         high_res = int(_param('high_res', 0)) != 0
-        device = _printer_device(_param('printer', None))
-        model = _param('model', current_app.config['PRINTER_MODEL'])
+        device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size
         kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)

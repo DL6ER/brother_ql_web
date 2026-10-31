@@ -10,6 +10,7 @@ from PIL import Image
 from browser_helpers import wait_until_ready
 
 SETTINGS = 'labeldesigner_settings_v1'
+CHOSEN_PRINTER = 'labeldesigner_printer_v1'
 
 
 def type_text(page, text):
@@ -22,11 +23,12 @@ def wait_for_status(page, text):
 
 
 def stored_settings(page) -> dict:
-    return json.loads(page.evaluate('key => localStorage.getItem(key)', SETTINGS) or '{}')
+    """The settings of the chosen printer."""
+    return json.loads(page.evaluate('() => localStorage.getItem(LS_KEY)') or '{}')
 
 
 def store_settings(page, settings: dict):
-    page.evaluate('([key, value]) => localStorage.setItem(key, value)', [SETTINGS, json.dumps(settings)])
+    page.evaluate('value => localStorage.setItem(LS_KEY, value)', json.dumps(settings))
 
 
 def reload(page):
@@ -110,15 +112,64 @@ def test_loading_a_saved_label_keeps_the_printer(page):
     assert not page.is_visible('#printerStatusPanel')
 
 
+def wait_for_missing_printer(page, name):
+    page.wait_for_function("() => document.getElementById('printerStatusPanel').innerText.includes('not available')")
+    assert f'The printer {name} is not available.' in page.inner_text('#printerStatusPanel')
+
+
 def test_printer_that_is_not_available_is_reported(page):
     # The label designer switched to another printer without saying so
     type_text(page, 'Hello')
+    page.evaluate('key => localStorage.setItem(key, "file:///dev/usb/lp7")', CHOSEN_PRINTER)
+    reload(page)
+    wait_for_missing_printer(page, '/dev/usb/lp7')
+
+
+def test_printer_of_older_settings_that_is_not_available_is_reported(page):
+    # Settings stored before every printer had its own name their printer
+    type_text(page, 'Hello')
     settings = stored_settings(page)
     settings['printer'] = 'file:///dev/usb/lp7'
-    store_settings(page, settings)
+    page.evaluate('() => localStorage.clear()')
+    page.evaluate('([key, value]) => localStorage.setItem(key, value)', [SETTINGS, json.dumps(settings)])
     reload(page)
-    page.wait_for_function("() => document.getElementById('printerStatusPanel').innerText.includes('not available')")
-    assert 'The printer /dev/usb/lp7 is not available.' in page.inner_text('#printerStatusPanel')
+    wait_for_missing_printer(page, '/dev/usb/lp7')
+    # They became the settings of that printer, which stays chosen
+    assert stored_settings(page)['label_text'] == 'Hello'
+    reload(page)
+    wait_for_missing_printer(page, '/dev/usb/lp7')
+    assert page.input_value('#label_text') == 'Hello'
+
+
+def test_every_printer_has_its_own_settings(page, app):
+    other = 'file:///nonexistent/lp0'
+    app.config['PRINTERS'] = [('QL-800', 'simulation'), ('QL-1100', other)]
+    try:
+        page.evaluate('getPrinterStatus()')
+        page.wait_for_function("n => document.getElementById('printer').options.length === n", arg=2)
+        type_text(page, 'First')
+        wait_for_status(page, 'Preview updated')
+        # A printer used for the first time starts with the current settings
+        page.select_option('#printer', other)
+        assert page.input_value('#label_text') == 'First'
+        type_text(page, 'Second')
+        page.select_option('#printer', 'simulation')
+        assert page.input_value('#label_text') == 'First'
+        page.select_option('#printer', other)
+        assert page.input_value('#label_text') == 'Second'
+        # Switching is no undo step, it saved into the settings of the other printer
+        assert page.inner_text('#undoCounter') == '1'
+        # Its own undo history: back to the copied settings
+        page.click('#undoSettingsBtn')
+        assert page.input_value('#label_text') == 'First'
+        type_text(page, 'Second')
+        # The chosen printer and its settings are kept
+        reload(page)
+        page.wait_for_function("p => document.getElementById('printer').value === p", arg=other)
+        assert page.input_value('#label_text') == 'Second'
+        assert page.evaluate("() => document.getElementById('label_size').selectedOptions[0].dataset.models.includes('QL-1100')")
+    finally:
+        app.config['PRINTERS'] = []
 
 
 def test_dark_mode_is_remembered(page):

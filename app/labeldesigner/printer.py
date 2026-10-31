@@ -693,6 +693,31 @@ def get_ptr_status(config: Config):
         "red_support": False
     }
     try:
+        if config.get('PRINTERS'):
+            # The configured printers, no detection. Each keeps its configured
+            # model, a failed query must not move it to another printer. The
+            # simulator is listed only when configured, e.g. QL-700=simulation.
+            printers = []
+            for model, device in config['PRINTERS']:
+                try:
+                    if device == 'simulation':
+                        state = SIMULATOR_PRINTER.copy()
+                    elif device.startswith('tcp://'):
+                        state = query_network_status(device, model)
+                    else:
+                        state = query_status(device, model)
+                except Exception as e:
+                    logger.info('Status query of %s failed: %s', device, e)
+                    state = _failed_printer_state(device, e)
+                state.update({'path': device, 'model': model})
+                state['red_support'] = model in [m.identifier for m in ALL_MODELS if m.two_color]
+                printers.append(state)
+            return {
+                **status,
+                **printers[0],
+                'printers': printers,
+                'selected': printers[0]['path'],
+            }
         # If device_specifier is the default '?', try to auto-detect multiple printers
         if device_specifier == '?':
             now = time.time()

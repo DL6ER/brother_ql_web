@@ -281,3 +281,25 @@ def test_detected_printer_busy_before_first_answer_has_unknown_model(client, mon
     lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
     assert lp0['status_type'] == 'Printing'
     assert lp0['model'] == 'Unknown'
+
+
+def test_configured_printers(client, monkeypatch):
+    from app.labeldesigner import ipp, routes
+    LP1 = 'file:///dev/usb/lp1'
+    NET = 'tcp://127.0.0.1'
+
+    def no_answer(*args, **kwargs):
+        raise TimeoutError('timed out')
+    monkeypatch.setattr(ipp, 'get_printer_attributes', no_answer)
+    client.application.config['PRINTERS'] = [('QL-700', DEVICE), ('QL-1100', LP1), ('QL-810W', NET), ('QL-570', 'simulation')]
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert [(p['model'], p['path']) for p in status['printers']] == \
+        [('QL-700', DEVICE), ('QL-1100', LP1), ('QL-810W', NET), ('QL-570', 'simulation')]
+    # Network printers are asked over IPP
+    assert status['printers'][2]['errors'] == ['The printer does not answer the status query (timed out)']
+    assert status['selected'] == DEVICE
+    with client.application.test_request_context():
+        # The model of a listed printer is the configured one, unless requested
+        assert routes._printer(LP1, None) == (LP1, 'QL-1100')
+        assert routes._printer(None, None) == (DEVICE, 'QL-700')
+        assert routes._printer(LP1, 'QL-800') == (LP1, 'QL-800')

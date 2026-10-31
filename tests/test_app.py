@@ -143,3 +143,15 @@ def test_label_designer_can_be_installed_as_an_app():
     with client.get(apple_icon) as response:
         image = Image.open(BytesIO(response.data))
     assert image.size == (180, 180) and image.mode == 'RGB'
+
+
+def test_printers_from_environment(monkeypatch):
+    monkeypatch.setenv('PRINTERS', 'QL-700=usb://0x04f9:0x2042/L9Z378866, QL-1100=file:///dev/usb/lp1')
+    assert create_app().config['PRINTERS'] == [
+        ('QL-700', 'usb://0x04f9:0x2042/L9Z378866'),
+        ('QL-1100', 'file:///dev/usb/lp1'),
+    ]
+    for value in ('QL-9999=file:///dev/usb/lp0', 'QL-700', 'QL-700='):
+        monkeypatch.setenv('PRINTERS', value)
+        with pytest.raises(ValueError):
+            create_app()
