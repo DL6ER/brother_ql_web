@@ -155,3 +155,20 @@ def test_printers_from_environment(monkeypatch):
         monkeypatch.setenv('PRINTERS', value)
         with pytest.raises(ValueError):
             create_app()
+
+
+
+def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
+    headers = {'X-Forwarded-Prefix': '/labels', 'X-Forwarded-Host': 'example.com', 'X-Forwarded-Proto': 'https'}
+    # With PROXY_COUNT=0, the default, the headers are not trusted
+    monkeypatch.setenv('PROXY_COUNT', '0')
+    client = create_app().test_client()
+    assert client.get('/', headers=headers).headers['Location'] == '/labeldesigner/'
+    monkeypatch.setenv('PROXY_COUNT', '1')
+    client = create_app().test_client()
+    assert client.get('/', headers=headers).headers['Location'] == '/labels/labeldesigner/'
+    html = client.get('/labeldesigner/', headers=headers).get_data(as_text=True)
+    manifest_url = re.search(r'<link rel="manifest" href="([^"]+)"', html).group(1)
+    assert manifest_url.startswith('/labels/')
+    # The API is called below the path too
+    assert "url_for_print = '/labels/labeldesigner/api/print'" in html
