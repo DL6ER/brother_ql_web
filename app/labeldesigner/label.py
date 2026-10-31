@@ -88,6 +88,7 @@ class SimpleLabel:
         template_env_vars: frozenset = frozenset(),
         warnings: list[str] | None = None,
         shrink_text: bool = False,
+        auto_orientation: bool = False,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed."""
@@ -137,6 +138,8 @@ class SimpleLabel:
         # being cut off
         self._shrink_text = shrink_text
         self._text_scale = 1.0
+        # The orientation was chosen to fit an image best, not by the request
+        self.auto_orientation = auto_orientation
 
     @property
     def label_content(self):

@@ -68,6 +68,15 @@
                 "schema": {
                   "type": "integer"
                 }
+              },
+              "X-Label-Orientation": {
+                "description": "`auto` when the orientation was chosen to show an image largest, which `image_fit` does for an image without text on a die-cut label. `orientation` has no effect then.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "auto"
+                  ]
+                }
               }
             },
             "content": {
