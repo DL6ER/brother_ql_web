@@ -663,6 +663,9 @@ async function getPrinterStatus() {
                 select.value = data.printers[0].path;
             }
             missingPrinter = cur && select.value !== cur ? cur : null;
+            // Settings stored before a printer was chosen belong to the
+            // printer used so far, also while it is not available
+            if (settingsRestored && settingsPrinter === null) switchSettings(preferredPrinter || select.value);
         }
         // Choose active printer status based on the select value
         const chosenPath = (document.getElementById('printer') || {}).value || (data.selected || (data.printers[0] && data.printers[0].path));
@@ -678,8 +681,37 @@ async function getPrinterStatus() {
 
 // --- Local Storage Save/Restore/Export/Import/Reset ---
 const MAX_HISTORY = 40;
-const LS_KEY = 'labeldesigner_settings_v1';
-const LS_HISTORY_KEY = 'labeldesigner_settings_history_v1';
+// Every printer has its own settings and undo history. Settings stored
+// before a printer was chosen (or before this) keep the original keys, a
+// printer without settings of its own starts with them.
+const LS_PRINTER_KEY = 'labeldesigner_printer_v1';
+const LS_OLD_KEY = 'labeldesigner_settings_v1';
+var LS_KEY, LS_HISTORY_KEY;
+var settingsPrinter = null;
+var settingsRestored = false;
+function useSettingsOf(printer) {
+    settingsPrinter = printer || null;
+    // Chosen even if it has no settings yet, or is not available
+    if (settingsPrinter) preferredPrinter = settingsPrinter;
+    const suffix = settingsPrinter ? '@' + settingsPrinter : '';
+    LS_KEY = LS_OLD_KEY + suffix;
+    LS_HISTORY_KEY = 'labeldesigner_settings_history_v1' + suffix;
+    try { localStorage.setItem(LS_PRINTER_KEY, settingsPrinter || ''); } catch { }
+}
+useSettingsOf(localStorage.getItem(LS_PRINTER_KEY));
+
+// Show the settings of another printer. One used for the first time starts
+// with the current settings.
+function switchSettings(printer) {
+    if (!printer || printer === settingsPrinter) return;
+    useSettingsOf(printer);
+    if (localStorage.getItem(LS_KEY)) {
+        restoreAllSettingsFromLocalStorage();
+    } else {
+        saveAllSettingsToLocalStorage();
+    }
+    updateUndoButton();
+}
 var current_restoring = false;
 function saveAllSettingsToLocalStorage() {
     const data = {};
@@ -770,7 +802,7 @@ function updateUndoButton() {
 }
 
 function restoreAllSettingsFromLocalStorage() {
-    const raw = localStorage.getItem(LS_KEY);
+    const raw = localStorage.getItem(LS_KEY) || localStorage.getItem(LS_OLD_KEY);
     if (!raw) return;
 
     let data;
@@ -781,9 +813,10 @@ function restoreAllSettingsFromLocalStorage() {
         if (!(key in data)) return;
         if (this.id === 'printer') {
             // The printer list arrives with the next status query, the stored
-            // printer is chosen then if it is available
-            preferredPrinter = data[key] || null;
-            if (Array.from(this.options).some(o => o.value === data[key])) this.value = data[key];
+            // printer is chosen then if it is available. Settings of a printer
+            // always belong to that printer, whatever printer they name.
+            preferredPrinter = settingsPrinter || data[key] || null;
+            if (Array.from(this.options).some(o => o.value === preferredPrinter)) this.value = preferredPrinter;
             return;
         }
         if (this.tagName === 'SELECT' && !Array.from(this.options).some(o => o.value == data[key])) {
@@ -1185,6 +1218,11 @@ $(document).ready(function () {
     $('#printer').on('change', function () {
         preferredPrinter = this.value;
         missingPrinter = null;
+        // The status first, restoring the settings already updates the preview
+        printer_status = (window.available_printers || []).find(p => p.path === this.value) || printer_status;
+        switchSettings(this.value);
+        updatePrinterStatus();
+        preview();
     });
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
@@ -1317,11 +1355,14 @@ function init2() {
     // Restore settings on load
     set_all_inputs_default();
     restoreAllSettingsFromLocalStorage();
+    settingsRestored = true;
 
     // Save on change
     $(document).on('change input', 'input, select, textarea', function () {
-        // Skip when this was caused by the #lineSelect <select>
-        if ($(this).is('#lineSelect')) return;
+        // Skip when this was caused by the #lineSelect <select>, or by the
+        // printer: its settings are switched, see switchSettings(). Its input
+        // event comes first and would save into the settings of the last one.
+        if ($(this).is('#lineSelect, #printer')) return;
         setFontSettingsPerLine();
         saveAllSettingsToLocalStorage();
     });

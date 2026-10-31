@@ -91,6 +91,7 @@ The navbar shows the version and build time of the running image, please add the
 |---|---|---|
 | `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`, or `?` to detect printers automatically | `?` |
 | `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer | `QL-800` |
+| `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g. `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1`. There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g. `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |
 | `LABEL_DEFAULT_ORIENTATION` | `standard` or `rotated` | `standard` |
 | `LABEL_TEMPLATE_ENV_VARS` | Environment variables labels may insert with `{{env:<var>}}`, comma-separated. All others stay empty, so that nobody can read secrets of the server through a label. | none |

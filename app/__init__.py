@@ -29,6 +29,20 @@ def _positive_int(value: str) -> int:
     return number
 
 
+def _printer_list(value: str) -> list[tuple[str, str]]:
+    """Parse "MODEL=DEVICE,MODEL=DEVICE" into (model, device) pairs."""
+    models = [model.identifier for model in ALL_MODELS]
+    printers = []
+    for entry in value.split(','):
+        if not entry.strip():
+            continue
+        model, sep, device = (part.strip() for part in entry.partition('='))
+        if not sep or not device or model not in models:
+            raise ValueError(entry)
+        printers.append((model, device))
+    return printers
+
+
 def _log_level(value: str) -> str:
     level = value.strip().upper()
     if level not in logging.getLevelNamesMapping():
@@ -43,6 +57,7 @@ def _log_level(value: str) -> str:
 ENV_OVERRIDES = {
     'PRINTER_MODEL': str,
     'PRINTER_PRINTER': str,
+    'PRINTERS': _printer_list,
     'LABEL_DEFAULT_SIZE': str,
     'LABEL_DEFAULT_ORIENTATION': str,
     'LOG_LEVEL': _log_level,
