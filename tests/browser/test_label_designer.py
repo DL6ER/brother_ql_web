@@ -409,9 +409,11 @@ def test_saved_labels_of_the_selected_label_size(page, app):
         names = page.evaluate(shown)
         assert 'QR-Example.json' in names and 'No-Size.json' in names
         assert 'Small.json' not in names and 'URGENT-Text.json' not in names
+        assert 'turn on All sizes' in page.inner_text('#repoHiddenSizes')
         page.check('#repoAllSizes')
         names = page.evaluate(shown)
         assert 'Small.json' in names and 'URGENT-Text.json' in names
+        assert not page.is_visible('#repoHiddenSizes')
     finally:
         os.remove(os.path.join(repo, 'Small.json'))
         os.remove(os.path.join(repo, 'No-Size.json'))

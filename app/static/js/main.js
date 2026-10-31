@@ -1155,10 +1155,17 @@ function filterRepoList() {
     // Only labels for the selected label size, unless "All sizes" is on.
     // Labels saved without a size are always shown.
     const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
+    let otherSizes = 0;
     $('#repoListBody .repo-item').each(function () {
-        this.hidden = (query !== '' && !this.dataset.search.includes(query)) ||
-            (size !== null && this.dataset.size !== '' && this.dataset.size !== size);
+        const matches = query === '' || this.dataset.search.includes(query);
+        const otherSize = size !== null && this.dataset.size !== '' && this.dataset.size !== size;
+        if (matches && otherSize) otherSizes++;
+        this.hidden = !matches || otherSize;
     });
+    // Say why labels are missing, the list may even be empty
+    $('#repoHiddenSizes').prop('hidden', otherSizes === 0).text(otherSizes === 1
+        ? '1 saved label of another size is hidden, turn on All sizes to show it.'
+        : `${otherSizes} saved labels of other sizes are hidden, turn on All sizes to show them.`);
 }
 
 // Show the margins in mm, the unit of the label sizes
