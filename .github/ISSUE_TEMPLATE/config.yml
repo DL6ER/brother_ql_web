@@ -1,0 +1,10 @@
+# Shown when an issue is opened: bugs go into issues, questions and ideas
+# into the Discussions
+blank_issues_enabled: true
+contact_links:
+  - name: Ask a question
+    url: https://github.com/DL6ER/brother_ql_web/discussions/categories/q-a
+    about: How to set something up or print something. The answers help the next person with the same question.
+  - name: Share an idea
+    url: https://github.com/DL6ER/brother_ql_web/discussions/categories/ideas
+    about: Ideas that are not a concrete feature request yet.

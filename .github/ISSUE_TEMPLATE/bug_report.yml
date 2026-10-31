@@ -1,0 +1,36 @@
+name: Report a bug
+description: Something does not print or does not work as expected.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown under "Label Designer" in the navbar, e.g. "v1.0, 2026-10-30 15:40 UTC" or a commit.
+    validations:
+      required: true
+  - type: input
+    id: printer
+    attributes:
+      label: Printer
+      description: Model and connection, e.g. "QL-1100 over USB" or "QL-810W over the network".
+    validations:
+      required: true
+  - type: input
+    id: labels
+    attributes:
+      label: Labels
+      description: The label size chosen in the label designer and the labels in the printer, e.g. "103 x 164 mm die-cut (DK-11247)".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead, with the settings you changed (e.g. 600 dpi printing). The message the label designer shows helps, and a photo of a misprinted label.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The output of `docker logs brother_ql_web` around the problem, if you can with `LOG_LEVEL=DEBUG`.
+      render: text
