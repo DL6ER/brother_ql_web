@@ -1,0 +1,7 @@
+# Spelling check, run "codespell" in the repository (CI: the spelling job)
+[codespell]
+# Typos, and British spellings: the project uses American English
+builtin = clear,rare,en-GB_to_en-US
+check-hidden = true
+# Vendored libraries and fonts
+skip = ./.git,*.min.js,*-min.js,*.min.css,*.map,./app/static/css/dropzone.css,./app/static/webfonts

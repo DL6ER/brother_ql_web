@@ -1,0 +1,2 @@
+# The spelling check in CI, settings in .codespellrc
+codespell==2.4.3
