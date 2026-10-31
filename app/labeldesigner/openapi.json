@@ -1049,7 +1049,7 @@
               1
             ],
             "default": 0,
-            "description": "600 dpi printing along the label. Labels usually come out much darker, it is only confirmed for the QL-800."
+            "description": "600 dpi printing along the label. Labels usually come out much darker, it is only confirmed for the QL-800. The QL-1100 series prints at 300 dpi only and refuses it."
           },
           "shrink_text": {
             "type": "integer",

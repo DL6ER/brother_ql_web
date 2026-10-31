@@ -242,7 +242,7 @@ function formData(cut_once = false) {
         border_roundness: parseInt($('#border_roundness').val(), 10) || 0,
         border_distance_x: parseInt($('#border_distance_x').val(), 10) || 0,
         border_distance_y: parseInt($('#border_distance_y').val(), 10) || 0,
-        high_res: $('#high_res').is(':checked') ? 1 : 0,
+        high_res: $('#high_res').is(':checked:enabled') ? 1 : 0,
         shrink_text: $('#shrink_text').is(':checked') ? 1 : 0,
         pdf_pages: $('#pdf_pages').val() || '',
         image_scaling_factor: parseInt($('#image_scaling_factor').val(), 10) || 0,
@@ -270,7 +270,7 @@ function formData(cut_once = false) {
 }
 
 function get_dpi() {
-    return $('#high_res').is(':checked') ? 600 : 300;
+    return $('#high_res').is(':checked:enabled') ? 600 : 300;
 }
 
 // With auto-fit, an image without text on a die-cut label is turned to the
@@ -586,8 +586,22 @@ function loadedLabel() {
     return { value: null, name: length > 0 ? `${width} x ${length} mm` : `${width} mm endless`, selected: false };
 }
 
+// The QL-1100 series prints at 300 dpi only
+function update600Dpi() {
+    const unsupported = models_without_600_dpi.includes(printer_status.model);
+    $('#highResUnsupported').prop('hidden', !unsupported);
+    $('#highResModel').text(printer_status.model);
+    const changed = $('#high_res').prop('disabled') !== unsupported;
+    $('#high_res').prop('disabled', unsupported);
+    if (changed && $('#high_res').is(':checked')) {
+        updateMarginHints();
+        preview();
+    }
+}
+
 function updatePrinterStatus() {
     filterLabelSizes(printer_status.model);
+    update600Dpi();
     if ($('#label_size option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {

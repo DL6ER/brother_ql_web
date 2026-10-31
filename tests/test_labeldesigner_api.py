@@ -1701,6 +1701,27 @@ def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
     assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
 
 
+@pytest.mark.parametrize('model', ['QL-1100', 'QL-1110NWB', 'QL-1115NWB'])
+def test_600_dpi_is_refused_for_the_ql1100_series(tmp_path, model):
+    # Brother's command reference of the series lists 300 dpi only (#103)
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'label_size': '62', 'model': model, 'high_res': '1'})
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400
+    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '62', 'model': model, 'high_res': 1})
+    assert response.status_code == 400
+    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+
+    # At 300 dpi they print
+    data['high_res'] = '0'
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+
+
 @pytest.mark.parametrize('values, warning', [
     ({'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'A' * 40, 'size': '60'}])},
      'The text does not fit on the label, part of it is cut off.'),

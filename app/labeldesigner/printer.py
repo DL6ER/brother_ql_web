@@ -70,6 +70,19 @@ LABEL_OFFSET_CORRECTIONS = {
     '103x164': -6,
 }
 
+# The QL-1100 series prints at 300 dpi only. Brother's raster command
+# reference of these models lists no 600 dpi resolution, unlike that of the
+# QL-800, and a 600 dpi label came out twice as long on a QL-1100 (#103):
+# https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
+MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB')
+
+
+def resolution_problem(model: str, high_res: bool) -> str:
+    """Why the model cannot print at the resolution, or an empty string."""
+    if high_res and model in MODELS_WITHOUT_600_DPI:
+        return f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+    return ''
+
 
 def _apply_label_offset_corrections():
     for label in ALL_LABELS:
@@ -225,6 +238,9 @@ class PrinterQueue:
         self._print_queue = []
 
     def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False):
+        problem = resolution_problem(self.model, high_res)
+        if problem:
+            raise ValueError(problem)
         self._print_queue.append({
             'label': label,
             'cut': cut,

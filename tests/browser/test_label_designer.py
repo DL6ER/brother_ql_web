@@ -167,6 +167,21 @@ def test_600_dpi_printing_is_explained(page):
     assert not page.is_checked('#high_res')
 
 
+def test_no_600_dpi_on_the_ql1100(page):
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+    page.check('#high_res')
+    assert page.evaluate('get_dpi()') == 600
+    fake_printer(page, model='QL-1100', media_width=62)
+    page.wait_for_selector('#highResUnsupported', state='visible')
+    assert page.inner_text('#highResUnsupported') == 'The QL-1100 prints at 300 dpi only'
+    # The choice is kept for other printers, but not used
+    assert page.is_checked('#high_res') and page.is_disabled('#high_res')
+    assert page.evaluate('get_dpi()') == 300
+    page.click('button[data-bs-target="#highResInfo"]')
+    page.wait_for_selector('#highResInfo.show')
+    assert page.get_attribute('#highResInfo a', 'href').endswith('cv_ql1100_eng_raster_100.pdf')
+
+
 def fake_printer(page, **media):
     """Answer the status queries with a QL-800 that reports the given media."""
     status = {'errors': [], 'model': 'QL-800', 'path': 'simulation', 'red_support': True,
