@@ -218,6 +218,19 @@ def test_600_dpi_printing_is_explained(page):
     assert not page.is_checked('#high_res')
 
 
+def test_fast_printing(page):
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+    # Quality unless chosen otherwise
+    assert page.is_checked('#fast_printing_0')
+    assert page.evaluate('formData().fast_printing') == 0
+    page.click('label[for=fast_printing_1]')
+    assert page.evaluate('formData().fast_printing') == 1
+    # Kept like the other settings
+    page.reload()
+    wait_until_ready(page)
+    assert page.is_checked('#fast_printing_1')
+
+
 def test_no_600_dpi_on_the_ql1100(page):
     page.click('button[data-bs-target="#accordionLabelSize"]')
     page.check('#high_res')

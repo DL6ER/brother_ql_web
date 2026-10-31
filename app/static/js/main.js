@@ -243,6 +243,7 @@ function formData(cut_once = false) {
         border_distance_x: parseInt($('#border_distance_x').val(), 10) || 0,
         border_distance_y: parseInt($('#border_distance_y').val(), 10) || 0,
         high_res: $('#high_res').is(':checked:enabled') ? 1 : 0,
+        fast_printing: $('input[name=fast_printing]:checked').val() === '1' ? 1 : 0,
         shrink_text: $('#shrink_text').is(':checked') ? 1 : 0,
         pdf_pages: $('#pdf_pages').val() || '',
         image_scaling_factor: parseInt($('#image_scaling_factor').val(), 10) || 0,

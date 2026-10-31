@@ -24,7 +24,7 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
 - **Label repository:** save, load and print labels, export and import them as JSON
 - **Printers:** several printers at once, and a simulator to try everything without a printer
-- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing
+- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
