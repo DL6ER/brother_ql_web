@@ -1422,6 +1422,19 @@ class FakeSlowPrinter:
         return chunk
 
 
+class FakeResetPrinter(FakeSlowPrinter):
+    """Printer that answers only after "ESC @", like the QL-560 after its
+    first status request."""
+
+    def __init__(self, response: bytes):
+        super().__init__(empty_reads=0, response=response)
+
+    def read(self, length: int) -> bytes:
+        if b'\x1b\x40' not in self.written:
+            return b''
+        return super().read(length)
+
+
 def make_status_packet() -> bytes:
     packet = bytearray(32)
     packet[0:3] = b'\x80\x20\x42'  # header
@@ -1437,9 +1450,16 @@ class TestPrinterStatus:
         from app.labeldesigner.printer import get_status
         printer = FakeSlowPrinter(empty_reads=5, response=make_status_packet())
         status = get_status(printer)
-        assert printer.written == b'\x00' * 200 + b'\x1b\x40\x1b\x69\x53'
+        assert printer.written == b'\x1b\x69\x53'
         assert status['media_width'] == 62
         assert status['errors'] == []
+
+    def test_get_status_resets_a_printer_that_does_not_answer(self):
+        from app.labeldesigner.printer import get_status
+        printer = FakeResetPrinter(make_status_packet())
+        status = get_status(printer, timeout=0.1)
+        assert printer.written == b'\x1b\x69\x53' + b'\x00' * 200 + b'\x1b\x40\x1b\x69\x53'
+        assert status['media_width'] == 62
 
     def test_get_status_times_out_without_response(self):
         from app.labeldesigner.printer import get_status
