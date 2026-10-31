@@ -39,6 +39,7 @@ def app(tmp_path_factory):
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(printer, 'USB_PRINTER_DEVICES', [])
         patch.setattr(printer, 'ARP_TABLE', os.devnull)
+        patch.setattr(printer, 'NETWORK_DISCOVERY', False)
         yield app
 
 
