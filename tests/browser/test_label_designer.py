@@ -42,6 +42,13 @@ def offered_label_sizes(page, model) -> list:
     return page.evaluate("() => Array.from(document.getElementById('label_size').options).filter(o => !o.hidden).map(o => o.value)")
 
 
+def test_only_the_simulator_is_offered(page):
+    # The page chooses the first printer, the tests printed on a real printer
+    # of the machine running them
+    printers = "() => Array.from(document.getElementById('printer').options).map(o => o.value)"
+    assert page.evaluate(printers) == ['simulation']
+
+
 def test_preview_of_typed_text(page):
     assert page.is_visible('#labelEmpty')
     type_text(page, 'Hello')

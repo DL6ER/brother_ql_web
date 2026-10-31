@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app.labeldesigner import printer
@@ -9,3 +11,6 @@ def printer_output(tmp_path, monkeypatch):
     # directory and the working tree
     monkeypatch.setattr(printer, 'LOCK_DIR', str(tmp_path))
     monkeypatch.setattr(printer, 'SIMULATED_LABELS_DIR', str(tmp_path / 'simulated_labels'))
+    # Network printers of the machine running the tests are not detected.
+    # Tests of USB detection fake the devices they need.
+    monkeypatch.setattr(printer, 'ARP_TABLE', os.devnull)
