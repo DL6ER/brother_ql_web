@@ -64,7 +64,7 @@ BROTHER_MAC_ADDRESS_PREFIXES = [
 # brother_ql, measured on real printers. Remove an entry once brother_ql
 # ships the corrected value.
 # - 103x164 (103 x 164 mm die-cut): with brother_ql's 12 the content is 1.5 mm
-#   off-centre on a QL-1100 (3.5 mm left, 6.5 mm right), -6 centres it. The
+#   off-center on a QL-1100 (3.5 mm left, 6.5 mm right), -6 centers it. The
 #   104 mm endless entry of brother_ql already uses a similar -8.
 LABEL_OFFSET_CORRECTIONS = {
     '103x164': -6,

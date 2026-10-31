@@ -1,5 +1,5 @@
-/* Colours that differ between the light and the dark theme. Everything else
-   uses the colour variables of Bootstrap, which follow data-bs-theme. */
+/* Colors that differ between the light and the dark theme. Everything else
+   uses the color variables of Bootstrap, which follow data-bs-theme. */
 :root,
 [data-bs-theme="light"] {
     --ld-page-bg: #eef0f3;
@@ -17,7 +17,7 @@
     --ld-segmented-bg: #16191c;
 }
 
-/* The grey outline buttons of Bootstrap are too faint on the dark background */
+/* The gray outline buttons of Bootstrap are too faint on the dark background */
 [data-bs-theme="dark"] .btn-outline-secondary {
     --bs-btn-color: #b8c0c8;
     --bs-btn-border-color: #5c636a;
@@ -25,7 +25,7 @@
 
 /* --- Page --------------------------------------------------------------- */
 
-/* Grey page with the settings, the text and the preview on white panels.
+/* Gray page with the settings, the text and the preview on white panels.
    Only the page background changes, form fields keep --bs-body-bg. */
 body {
     background-color: var(--ld-page-bg);
@@ -77,7 +77,7 @@ body {
     min-width: 14rem;
 }
 
-/* Printer state next to the printer list: hollow when idle, grey while
+/* Printer state next to the printer list: hollow when idle, gray while
    printing, green after printing, red on errors */
 .printer-dot {
     display: inline-block;
