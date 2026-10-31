@@ -27,6 +27,11 @@ class Config(object):
     # is listed only when configured, e.g. 'QL-700=simulation'.
     PRINTERS = []
 
+    # Number of reverse proxies in front of the server whose X-Forwarded-For,
+    # -Proto, -Host and -Prefix headers are trusted, e.g. 1 for nginx serving
+    # the label designer below a path. 0 ignores these headers.
+    PROXY_COUNT = 0
+
     SERVER_PORT = 8013
     SERVER_HOST = '0.0.0.0'
 
