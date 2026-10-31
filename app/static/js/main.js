@@ -343,25 +343,31 @@ function gen_label(preview = true, cut_once = false) {
 
     let type = preview ? 'preview' : 'printing';
 
-    // Process image upload
-    if ($('input[name=print_type]:checked').val() == 'image') {
-        // Without an image there is nothing to send
-        setStatus({ type: type, 'status': imageDropZone.files.length > 0 ? 'pending' : '' });
-        dropZoneMode = preview ? 'preview' : 'printing';
-        imageDropZone.processQueue();
-        return;
-    }
-
-    // Get data and compare to the last preview generation, return if nothing
-    // has changed
     const data = formData(cut_once);
-    const dataJson = JSON.stringify(data);
-    if (preview && dataJson === lastPreviewData) {
-        console.debug("No changes detected, not generating new preview.");
-        return;
+    let body = data;
+    const imageLabel = $('input[name=print_type]:checked').val() == 'image';
+    if (imageLabel) {
+        // Without an image there is nothing to send
+        if (imageDropZone.files.length === 0) {
+            setStatus({ type: type, 'status': '' });
+            return;
+        }
+        // The preview shows the first image, printing takes all of them,
+        // each as a label of its own
+        body = new FormData();
+        $.each(data, (key, value) => body.append(key, value));
+        const files = preview ? imageDropZone.files.slice(0, 1) : imageDropZone.files;
+        files.forEach(file => body.append('image', file, file.name));
+        lastPreviewData = null;
+    } else {
+        // Compare to the last preview, return if nothing has changed
+        const dataJson = JSON.stringify(data);
+        if (preview && dataJson === lastPreviewData) {
+            console.debug("No changes detected, not generating new preview.");
+            return;
+        }
+        lastPreviewData = dataJson;
     }
-    // Update lastPreviewData
-    lastPreviewData = dataJson;
     setStatus({ type: type, 'status': 'pending' });
 
     // Send printing request
@@ -370,8 +376,10 @@ function gen_label(preview = true, cut_once = false) {
     $.ajax({
         type: 'POST',
         url: url,
-        contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
-        data: formData(cut_once),
+        data: body,
+        // Image labels send the files as multipart/form-data
+        contentType: imageLabel ? false : 'application/x-www-form-urlencoded; charset=UTF-8',
+        processData: !imageLabel,
         success: function (data, _textStatus, xhr) {
             if (preview && seq !== previewSeq) return;
             // Check if response is JSON and has a key "success"
@@ -381,8 +389,13 @@ function gen_label(preview = true, cut_once = false) {
                 data.success === false ?
                 'error' : 'success';
             setStatus({ type: type, 'status': status, warning: xhr.getResponseHeader('X-Label-Warning') });
+            if (!preview) return;
             updatePreview(data);
-            if (preview) showAutoOrientation(xhr.getResponseHeader('X-Label-Orientation') === 'auto');
+            showAutoOrientation(xhr.getResponseHeader('X-Label-Orientation') === 'auto');
+            // Pages can be chosen of a PDF with several
+            const pages = parseInt(xhr.getResponseHeader('X-PDF-Pages') || '', 10) || 0;
+            $('#pdfPageCount').text(pages);
+            $('#pdfPagesGroup').prop('hidden', pages < 2);
         },
         error: function (xhr, _status, error) {
             if (preview && seq !== previewSeq) return;
@@ -462,87 +475,26 @@ function setStatus(data, what = null) {
     $('#dropdownPrintButton').prop('disabled', false);
 }
 
+// Collects the images, gen_label() sends them. Several files are printed
+// one after the other, each as a label of its own.
 let imageDropZone = null;
 new Dropzone("#image-dropzone", {
-    url: function () {
-        if (dropZoneMode == 'preview') {
-            return url_for_preview + "?return_format=base64";
-        } else {
-            return url_for_print;
-        }
-    },
-    paramName: "image", // The name that will be used to transfer the file
-    dictDefaultMessage: 'Drop an image or PDF here, click to choose one, or paste it with Ctrl+V',
+    // Required by Dropzone, it never uploads itself
+    url: url_for_preview,
+    dictDefaultMessage: 'Drop images or PDFs here, click to choose them, or paste one with Ctrl+V',
     dictRemoveFile: 'Remove',
     acceptedFiles: 'image/*,application/pdf',
-    maxFiles: 1,
     addRemoveLinks: true,
     autoProcessQueue: false,
     thumbnailMethod: 'contain',
     init: function () {
         imageDropZone = this;
 
-        this.on("addedfile", function () {
-            if (this.files[1] != null) {
-                this.removeFile(this.files[0]);
-            }
-        });
+        this.on("addedfile", updateImageFilesNote);
         this.on("removedfile", function () {
             if (this.files.length === 0) $('#pdfPagesGroup').prop('hidden', true);
+            updateImageFilesNote();
         });
-    },
-
-    sending: function (file, xhr, data) {
-        xhr.previewSeq = dropZoneMode == 'preview' ? ++previewSeq : null;
-        // append all parameters to the request
-        let fd = formData(false);
-
-        $.each(fd, function (key, value) {
-            data.append(key, value);
-        });
-    },
-
-    error: function (file, response, xhr) {
-        if (xhr && xhr.previewSeq != null && xhr.previewSeq !== previewSeq) {
-            if (file.accepted) file.status = Dropzone.QUEUED;
-            return;
-        }
-        // Show the error and queue the file again, Dropzone would otherwise
-        // never send it again until it is removed and added anew
-        const message = response && typeof response === 'object' ? response.message : response;
-        setStatus({ type: dropZoneMode, status: 'error', message: message });
-        if (file.accepted) {
-            file.status = Dropzone.QUEUED;
-        }
-    },
-
-    success: function (file, response, event) {
-        // file.xhr is the newest request of the file, the finished one is
-        // the target of the event. An older preview may finish after a newer
-        // one and must not replace it.
-        const xhr = (event && event.target) || file.xhr;
-        if (xhr && xhr.previewSeq != null && xhr.previewSeq !== previewSeq) {
-            file.status = Dropzone.QUEUED;
-            return;
-        }
-        // If preview or print was successfull update the previewpane or print status
-        // Check if response is JSON and has a key "success"
-        const status = typeof response === "object" &&
-            response !== null &&
-            "success" in response &&
-            response.success === false ?
-            'error' : 'success';
-        const warning = xhr ? xhr.getResponseHeader('X-Label-Warning') : null;
-        setStatus({ type: dropZoneMode, status: status, warning: warning });
-        if (dropZoneMode == 'preview') {
-            updatePreview(response);
-            // Pages can be chosen of a PDF with several
-            const pages = parseInt(xhr ? xhr.getResponseHeader('X-PDF-Pages') : '', 10) || 0;
-            $('#pdfPageCount').text(pages);
-            $('#pdfPagesGroup').prop('hidden', pages < 2);
-            showAutoOrientation(xhr && xhr.getResponseHeader('X-Label-Orientation') === 'auto');
-        }
-        file.status = Dropzone.QUEUED;
     },
 
     accept: function (file, done) {
@@ -1300,12 +1252,21 @@ window.onload = async function () {
     });
 }
 
-// Make a file the image of the label, e.g. one pasted or shared
+// Make a file the image of the label, e.g. one pasted or shared. It
+// replaces the images there are, dropped and chosen files are added.
 function useImageFile(file) {
     if ($('input[name=print_type]:checked').val() !== 'image') {
         $('#printTypeImage').prop('checked', true).trigger('change');
     }
+    imageDropZone.removeAllFiles(true);
     imageDropZone.addFile(file);
+}
+
+// Several images are printed one after the other
+function updateImageFilesNote() {
+    const count = imageDropZone ? imageDropZone.files.length : 0;
+    $('#imageFilesNote').prop('hidden', count < 2)
+        .text(`${count} files, each is printed as a label of its own. The preview shows the first.`);
 }
 
 // Content shared with the installed app from the share menu of a phone

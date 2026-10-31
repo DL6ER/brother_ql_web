@@ -94,17 +94,22 @@ def open_image(file: FileStorage | BinaryIO, filename: str, dpi: int) -> Image.I
     return open_images(file, filename, dpi, first_only=True)[0][0]
 
 
-def open_images(file: FileStorage | BinaryIO, filename: str, dpi: int, pdf_pages: str = '',
-                first_only: bool = False, copies: int = 1) -> tuple[list[Image.Image], int | None]:
-    """Open an uploaded or stored image. PDFs are recognized by extension or
-    content and rendered with the given resolution, one image for each page
-    pdf_pages selects (only the first of them with first_only). The second
-    value is the page count of a PDF, None for other files. Files without
-    extension are left to Pillow to identify."""
-    ext = os.path.splitext(filename or '')[1].lower()
+def _is_pdf(file: FileStorage | BinaryIO, filename: str) -> bool:
+    """PDFs are recognized by extension or content."""
     stream = file.stream if isinstance(file, FileStorage) else file
     stream.seek(0)
-    if ext == '.pdf' or stream.read(5) == b'%PDF-':
+    return os.path.splitext(filename or '')[1].lower() == '.pdf' or stream.read(5) == b'%PDF-'
+
+
+def open_images(file: FileStorage | BinaryIO, filename: str, dpi: int, pdf_pages: str = '',
+                first_only: bool = False, copies: int = 1) -> tuple[list[Image.Image], int | None]:
+    """Open an uploaded or stored image. PDFs are rendered with the given
+    resolution, one image for each page pdf_pages selects (only the first of
+    them with first_only). The second value is the page count of a PDF,
+    None for other files. Files without extension are left to Pillow to
+    identify."""
+    ext = os.path.splitext(filename or '')[1].lower()
+    if _is_pdf(file, filename):
         page_count = pdf_page_count(file)
         pages = selected_pdf_pages(pdf_pages, page_count)
         if first_only:
@@ -638,7 +643,8 @@ def print_label():
     status = ""
     try:
         values = request.values.to_dict(flat=True)
-        files = request.files.to_dict(flat=True)
+        # Every uploaded image, not only the first
+        files = request.files
         # Decode the image once, all labels of the job share it. Of a PDF
         # each selected page is a label of its own, the copies are collated.
         images, _ = load_label_images(values, files, copies=print_count)
@@ -878,10 +884,27 @@ def load_label_images(d: dict, files: dict, first_only: bool = False,
     # Pages only make several labels of an image label
     first_only = first_only or d.get('print_type', 'text') != 'image'
 
-    uploaded = files.get('image', None)
-    if uploaded is not None:
-        images, page_count = open_images(uploaded, uploaded.filename, dpi, pdf_pages, first_only, copies)
-        return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
+    # Several uploads are printed one after the other, each as a label of its
+    # own (of a PDF the selected pages). The page count is that of the first.
+    uploads = files.getlist('image') if hasattr(files, 'getlist') else [files['image']] if files.get('image') is not None else []
+    if uploads:
+        if first_only:
+            uploads = uploads[:1]
+        elif len(uploads) > 1:
+            # Checked before any file is rendered
+            labels = sum(len(selected_pdf_pages(pdf_pages, pdf_page_count(upload))) if _is_pdf(upload, upload.filename) else 1
+                         for upload in uploads)
+            max_count = current_app.config['PRINT_MAX_COUNT']
+            if labels * copies > max_count:
+                raise PageSelectionError(f"A print job must not have more than {max_count} labels, {len(uploads)} files "
+                                         f"with {labels} labels and {copies} copies would be {labels * copies}")
+        images, page_count = [], None
+        for i, upload in enumerate(uploads):
+            opened, count = open_images(upload, upload.filename, dpi, pdf_pages, first_only, copies)
+            images += [_convert_image(image, image_mode, bw_threshold) for image in opened]
+            if i == 0:
+                page_count = count
+        return images, page_count
 
     # If no uploaded FileStorage was provided but the data references an
     # image filename (stored in repository), attempt to load it from the

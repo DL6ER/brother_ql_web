@@ -358,3 +358,34 @@ def test_automatic_orientation_is_explained(page):
     page.wait_for_load_state('networkidle')
     page.wait_for_function("() => document.getElementById('autoOrientation').hidden"
                            " && !document.getElementById('orientation_rotated').disabled")
+
+
+def test_several_files_are_printed(page, monkeypatch, tmp_path):
+    # kinghat in #103: several shipping labels at once
+    monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
+    add_file(page, pdf((300, 200)), 'first.pdf', 'application/pdf')
+    add_file(page, pdf((200, 300), (400, 100)), 'second.pdf', 'application/pdf')
+    page.wait_for_selector('#imageFilesNote', state='visible')
+    assert page.inner_text('#imageFilesNote') == '2 files, each is printed as a label of its own. The preview shows the first.'
+    wait_for_status(page, 'Preview updated')
+    page.click('#printButton')
+    wait_for_status(page, 'Printed')
+    # The first page of each PDF
+    assert len(list(tmp_path.glob('*.png'))) == 2
+
+
+def test_pasted_image_replaces_the_files(page):
+    add_file(page, pdf((300, 200)), 'first.pdf', 'application/pdf')
+    add_file(page, pdf((300, 200)), 'second.pdf', 'application/pdf')
+    page.wait_for_function("() => imageDropZone.files.length === 2")
+    page.evaluate("""async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 50;
+        canvas.height = 20;
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        const data = new DataTransfer();
+        data.items.add(new File([blob], 'image.png', { type: 'image/png' }));
+        document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+    }""")
+    page.wait_for_function("() => imageDropZone.files.length === 1 && imageDropZone.files[0].name === 'image.png'")
+    assert not page.is_visible('#imageFilesNote')

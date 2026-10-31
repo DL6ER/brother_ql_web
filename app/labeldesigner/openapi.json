@@ -1107,7 +1107,7 @@
           "image": {
             "type": "string",
             "format": "binary",
-            "description": "Image or PDF (first page) for `print_type=image`, as file upload."
+            "description": "Image or PDF for `print_type=image`, as file upload. Printing takes several (the field repeated), each printed as a label of its own, of a PDF the pages `pdf_pages` selects. The preview uses the first."
           },
           "image_mode": {
             "type": "string",
