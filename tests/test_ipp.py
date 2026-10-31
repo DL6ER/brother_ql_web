@@ -273,7 +273,9 @@ def _announced(address, service, port, model):
 def test_announced_label_printers_are_detected(fake_printer, monkeypatch):
     fake_printer['body'] = fixture('ql810w-ready-62x29.bin')
     monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', True)
-    monkeypatch.setattr(printer, '_discovered', (0.0, []))
+    monkeypatch.setattr(printer, '_discovered', None)
+    # Right after the start of a container the monotonic clock is small
+    monkeypatch.setattr(printer.time, 'monotonic', lambda: 5.0)
     monkeypatch.setattr(printer, '_last_scan_ts', 0)
     monkeypatch.setattr(printer.mdns, 'discover', lambda: [
         _announced('127.0.0.1', '_pdl-datastream._tcp.local', 9100, 'QL-810W'),

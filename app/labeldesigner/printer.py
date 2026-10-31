@@ -48,7 +48,10 @@ ARP_TABLE = '/proc/net/arp'
 # CUPS). Asking takes a second, the answer is kept for a minute.
 NETWORK_DISCOVERY = True
 DISCOVERY_INTERVAL = 60
-_discovered = (0.0, [])
+# (time.monotonic() of the last discovery, printers found), None before the
+# first. The monotonic clock starts at boot, so a time of 0 would count as
+# recent in a container started less than a minute ago.
+_discovered = None
 
 # MAC address prefix of the Wi-Fi module of a Brother QL-810W. Brother
 # buys these modules, the prefix belongs to their maker and also turns up in
@@ -624,9 +627,8 @@ def _discovered_label_printers() -> list[tuple[str, str]]:
     global _discovered
     if not NETWORK_DISCOVERY:
         return []
-    found_at, printers = _discovered
-    if time.monotonic() - found_at < DISCOVERY_INTERVAL:
-        return printers
+    if _discovered is not None and time.monotonic() - _discovered[0] < DISCOVERY_INTERVAL:
+        return _discovered[1]
     printers = []
     for service in mdns.discover():
         txt = service['txt']
