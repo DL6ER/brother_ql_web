@@ -443,12 +443,11 @@ def get_printer(printer_identifier=None, backend_identifier=None):
     return printer
 
 
-def get_status(printer, timeout: float = 2.0):
-    """Request and parse the printer status.
+def _read_status(printer, timeout: float) -> bytes:
+    """Ask for the status, the 32-byte answer or what came until the timeout.
 
     brother_ql's own helper reads only twice, 10 ms apart, but printers such
     as the QL-1100 need ~100 ms to answer and return empty reads until then.
-    Poll until the full 32-byte response arrives or the timeout expires.
     """
     printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
     data = b''
@@ -457,6 +456,17 @@ def get_status(printer, timeout: float = 2.0):
         data += printer.read(32 - len(data)) or b''
         if len(data) < 32:
             time.sleep(0.02)
+    return data
+
+
+def get_status(printer, timeout: float = 2.0):
+    """Request and parse the printer status."""
+    data = _read_status(printer, timeout)
+    if len(data) < 32:
+        # The QL-560 answers only the first request after power-on. Invalidate
+        # and initialize only then: "ESC @" also cancels printing.
+        printer.write(b"\x00" * 200 + b"\x1b\x40")
+        data = _read_status(printer, timeout)
     if len(data) < 32:
         raise TimeoutError(f"No complete status response within {timeout} s")
     return interpret_response(data)
