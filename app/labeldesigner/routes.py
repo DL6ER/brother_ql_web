@@ -295,6 +295,7 @@ def repo_list():
         entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
         # Parse label size (support both snake_case and legacy camelCase)
         label_size = data.get('label_size') or data.get('labelSize')
+        entry['label_size_id'] = label_size
         if label_size:
             label_size_human = next(
                 (label_name(label) for label in ALL_LABELS if label.identifier == label_size), None

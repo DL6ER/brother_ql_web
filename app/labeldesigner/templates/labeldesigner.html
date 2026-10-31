@@ -459,8 +459,13 @@
                 </div>
                 <div class="d-flex align-items-center gap-2 mb-2">
                     <span class="form-label mb-0 me-auto">Saved labels</span>
+                    <div class="form-check form-switch mb-0 text-nowrap">
+                        <input class="form-check-input repo-all-sizes" type="checkbox" role="switch" id="repoAllSizes">
+                        <label class="form-check-label" for="repoAllSizes">All sizes</label>
+                    </div>
                     <input type="search" class="form-control form-control-sm repo-search" placeholder="Search" aria-label="Search saved labels" autocomplete="off">
                 </div>
+                <p class="form-text mt-0 mb-2" id="repoHiddenSizes" hidden></p>
                 <div id="repoListBody">
                     <p class="text-body-secondary">Loading...</p>
                 </div>
