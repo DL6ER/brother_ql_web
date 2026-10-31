@@ -20,7 +20,7 @@ from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
 from werkzeug.security import safe_join
-from . import ipp
+from . import ipp, mdns
 
 try:
     import fcntl
@@ -44,9 +44,15 @@ logger = logging.getLogger(__name__)
 # them elsewhere, so that they never find, let alone print on, a real printer.
 USB_PRINTER_DEVICES = [f'/dev/usb/lp{i}' for i in range(0, 11)]
 ARP_TABLE = '/proc/net/arp'
+# Network printers that announce themselves (DNS-SD, as for Bonjour and
+# CUPS). Asking takes a second, the answer is kept for a minute.
+NETWORK_DISCOVERY = True
+DISCOVERY_INTERVAL = 60
+_discovered = (0.0, [])
 
-# Experimentally identified MAC address prefixes for Brother network printers
-# (may not be exhaustive)
+# MAC address prefix of the Wi-Fi module of a Brother QL-810W. Brother
+# buys these modules, the prefix belongs to their maker and also turns up in
+# other devices, so a printer found by it is checked over IPP where possible.
 BROTHER_MAC_ADDRESS_PREFIXES = [
     "ac:f2:3c",  # Brother QL-810W
 ]
@@ -272,12 +278,23 @@ class PrinterQueue:
                 return ""
 
             network_printer = isinstance(self.device_specifier, str) and self.device_specifier.startswith('tcp://')
+            if network_printer:
+                # Not sent to a printer that cannot take it, e.g. with an
+                # open cover, the job would be lost
+                problem = _network_printer_problem(self.device_specifier, self.model)
+                if problem:
+                    logger.warning('Not printing on %s: %s', self.device_specifier, problem)
+                    return problem + batch
             logger.info("Sending %d bytes to printer at %s (batch %d)",
                         len(qlr.data), self.device_specifier, batch_index)
             info = send(qlr.data, self.device_specifier)
             logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
             if network_printer:
-                logger.info('Network printer does not provide status information.')
+                # Port 9100 gives no answer, IPP tells how the job ended
+                message = _network_job_result(self.device_specifier, self.model)
+                if message:
+                    logger.warning('Printing failed: %s', message)
+                    return message + batch
                 return ""
             logger.info('Printer response: %s', str(info))
             if info.get('did_print') and info.get('ready_for_next_job'):
@@ -325,6 +342,49 @@ class PrinterQueue:
                     return status
 
         return ""
+
+
+# A network printer that is stopped without telling why, e.g. a QL-810W
+# briefly at the end of every job
+STOPPED_STATUS_TYPE = 'Stopped'
+
+# How long a job on a network printer may take, and how often its state is
+# asked over IPP meanwhile
+NETWORK_JOB_TIMEOUT = 120
+NETWORK_JOB_POLL = 0.5
+
+
+def _network_printer_problem(device_specifier: str, model: str) -> str:
+    """Why a network printer cannot take a job, as far as it tells over IPP,
+    or an empty string. A printer that does not answer is left to the
+    sending, which fails with a clearer message."""
+    try:
+        status = query_network_status(device_specifier, model)
+    except OSError:
+        return ''
+    if status['errors']:
+        return 'The printer reports: ' + ', '.join(status['errors'])
+    return ''
+
+
+def _network_job_result(device_specifier: str, model: str) -> str:
+    """After a job was sent to a network printer: the error it reports over
+    IPP, or an empty string once it is idle again. Printers without IPP
+    tell nothing."""
+    deadline = time.monotonic() + NETWORK_JOB_TIMEOUT
+    while True:
+        time.sleep(NETWORK_JOB_POLL)
+        try:
+            status = query_network_status(device_specifier, model)
+        except OSError:
+            return 'The printer did not answer after receiving the label, check whether it was printed'
+        logger.debug('State of %s after the job: %s %s', device_specifier, status['status_type'], status['errors'])
+        if status['errors']:
+            return 'The printer reports: ' + ', '.join(status['errors'])
+        if status['status_type'] not in (BUSY_STATUS_TYPE, STOPPED_STATUS_TYPE):
+            return ''
+        if time.monotonic() > deadline:
+            return 'The printer did not report that it finished the label, check whether it was printed'
 
 
 def _print_failure(info: dict) -> str:
@@ -415,13 +475,13 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     return state
 
 
-def _failed_printer_state(device_specifier: str, error: Exception) -> dict:
+def _failed_printer_state(device_specifier: str, error: Exception, model: str = 'Unknown') -> dict:
     """Status of a printer that did not answer the status query: model and
     media from its last answer, if there was one, and the error."""
     known = _status_cache.get(_lock_key(device_specifier), {})
     return {
         'path': device_specifier,
-        'model': known.get('model', 'Unknown'),
+        'model': known.get('model', model),
         'media_width': known.get('media_width'),
         'media_length': known.get('media_length', 0),
         'media_type': known.get('media_type'),
@@ -498,7 +558,9 @@ def _ipp_media(media) -> tuple:
 
 def _ipp_errors(attributes: dict) -> list:
     """Messages for the reasons why the printer cannot print. Reasons with
-    the suffix -report or -warning do not stop it, the others do."""
+    the suffix -report or -warning do not stop it, the others do. A
+    QL-810W is briefly "stopped" without a reason at the end of every job,
+    so only reasons count."""
     reasons = attributes.get('printer-state-reasons') or []
     if isinstance(reasons, str):
         reasons = [reasons]
@@ -510,38 +572,74 @@ def _ipp_errors(attributes: dict) -> list:
         message = IPP_REASON_MESSAGES.get(keyword, f'The printer reports "{keyword}"')
         if message not in errors:
             errors.append(message)
-    if not errors and attributes.get('printer-state') == ipp.STOPPED:
-        errors.append('The printer is stopped')
     return errors
 
 
-def query_network_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
+def _label_printer_model(name: str) -> str | None:
+    """The brother_ql model of a name like "Brother QL-810W", None for other
+    devices, e.g. office printers."""
+    model = (name or '').removeprefix('Brother ').strip()
+    return model if model in [m.identifier for m in ALL_MODELS] else None
+
+
+def query_network_status(device_specifier: str, default_model: str = 'Unknown',
+                         label_printers_only: bool = False) -> dict | None:
     """Status of a network printer over IPP: model, loaded labels and why it
     cannot print. Printers without IPP only take jobs on port 9100 and tell
-    nothing about themselves. Raises OSError if the printer does not
-    answer at all."""
+    nothing about themselves. With label_printers_only, None for a device
+    whose IPP model is no label printer. Raises OSError if the printer does
+    not answer at all."""
     host = urlsplit(device_specifier).hostname
     try:
         attributes = ipp.get_printer_attributes(host, IPP_PORT)
     except (ConnectionRefusedError, ipp.IPPError, http.client.HTTPException) as e:
         logger.debug('No IPP status from %s: %s', device_specifier, e)
         return _network_printer(device_specifier, default_model)
-    make_and_model = str(attributes.get('printer-make-and-model') or '')
-    model = make_and_model.removeprefix('Brother ').strip()
-    if model not in [m.identifier for m in ALL_MODELS]:
+    model = _label_printer_model(str(attributes.get('printer-make-and-model') or ''))
+    if model is None:
+        if label_printers_only:
+            logger.debug('%s is no label printer: %s', device_specifier, attributes.get('printer-make-and-model'))
+            return None
         model = default_model
     status = _network_printer(device_specifier, model)
     status['media_width'], status['media_length'], status['media_type'] = _ipp_media(attributes.get('media-col-ready'))
     status['errors'] = _ipp_errors(attributes)
-    busy = attributes.get('printer-state') == ipp.PROCESSING
+    state = attributes.get('printer-state')
+    busy = state == ipp.PROCESSING
     if status['errors']:
         status['status_type'] = 'Error occurred'
+    elif busy:
+        status['status_type'] = BUSY_STATUS_TYPE
     else:
-        status['status_type'] = BUSY_STATUS_TYPE if busy else 'Reply to status request'
+        status['status_type'] = STOPPED_STATUS_TYPE if state == ipp.STOPPED else 'Reply to status request'
     status['phase_type'] = 'Printing state' if busy else 'Waiting to receive'
     # Kept for when the printer does not answer
     _status_cache[_lock_key(device_specifier)] = status
     return dict(status)
+
+
+def _discovered_label_printers() -> list[tuple[str, str]]:
+    """Label printers that announce themselves on the network, as
+    (tcp://<address>[:<port>], model). Kept for DISCOVERY_INTERVAL."""
+    global _discovered
+    if not NETWORK_DISCOVERY:
+        return []
+    found_at, printers = _discovered
+    if time.monotonic() - found_at < DISCOVERY_INTERVAL:
+        return printers
+    printers = []
+    for service in mdns.discover():
+        txt = service['txt']
+        model = _label_printer_model(txt.get('usb_mdl') or '') or _label_printer_model(txt.get('ty') or '')
+        if model is None:
+            continue
+        # IPP announces its own port, jobs go to the raw port
+        port = service['port'] if service['service'].startswith('_pdl-datastream.') else None
+        spec = f"tcp://{service['address']}" + (f':{port}' if port and port != 9100 else '')
+        if all(urlsplit(known).hostname != service['address'] for known, _ in printers):
+            printers.append((spec, model))
+    _discovered = (time.monotonic(), printers)
+    return printers
 
 
 _last_scan_ts = 0
@@ -620,8 +718,11 @@ def get_ptr_status(config: Config):
                         logger.debug('Status query of %s failed', spec, exc_info=True)
                         found_list.append(_failed_printer_state(spec, e))
 
-                # scan ARP table for network printers with known Brother MAC
-                # address prefixes
+                # Network printers that announce themselves, and ones in the
+                # ARP table with a known MAC address prefix, e.g. where
+                # multicast does not reach. The latter are dropped if their
+                # IPP model is no label printer.
+                candidates = [(spec, model, False) for spec, model in _discovered_label_printers()]
                 try:
                     with open(ARP_TABLE, 'r') as arp_file:
                         for line in arp_file.readlines()[1:]:  # skip header line
@@ -629,17 +730,20 @@ def get_ptr_status(config: Config):
                             if len(parts) < 4:
                                 continue
                             ip, _, _, mac, _, _ = parts
-                            if any(mac.startswith(prefix) for prefix in BROTHER_MAC_ADDRESS_PREFIXES):
-                                spec = f"tcp://{ip}"
-                                try:
-                                    printer = query_network_status(spec, default_model)
-                                except OSError as e:
-                                    logger.info('Status query of %s failed: %s', spec, e)
-                                    printer = _failed_printer_state(spec, e)
-                                found_list.append(printer)
-                                logger.debug('Found network printer candidate at %s -> %s', spec, printer.get('model'))
+                            known = any(urlsplit(spec).hostname == ip for spec, _, _ in candidates)
+                            if not known and any(mac.startswith(prefix) for prefix in BROTHER_MAC_ADDRESS_PREFIXES):
+                                candidates.append((f"tcp://{ip}", default_model, True))
                 except Exception:
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
+                for spec, model, unconfirmed in candidates:
+                    try:
+                        printer = query_network_status(spec, model, label_printers_only=unconfirmed)
+                    except OSError as e:
+                        logger.info('Status query of %s failed: %s', spec, e)
+                        printer = _failed_printer_state(spec, e, model)
+                    if printer is not None:
+                        found_list.append(printer)
+                        logger.debug('Found network printer at %s -> %s', spec, printer.get('model'))
 
                 _cached_printers = found_list
                 # A printer busy with a job is scanned again with the next

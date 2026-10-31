@@ -104,7 +104,7 @@ Other settings, e.g. the default font and margins, go into `instance/application
 
 Fonts: the label designer offers all `.ttf` and `.otf` fonts it finds in the system font folders when it starts. The image comes with DejaVu, Droid, FreeFont, Liberation, Noto and Inconsolata. To add fonts, mount a folder with them, e.g. `./fonts:/usr/local/share/fonts/custom:ro`, and restart the container. A saved label whose font is not installed is shown and printed with the default font, and the preview says so.
 
-Network printers are found by the Brother MAC address prefixes in the ARP table, which may miss some models. Add those with `tcp://<IP address>` and please open an issue, so that they can be detected, too. Network printers that speak IPP (port 631), e.g. the QL-810W, report their model and errors. The QL-810W also names loaded die-cut labels, but not endless rolls, and reports an open cover as an error without saying which. Older printers only take print jobs on port 9100 and report nothing.
+Network printers are found when they announce themselves like for Bonjour, which in Docker needs `network_mode: host`, or by a known MAC address prefix in the ARP table. Add others with `tcp://<IP address>` and please open an issue. Network printers that speak IPP (port 631), e.g. the QL-810W, report their model and errors: jobs are not sent while they report one, and an error after a job is shown like for USB printers. The QL-810W also names loaded die-cut labels, but not endless rolls, and reports an open cover as an error without saying which. Older printers only take print jobs on port 9100 and report nothing.
 
 The printer `simulation` saves the labels as PNG files in `simulated_labels` (the newest 100) instead of printing them.
 
