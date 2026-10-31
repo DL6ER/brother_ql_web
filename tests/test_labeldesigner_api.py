@@ -1719,6 +1719,54 @@ def test_preview_warns_about_content_that_does_not_fit(tmp_path, values, warning
     assert response.headers.get('X-Label-Warning') == warning
 
 
+def _ink_box(png: bytes):
+    """Bounding box of everything that is not white."""
+    image = Image.open(io.BytesIO(png)).convert('L')
+    return image.size, ImageOps.invert(image).getbbox()
+
+
+@pytest.mark.parametrize('values', [
+    # Too wide for 62 mm endless
+    {'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'A' * 40, 'size': '60'}])},
+    # Too high for a 62 x 29 mm die-cut label
+    {'label_size': '62x29', 'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': f'Line {n}', 'size': '60'} for n in range(6)])},
+    # Too high across 62 mm endless when rotated
+    {'orientation': 'rotated', 'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': f'Line {n}', 'size': '80'} for n in range(10)])},
+])
+def test_text_that_does_not_fit_is_shrunk(tmp_path, values):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, border_thickness='0', **values)
+    assert client.post('/labeldesigner/api/preview', data=data).headers.get('X-Label-Warning')
+    response = client.post('/labeldesigner/api/preview', data=dict(data, shrink_text='1'))
+    assert response.status_code == 200
+    assert 'X-Label-Warning' not in response.headers
+    (width, height), (left, top, right, bottom) = _ink_box(response.data)
+    # Within the margins across the tape, and along it on die-cut labels
+    if data['orientation'] == 'standard':
+        assert left >= 20 and right <= width - 20
+    else:
+        assert top >= 12 and bottom <= height - 12
+    if data['label_size'] == '62x29':
+        assert top >= 12 and bottom <= height - 12
+
+
+def test_text_that_fits_is_not_shrunk(tmp_path):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Fits', 'size': '60'}]))
+    expected = client.post('/labeldesigner/api/preview', data=data).data
+    assert client.post('/labeldesigner/api/preview', data=dict(data, shrink_text='1')).data == expected
+
+
+def test_shrunk_text_is_the_same_on_every_copy(tmp_path):
+    # The printer generates the same label once per copy
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, label_size='62', shrink_text='1', text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'A' * 40, 'size': '60'}]))
+    with client.application.test_request_context('/labeldesigner/api/preview', method='POST', data=data):
+        label = create_label_from_request(data)
+        first = label.generate()
+        assert label.generate().tobytes() == first.tobytes()
+
+
 def test_default_font_is_selected(tmp_path):
     client = make_client(tmp_path)
     client.application.config['LABEL_DEFAULT_FONT_FAMILY'] = 'DejaVu Serif'

@@ -646,6 +646,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'timestamp': int(d.get('timestamp', 0)),
         'high_res': int(d.get('high_res', 0)) != 0,
         'code_text': d.get('code_text', '').strip(),
+        'shrink_text': int(d.get('shrink_text', 0)) != 0,
     }
 
     print_type = context['print_type']
@@ -752,7 +753,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         counter=counter,
         code_text=context['code_text'],
         template_env_vars=_template_env_vars(),
-        warnings=warnings
+        warnings=warnings,
+        shrink_text=context['shrink_text']
     )
 
 

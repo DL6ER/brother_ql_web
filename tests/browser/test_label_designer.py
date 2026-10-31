@@ -262,3 +262,13 @@ def test_label_with_a_font_that_is_not_installed(page, app):
         wait_for_status(page, 'Preview updated')
     finally:
         os.remove(os.path.join(repo, 'Other-Fonts.json'))
+
+
+def test_text_that_does_not_fit_can_be_shrunk(page):
+    type_text(page, 'A very long line that does not fit on the label at all')
+    wait_for_status(page, 'does not fit')
+    page.check('#shrink_text')
+    wait_for_status(page, 'Preview updated')
+    reload(page)
+    # The choice is kept like the other settings
+    assert page.is_checked('#shrink_text')

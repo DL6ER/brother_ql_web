@@ -1036,6 +1036,15 @@
             "default": 0,
             "description": "600 dpi printing along the label. Labels usually come out much darker, it is only confirmed for the QL-800."
           },
+          "shrink_text": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Make all lines of text smaller by the same factor until they fit on the label, instead of cutting the text off."
+          },
           "print_type": {
             "type": "string",
             "enum": [
