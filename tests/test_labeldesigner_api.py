@@ -1460,8 +1460,8 @@ def test_barcode_length_is_limited(tmp_path):
 def test_uploaded_image_is_decoded_once_per_job(tmp_path, monkeypatch):
     from app.labeldesigner import routes
     calls = []
-    original = routes.open_image
-    monkeypatch.setattr(routes, 'open_image', lambda *args: calls.append(args) or original(*args))
+    original = routes.open_images
+    monkeypatch.setattr(routes, 'open_images', lambda *args: calls.append(args) or original(*args))
     client = make_client(tmp_path)
     data = EXAMPLE_FORMDATA.copy()
     data.update({'print_type': 'image', 'print_count': '3', 'image': _upload(_red_square(), 'red.png')})
@@ -1554,8 +1554,8 @@ def test_pdf_with_huge_page_is_refused_before_rendering(tmp_path, monkeypatch):
 def test_text_label_is_not_loaded_again_for_every_copy(tmp_path, monkeypatch):
     from app.labeldesigner import routes
     calls = []
-    original = routes.load_label_image
-    monkeypatch.setattr(routes, 'load_label_image', lambda *args: calls.append(args) or original(*args))
+    original = routes.load_label_images
+    monkeypatch.setattr(routes, 'load_label_images', lambda *args, **kwargs: calls.append(args) or original(*args, **kwargs))
     client = make_client(tmp_path)
     data = EXAMPLE_FORMDATA.copy()
     data['print_count'] = '3'
@@ -1836,3 +1836,92 @@ def test_shared_content_is_kept_for_a_few_items_only(tmp_path):
         tokens.append(response.headers['Location'].split('=', 1)[1])
     assert client.get('/labeldesigner/share', query_string={'token': tokens[0]}).status_code == 404
     assert client.get('/labeldesigner/share', query_string={'token': tokens[-1]}).get_json() == {'text': f'Item {routes.SHARE_MAX_ITEMS}'}
+
+
+def _pdf(*sizes) -> bytes:
+    """A PDF with a black page of each size, so the pages can be told apart
+    by their aspect ratio."""
+    pages = [Image.new('L', size, 'black') for size in sizes]
+    pdf = io.BytesIO()
+    pages[0].save(pdf, format='PDF', save_all=True, append_images=pages[1:], resolution=100)
+    return pdf.getvalue()
+
+
+THREE_PAGES = ((300, 200), (200, 300), (400, 100))
+
+
+@pytest.mark.parametrize('selection, pages', [
+    ('', [1]), ('all', [1, 2, 3, 4]), ('1-3, 4', [1, 2, 3, 4]), ('2-', [2, 3, 4]), ('3,1', [3, 1]), (' 2 - 3 ,', [2, 3]),
+])
+def test_selected_pdf_pages(selection, pages):
+    from app.utils import selected_pdf_pages
+    assert selected_pdf_pages(selection, 4) == pages
+
+
+@pytest.mark.parametrize('selection, message', [
+    ('5', 'The PDF has 4 pages, there is no page 5'),
+    ('2-7', 'The PDF has 4 pages, there is no page 7'),
+    ('0', 'The PDF has 4 pages, there is no page 0'),
+    ('3-1', '"3-1" is not a page selection, give pages like 1-3, 5 or all'),
+    ('first', '"first" is not a page selection, give pages like 1-3, 5 or all'),
+    (',', '"," is not a page selection, give pages like 1-3, 5 or all'),
+])
+def test_invalid_pdf_page_selection(selection, message):
+    from app.utils import selected_pdf_pages
+    with pytest.raises(ValueError, match=re.escape(message)):
+        selected_pdf_pages(selection, 4)
+
+
+def _pdf_label(**values):
+    data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'image_fit': '1', 'border_thickness': '0', 'text': '[]', **values}
+    data['image'] = (io.BytesIO(_pdf(*THREE_PAGES)), 'pages.pdf', 'application/pdf')
+    return data
+
+
+def test_preview_shows_the_first_selected_pdf_page(tmp_path):
+    client = make_client(tmp_path)
+    previews = {}
+    for selection in ('', '2', '3-', 'all'):
+        response = client.post('/labeldesigner/api/preview', data=_pdf_label(pdf_pages=selection))
+        assert response.status_code == 200
+        assert response.headers['X-PDF-Pages'] == '3'
+        previews[selection] = Image.open(io.BytesIO(response.data)).size
+    # The pages are fitted to the label width, their heights differ
+    assert previews[''] == previews['all'] != previews['2'] != previews['3-']
+    assert previews['2'][1] > previews[''][1] > previews['3-'][1]
+
+
+def test_each_selected_pdf_page_is_printed_as_a_label(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    response = client.post('/labeldesigner/api/print', data=_pdf_label(pdf_pages='all', print_count='2', printer='simulation'))
+    assert response.status_code == 200, response.get_json()
+    files = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
+    heights = [Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).height for name in files]
+    # Collated: all pages, then all pages again
+    assert len(heights) == 6
+    assert heights[:3] == heights[3:]
+    assert heights[1] > heights[0] > heights[2]
+
+
+def test_pdf_pages_count_against_the_print_limit(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post('/labeldesigner/api/print', data=_pdf_label(pdf_pages='all', print_count='40', printer='simulation'))
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'A print job must not have more than 100 labels, 3 pages and 40 copies would be 120'
+
+
+def test_pdf_page_selection_errors_are_reported(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post('/labeldesigner/api/preview', data=_pdf_label(pdf_pages='4'))
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'The PDF has 3 pages, there is no page 4'
+
+
+def test_pdf_pages_make_several_labels_of_image_labels_only(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    data = _pdf_label(pdf_pages='all', printer='simulation', print_type='text',
+                      text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Text', 'size': '40'}]))
+    assert client.post('/labeldesigner/api/print', data=data).status_code == 200
+    assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 1

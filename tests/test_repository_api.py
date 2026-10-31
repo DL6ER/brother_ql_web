@@ -419,3 +419,18 @@ def test_repository_label_with_a_font_that_is_not_installed(tmp_path):
     response = client.post('/labeldesigner/api/repository/print', json={'name': 'other_fonts.json'})
     assert response.status_code == 200
     assert response.get_json()['success'] is True
+
+
+def test_repository_pdf_pages_are_printed(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path, empty_repo=True)
+    pages = [Image.new('L', size, 'black') for size in ((300, 200), (200, 300))]
+    pdf = io.BytesIO()
+    pages[0].save(pdf, format='PDF', save_all=True, append_images=pages[1:])
+    resp = client.post(SAVE_URL, json={'name': 'pages', 'label_size': '62', 'print_type': 'image', 'image_mode': 'grayscale',
+                                       'image_fit': '1', 'text': [], 'pdf_pages': 'all', 'image_mime': 'application/pdf',
+                                       'image_data': base64.b64encode(pdf.getvalue()).decode('ascii')})
+    assert resp.status_code == 200
+    resp = client.post('/labeldesigner/api/repository/print', json={'name': 'pages.json', 'printer': 'simulation'})
+    assert resp.status_code == 200, resp.get_json()
+    assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2

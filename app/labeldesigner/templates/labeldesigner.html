@@ -345,6 +345,13 @@
             <span class="form-label d-block">Image</span>
             <form class="dropzone" id="image-dropzone">
             </form>
+            <div id="pdfPagesGroup" class="mt-2" hidden>
+                <label for="pdf_pages" class="form-label">PDF pages</label>
+                <input type="text" class="form-control" id="pdf_pages" placeholder="1" data-default="" onchange="preview()"
+                    aria-describedby="pdfPagesHelp">
+                <div class="form-text" id="pdfPagesHelp">The PDF has <span id="pdfPageCount"></span> pages. Each page you give,
+                    e.g. <code>1-3, 5</code> or <code>all</code>, is printed as a label of its own. The preview shows the first.</div>
+            </div>
         </fieldset>
         <fieldset id="groupLabelText">
             <label for="label_text" class="form-label">Label text</label>
