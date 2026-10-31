@@ -1925,3 +1925,19 @@ def test_pdf_pages_make_several_labels_of_image_labels_only(tmp_path):
                       text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Text', 'size': '40'}]))
     assert client.post('/labeldesigner/api/print', data=data).status_code == 200
     assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 1
+
+
+@pytest.mark.parametrize('values, auto', [
+    # An image without text on a die-cut label is turned to fit
+    ({}, True),
+    ({'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'With text', 'size': '40'}])}, False),
+    ({'image_fit': '0'}, False),
+    ({'label_size': '62'}, False),
+])
+def test_preview_says_when_the_orientation_is_chosen_automatically(tmp_path, values, auto):
+    client = make_client(tmp_path)
+    data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'image_fit': '1', 'label_size': '62x29', 'text': '[]', **values}
+    data['image'] = _upload(Image.new('L', (100, 300), 'black'), 'portrait.png')
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    assert response.headers.get('X-Label-Orientation') == ('auto' if auto else None)

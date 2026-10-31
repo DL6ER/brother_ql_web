@@ -273,6 +273,14 @@ function get_dpi() {
     return $('#high_res').is(':checked') ? 600 : 300;
 }
 
+// With auto-fit, an image without text on a die-cut label is turned to the
+// orientation in which it comes out largest. The orientation buttons have no
+// effect then.
+function showAutoOrientation(auto) {
+    $('#autoOrientation').prop('hidden', !auto);
+    $('input[name=orientation]').prop('disabled', auto);
+}
+
 function updatePreview(data) {
     $('#previewImg').attr('src', 'data:image/png;base64,' + data);
     var img = $('#previewImg')[0];
@@ -312,6 +320,8 @@ function updateLabelStage() {
 }
 
 var lastPreviewData = null;
+// Previews may answer out of order, only the newest one is shown
+let previewSeq = 0;
 function gen_label(preview = true, cut_once = false) {
     // Check label against installed label in the printer
     updatePrinterStatus();
@@ -356,12 +366,14 @@ function gen_label(preview = true, cut_once = false) {
 
     // Send printing request
     const url = preview ? (url_for_preview + '?return_format=base64') : url_for_print;
+    const seq = preview ? ++previewSeq : null;
     $.ajax({
         type: 'POST',
         url: url,
         contentType: 'application/x-www-form-urlencoded; charset=UTF-8',
         data: formData(cut_once),
         success: function (data, _textStatus, xhr) {
+            if (preview && seq !== previewSeq) return;
             // Check if response is JSON and has a key "success"
             const status = typeof data === "object" &&
                 data !== null &&
@@ -370,8 +382,10 @@ function gen_label(preview = true, cut_once = false) {
                 'error' : 'success';
             setStatus({ type: type, 'status': status, warning: xhr.getResponseHeader('X-Label-Warning') });
             updatePreview(data);
+            if (preview) showAutoOrientation(xhr.getResponseHeader('X-Label-Orientation') === 'auto');
         },
         error: function (xhr, _status, error) {
+            if (preview && seq !== previewSeq) return;
             message = xhr.responseJSON ? xhr.responseJSON.message : error;
             const text = preview ? 'Preview generation failed' : 'Printing failed';
             setStatus({ type: type, 'status': 'error', 'message': message }, text);
@@ -479,6 +493,7 @@ new Dropzone("#image-dropzone", {
     },
 
     sending: function (file, xhr, data) {
+        xhr.previewSeq = dropZoneMode == 'preview' ? ++previewSeq : null;
         // append all parameters to the request
         let fd = formData(false);
 
@@ -487,7 +502,11 @@ new Dropzone("#image-dropzone", {
         });
     },
 
-    error: function (file, response) {
+    error: function (file, response, xhr) {
+        if (xhr && xhr.previewSeq != null && xhr.previewSeq !== previewSeq) {
+            if (file.accepted) file.status = Dropzone.QUEUED;
+            return;
+        }
         // Show the error and queue the file again, Dropzone would otherwise
         // never send it again until it is removed and added anew
         const message = response && typeof response === 'object' ? response.message : response;
@@ -497,7 +516,15 @@ new Dropzone("#image-dropzone", {
         }
     },
 
-    success: function (file, response) {
+    success: function (file, response, event) {
+        // file.xhr is the newest request of the file, the finished one is
+        // the target of the event. An older preview may finish after a newer
+        // one and must not replace it.
+        const xhr = (event && event.target) || file.xhr;
+        if (xhr && xhr.previewSeq != null && xhr.previewSeq !== previewSeq) {
+            file.status = Dropzone.QUEUED;
+            return;
+        }
         // If preview or print was successfull update the previewpane or print status
         // Check if response is JSON and has a key "success"
         const status = typeof response === "object" &&
@@ -505,14 +532,15 @@ new Dropzone("#image-dropzone", {
             "success" in response &&
             response.success === false ?
             'error' : 'success';
-        const warning = file.xhr ? file.xhr.getResponseHeader('X-Label-Warning') : null;
+        const warning = xhr ? xhr.getResponseHeader('X-Label-Warning') : null;
         setStatus({ type: dropZoneMode, status: status, warning: warning });
         if (dropZoneMode == 'preview') {
             updatePreview(response);
             // Pages can be chosen of a PDF with several
-            const pages = parseInt(file.xhr ? file.xhr.getResponseHeader('X-PDF-Pages') : '', 10) || 0;
+            const pages = parseInt(xhr ? xhr.getResponseHeader('X-PDF-Pages') : '', 10) || 0;
             $('#pdfPageCount').text(pages);
             $('#pdfPagesGroup').prop('hidden', pages < 2);
+            showAutoOrientation(xhr && xhr.getResponseHeader('X-Label-Orientation') === 'auto');
         }
         file.status = Dropzone.QUEUED;
     },
@@ -525,6 +553,7 @@ new Dropzone("#image-dropzone", {
 
     removedfile: function (file) {
         file.previewElement.remove();
+        showAutoOrientation(false);
         preview();
         // Insert a dummy image
         updatePreview('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=');

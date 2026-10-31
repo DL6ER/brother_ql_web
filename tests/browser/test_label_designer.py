@@ -339,3 +339,22 @@ def test_page_choice_is_hidden_for_a_single_page(page):
     add_file(page, pdf((300, 200)), 'one.pdf', 'application/pdf')
     wait_for_status(page, 'Preview updated')
     assert not page.is_visible('#pdfPagesGroup')
+
+
+def test_automatic_orientation_is_explained(page):
+    # kinghat in #103: the orientation does nothing with auto-fit
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+    page.select_option('#label_size', '62x29')
+    png = io.BytesIO()
+    Image.new('L', (100, 300), 'black').save(png, format='PNG')
+    add_file(page, png.getvalue(), 'portrait.png', 'image/png')
+    page.wait_for_selector('#autoOrientation', state='visible')
+    assert page.inner_text('#autoOrientation') == 'Turned automatically to fit the label best'
+    assert page.is_disabled('#orientation_rotated')
+    # Without auto-fit the orientation counts again. An older preview still
+    # running answered after the newer one and turned the hint on again.
+    page.click('button[data-bs-target="#accordionImageSettings"]')
+    page.uncheck('#image_fit')
+    page.wait_for_load_state('networkidle')
+    page.wait_for_function("() => document.getElementById('autoOrientation').hidden"
+                           " && !document.getElementById('orientation_rotated').disabled")

@@ -595,6 +595,9 @@ def preview_from_image():
     # The label designer offers to choose pages of a PDF with several
     if page_count:
         response.headers.set('X-PDF-Pages', str(page_count))
+    # The orientation setting has no effect, the label designer says so
+    if label.auto_orientation:
+        response.headers.set('X-Label-Orientation', 'auto')
     return response
 
 
@@ -805,7 +808,9 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     # orientation is kept.
     image_label = label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED)
     has_text = any(str(line.get('text', '')).strip() for line in context['text'])
-    if label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None and context['image_fit'] and not has_text:
+    auto_orientation = (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
+                        and context['image_fit'] and not has_text)
+    if auto_orientation:
         margins = (context['margin_left'], context['margin_right'], context['margin_top'], context['margin_bottom'])
         width, height, label_orientation = _fitting_orientation(
             image, width, height, label_orientation, margins, context['image_crop'], context['image_rotation'])
@@ -841,7 +846,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         code_text=context['code_text'],
         template_env_vars=_template_env_vars(),
         warnings=warnings,
-        shrink_text=context['shrink_text']
+        shrink_text=context['shrink_text'],
+        auto_orientation=auto_orientation
     )
 
 
