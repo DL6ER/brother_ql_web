@@ -1,5 +1,5 @@
 // --- Dark mode logic ---
-// Uses the colour modes of Bootstrap (data-bs-theme on <html>). The initial
+// Uses the color modes of Bootstrap (data-bs-theme on <html>). The initial
 // mode is already set by a script in the page head.
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 

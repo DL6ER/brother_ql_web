@@ -217,7 +217,7 @@ def test_busy_printer_is_scanned_again(client, monkeypatch):
 
 def test_label_offset_corrections():
     from brother_ql.devicedependent import label_type_specs
-    # Measured on a QL-1100: -6 centres the 103 x 164 mm die-cut label
+    # Measured on a QL-1100: -6 centers the 103 x 164 mm die-cut label
     assert label_type_specs['103x164']['right_margin_dots'] == -6
     # Other labels keep the offsets of brother_ql
     assert label_type_specs['104']['right_margin_dots'] == -8

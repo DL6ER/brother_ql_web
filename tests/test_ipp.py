@@ -37,7 +37,7 @@ def state(value: int) -> bytes:
 
 
 def media(x: int, y: int | None, media_type: str) -> bytes:
-    """media-col-ready with the size in hundredths of a millimetre."""
+    """media-col-ready with the size in hundredths of a millimeter."""
     def member(name, tag, value):
         return attribute(ipp.TAG_MEMBER_NAME, '', name.encode()) + attribute(tag, '', value)
     size = member('x-dimension', ipp.TAG_INTEGER, struct.pack('>i', x))

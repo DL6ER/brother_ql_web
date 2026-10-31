@@ -1593,7 +1593,7 @@ def test_refused_env_variables_are_bounded(tmp_path, monkeypatch):
 
 
 def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):
-    # A BOM in front of the content keeps phones from recognising URLs (#101)
+    # A BOM in front of the content keeps phones from recognizing URLs (#101)
     from app.labeldesigner import label
     added = []
     original = label.QRCode.add_data

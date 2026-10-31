@@ -35,3 +35,16 @@ jobs:
         run: python -m playwright install --with-deps chromium
       - name: Run browser tests
         run: pytest tests/browser
+
+  # Typos and British spellings in code, comments and docs, see .codespellrc
+  spelling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.15'
+      - name: Install codespell
+        run: pip install -r requirements-spelling.txt
+      - name: Check spelling
+        run: codespell

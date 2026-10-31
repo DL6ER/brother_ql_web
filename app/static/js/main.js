@@ -1200,7 +1200,7 @@ function resetSettings() {
 }
 
 function set_all_inputs_default(force = false) {
-    // Iterate over those <input> that have a data-default propery and set the value if empty
+    // Iterate over those <input> that have a data-default property and set the value if empty
     $('input[data-default], select[data-default], textarea[data-default]').each(function () {
         if (this.type === 'checkbox' || this.type === 'radio') {
             $(this).prop('checked', $(this).data('default') == 1 || $(this).data('default') == true);

@@ -7,7 +7,7 @@ have five digits, the US, Canadian and Japanese codes four (DK-22205 /
 DK-2205).
 
 The codes were checked on Brother's own pages and documents: the EU
-consumables catalogue, the support.brother.com consumables lists of the
+consumables catalog, the support.brother.com consumables lists of the
 QL-1100 and QL-820NWB (UK and US), brother.ca product pages, Brother Japan's
 QL-800 supplies page and the QL-800 raster command reference. Sizes follow
 brother_ql (tape width x label length) with Brother's official values where
@@ -28,7 +28,7 @@ LABEL_NAMES = {
     '62red': '62 mm endless, black/red/white (DK-22251 / DK-2251)',
     '102': '102 mm endless (DK-22243 / DK-2243)',
     # The same roll in two printer geometries, see HIDDEN_LABELS
-    '103': '103 mm endless (DK-22246 / DK-2246, off-centre)',
+    '103': '103 mm endless (DK-22246 / DK-2246, off-center)',
     '104': '103 mm endless (DK-22246 / DK-2246)',
     # Not a Brother product, added to brother_ql without documentation
     '12+17': '12 mm endless (12+17)',
@@ -51,7 +51,7 @@ LABEL_NAMES = {
     'd12': '12 mm round (DK-11219 / DK-1219)',
     'd24': '24 mm round (DK-11218 / DK-1218)',
     'd58': '58 mm round (DK-11207 / DK-1207)',
-    # P-touch TZe tapes, the codes depend on the colour (e.g. TZe-231 is
+    # P-touch TZe tapes, the codes depend on the color (e.g. TZe-231 is
     # black on white 12 mm). "18" was added to brother_ql for the PT-P950NW.
     '18': '18 mm (TZe tape, PT-P900 series)',
     'pt12': '12 mm (TZe tape)',
@@ -67,7 +67,7 @@ PTOUCH_LABELS = {'18', 'pt12', 'pt18', 'pt24', 'pt36'}
 
 # Label sizes only shown while selected, e.g. in saved settings. "103" is the
 # same roll as "104", but brother_ql places it 18 dots (1.5 mm) further from
-# the centre of the QL-1100 print head. "104" is 2 dots from the position
+# the center of the QL-1100 print head. "104" is 2 dots from the position
 # measured for the 103 x 164 mm die-cut label (see printer.py).
 HIDDEN_LABELS = {'103'}
 
