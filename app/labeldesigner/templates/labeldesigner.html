@@ -56,11 +56,14 @@
                                     <span class="visually-hidden">About 600 dpi printing</span>
                                 </button>
                             </div>
+                            <div class="form-text" id="highResUnsupported" hidden>The <span id="highResModel"></span> prints at 300 dpi only</div>
                             <div id="highResInfo" class="collapse">
                                 <div class="alert alert-info small mt-2 mb-0">
                                     600 dpi printing prints twice as many lines along the label. Labels usually come out much
                                     darker, printing is slower, and the result is often worse than with standard printing.
-                                    It does not seem to work on all printers, it is only confirmed for the QL-800.
+                                    It is only confirmed for the QL-800. The QL-1100 series cannot do it, Brother's
+                                    <a href="https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf" target="_blank" rel="noopener">command reference</a>
+                                    lists 300 dpi only.
                                 </div>
                             </div>
                         </div>
@@ -473,6 +476,7 @@ const url_for_preview = '{{ url_for('.preview_from_image') }}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
 const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};
+const models_without_600_dpi = {{ models_without_600_dpi|list|tojson }};
 const url_for_repo_list = '{{ url_for('.repo_list') }}';
 const url_for_repo_save = '{{ url_for('.repo_save') }}';
 const url_for_repo_load = '{{ url_for('.repo_load') }}';
