@@ -26,6 +26,7 @@
   "pdf_pages": "",
   "shrink_text": true,
   "title": "Gas under pressure",
+  "language": "en",
   "text": [
     {
       "font": "DejaVu Sans,Bold",
@@ -55,7 +56,17 @@
       "align": "center",
       "line_spacing": "100",
       "color": "black",
-      "text": "Contains gas under pressure; may explode if heated."
+      "text": "Contains gas under pressure;"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "may explode if heated."
     },
     {
       "font": "DejaVu Sans,Book",
@@ -68,6 +79,6 @@
       "text": "Supplier, 555-0100"
     }
   ],
-  "label_text": "Product name\nWARNING\nContains gas under pressure; may explode if heated.\nSupplier, 555-0100",
+  "label_text": "Product name\nWARNING\nContains gas under pressure;\nmay explode if heated.\nSupplier, 555-0100",
   "image": "ghs04-gas.png"
 }

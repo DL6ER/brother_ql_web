@@ -543,3 +543,28 @@ def test_demo_labels(page):
     # The dialog opens with the same category again
     page.click('#openRepoBtn')
     page.wait_for_selector('#labelCategories .nav-link.active[data-category="signs"]')
+
+
+def test_demo_labels_in_german(page):
+    page.click('#openRepoBtn')
+    page.wait_for_selector('#labelCategories .nav-link[data-category="signs"]')
+    # Not for the saved labels
+    assert not page.is_visible('.demo-language')
+    page.click('#labelCategories .nav-link[data-category="signs"]')
+    shown = "() => Array.from(document.querySelectorAll('#repoListBody .repo-item')).filter(i => !i.hidden).map(i => i.querySelector('.repo-name').textContent)"
+    # In the language of the browser
+    assert page.input_value('.demo-language') == 'en'
+    assert 'Fire extinguisher' in page.evaluate(shown)
+    count = page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count')
+    page.select_option('.demo-language', 'de')
+    names = page.evaluate(shown)
+    assert 'Feuerlöscher' in names and 'Fire extinguisher' not in names
+    assert page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count') == count
+    # Only labels of other sizes count as hidden
+    assert page.inner_text('#repoHiddenSizes').startswith('34 demo labels of other sizes')
+    # Kept for the next visit
+    reload(page)
+    page.click('#openRepoBtn')
+    page.wait_for_selector('#labelCategories .nav-link[data-category="signs"]')
+    page.click('#labelCategories .nav-link[data-category="signs"]')
+    assert page.input_value('.demo-language') == 'de'

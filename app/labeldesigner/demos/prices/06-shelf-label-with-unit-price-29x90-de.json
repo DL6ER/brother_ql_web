@@ -1,0 +1,63 @@
+{
+  "label_size": "29x90",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": true,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "12",
+  "margin_bottom": "12",
+  "margin_left": "40",
+  "margin_right": "40",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Regaletikett mit Grundpreis",
+  "language": "de",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "60",
+      "inverted": false,
+      "checkbox": false,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Olivenöl, 500 ml"
+    },
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "150",
+      "inverted": false,
+      "checkbox": false,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "7,49 EUR"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "44",
+      "inverted": false,
+      "checkbox": false,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "1 l = 14,98 EUR"
+    }
+  ],
+  "label_text": "Olivenöl, 500 ml\n7,49 EUR\n1 l = 14,98 EUR"
+}

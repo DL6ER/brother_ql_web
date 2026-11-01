@@ -913,6 +913,8 @@ function restoreAllSettingsFromLocalStorage() {
 // saved ones, but cannot be deleted.
 let labelCategory = 'saved';
 let demoCategories = null;
+// The demo labels are shown in one language, by default that of the browser
+const LS_DEMO_LANGUAGE = 'labeldesigner_demo_language_v1';
 // The previews of the demo labels do not change
 const demoThumbnails = new Map();
 
@@ -972,6 +974,7 @@ function showLabelCategory(category) {
         $(this).toggleClass('active', active).attr('aria-current', active ? 'true' : null);
     });
     $('#repoSaveForm').prop('hidden', category !== 'saved');
+    $('.demo-language').prop('hidden', category === 'saved');
     if (category === 'saved') {
         $('#labelListTitle').text('Saved labels');
         loadRepositoryList();
@@ -979,14 +982,16 @@ function showLabelCategory(category) {
     }
     const demos = (demoCategories || []).find(c => c.id === category) || { name: '', labels: [] };
     $('#labelListTitle').text(demos.name);
-    renderLabelList(demos.labels.map(l => ({ key: l.id, title: l.title, label_size: l.label_size, label_size_id: l.label_size_id })), true);
+    renderLabelList(demos.labels.map(l => ({ key: l.id, title: l.title, language: l.language, label_size: l.label_size, label_size_id: l.label_size_id })), true);
 }
 
-// How many demo labels of each category fit the selected label size
+// How many demo labels of each category fit the selected label size, in
+// the selected language
 function updateCategoryCounts() {
     const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
+    const language = $('.demo-language').val();
     (demoCategories || []).forEach(category => {
-        const count = category.labels.filter(l => size === null || l.label_size_id === size).length;
+        const count = category.labels.filter(l => (size === null || l.label_size_id === size) && l.language === language).length;
         $(`#labelCategories .nav-link[data-category="${category.id}"]`).toggleClass('labels-none', count === 0)
             .find('.labels-count').text(count);
     });
@@ -1029,7 +1034,7 @@ function renderLabelList(entries, demo) {
         const key = escapeHtml(entry.key);
         const ref = demo ? `data-demo="${key}"` : `data-name="${key}"`;
         list.append(
-            `<div class="list-group-item repo-item" data-search="${escapeHtml(entry.title.toLowerCase())}" data-size="${escapeHtml(entry.label_size_id || '')}" ${ref}>
+            `<div class="list-group-item repo-item" data-search="${escapeHtml(entry.title.toLowerCase())}" data-size="${escapeHtml(entry.label_size_id || '')}" data-language="${escapeHtml(entry.language || '')}" ${ref}>
                 <img class="repo-thumb" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
                 <div class="repo-info">
                     <div class="repo-name">${escapeHtml(entry.title)}</div>
@@ -1263,15 +1268,18 @@ function fetchThumbnail(item) {
 }
 
 // Show only the saved labels whose name contains the search text and that
-// fit the selected label size
+// fit the selected label size, of the demo labels those in the selected
+// language
 function filterRepoList() {
     const query = ($('.repo-search').val() || '').trim().toLowerCase();
     // Only labels for the selected label size, unless "All sizes" is on.
     // Labels saved without a size are always shown.
     const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
+    const language = $('.demo-language').val();
     let otherSizes = 0;
     $('#repoListBody .repo-item').each(function () {
-        const matches = query === '' || this.dataset.search.includes(query);
+        const matches = (query === '' || this.dataset.search.includes(query))
+            && (this.dataset.language === '' || this.dataset.language === language);
         const otherSize = size !== null && this.dataset.size !== '' && this.dataset.size !== size;
         if (matches && otherSize) otherSizes++;
         this.hidden = !matches || otherSize;
@@ -1308,6 +1316,16 @@ $(document).ready(function () {
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
     $('.repo-all-sizes').on('change', function () {
+        filterRepoList();
+        updateCategoryCounts();
+    });
+    let language = null;
+    try { language = localStorage.getItem(LS_DEMO_LANGUAGE); } catch { }
+    if (!$(`.demo-language option[value="${language}"]`).length) {
+        language = (navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en';
+    }
+    $('.demo-language').val(language).on('change', function () {
+        try { localStorage.setItem(LS_DEMO_LANGUAGE, this.value); } catch { }
         filterRepoList();
         updateCategoryCounts();
     });

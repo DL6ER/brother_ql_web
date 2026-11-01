@@ -26,6 +26,7 @@
   "pdf_pages": "",
   "shrink_text": true,
   "title": "Hazardous to the environment",
+  "language": "en",
   "text": [
     {
       "font": "DejaVu Sans,Bold",
@@ -55,7 +56,17 @@
       "align": "center",
       "line_spacing": "100",
       "color": "black",
-      "text": "Toxic to aquatic life with long lasting effects."
+      "text": "Toxic to aquatic life with"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "long lasting effects."
     },
     {
       "font": "DejaVu Sans,Book",
@@ -68,6 +79,6 @@
       "text": "Supplier, 555-0100"
     }
   ],
-  "label_text": "Product name\nWARNING\nToxic to aquatic life with long lasting effects.\nSupplier, 555-0100",
+  "label_text": "Product name\nWARNING\nToxic to aquatic life with\nlong lasting effects.\nSupplier, 555-0100",
   "image": "ghs09-environment.png"
 }

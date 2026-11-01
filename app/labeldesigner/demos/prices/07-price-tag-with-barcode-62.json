@@ -26,6 +26,7 @@
   "pdf_pages": "",
   "shrink_text": true,
   "title": "Price tag with barcode",
+  "language": "en",
   "text": [
     {
       "font": "DejaVu Sans,Book",

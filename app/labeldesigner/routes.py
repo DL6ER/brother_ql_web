@@ -571,7 +571,7 @@ def _print_stored_label(data: dict, image_dir: str):
 def demo_list():
     categories = []
     for category in demos.categories():
-        labels = [{'id': label_id, 'title': data.get('title') or label_id,
+        labels = [{'id': label_id, 'title': data.get('title') or label_id, 'language': data.get('language'),
                    'label_size_id': data.get('label_size'), 'label_size': _label_size_name(data.get('label_size'))}
                   for label_id, data in demos.labels(category['id'])]
         categories.append({'id': category['id'], 'name': category['name'], 'labels': labels})

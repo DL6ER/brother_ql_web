@@ -28,16 +28,31 @@ def test_list(client):
     labels = [label for category in categories for label in category['labels']]
     assert len(labels) == len(DEMO_IDS)
     fire = next(label for label in labels if label['id'] == 'signs/01-fire-extinguisher-62.json')
-    assert fire == {'id': 'signs/01-fire-extinguisher-62.json', 'title': 'Fire extinguisher',
+    assert fire == {'id': 'signs/01-fire-extinguisher-62.json', 'title': 'Fire extinguisher', 'language': 'en',
                     'label_size_id': '62', 'label_size': '62 mm endless (DK-22205 / DK-2205)'}
+    german = next(label for label in labels if label['id'] == 'signs/01-fire-extinguisher-62-de.json')
+    assert german['title'] == 'Feuerlöscher' and german['language'] == 'de'
+
+
+def test_every_demo_label_in_english_and_german():
+    english = {label_id for label_id in DEMO_IDS if not label_id.endswith('-de.json')}
+    assert {label_id for label_id in DEMO_IDS if label_id not in english} == {label_id[:-len('.json')] + '-de.json' for label_id in english}
+    for label_id in english:
+        en, de = demos.load(label_id), demos.load(label_id[:-len('.json')] + '-de.json')
+        assert (en['language'], de['language']) == ('en', 'de')
+        # The same label in the other language
+        same = ('label_size', 'orientation', 'print_type', 'image', 'image_mode', 'barcode_type')
+        assert [en.get(key) for key in same] == [de.get(key) for key in same]
+        # Translated, unless the label reads the same in both, e.g. "Defibrillator"
+        assert en['title'] != de['title'] or en['text'] == de['text']
 
 
 @pytest.mark.parametrize('label_id', DEMO_IDS)
 def test_every_demo_label_fits(client, label_id):
     data = demos.load(label_id)
     assert data['title'] and data['label_size'] in LABEL_SIZES
-    # Only ASCII, like everything else in the repository
-    assert json.dumps(data, ensure_ascii=False).isascii()
+    # Only ASCII, like everything else in the repository, and German umlauts
+    assert set(json.dumps(data, ensure_ascii=False)) - set(map(chr, range(128))) <= set('äöüÄÖÜß')
     response = client.get('/labeldesigner/api/demos/preview', query_string={'id': label_id})
     assert response.status_code == 200
     assert response.headers.get('X-Label-Warning') is None

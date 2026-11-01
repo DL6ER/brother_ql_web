@@ -846,6 +846,13 @@
                                     "Fire extinguisher"
                                   ]
                                 },
+                                "language": {
+                                  "type": "string",
+                                  "description": "Language of the label, `en` or `de`.",
+                                  "examples": [
+                                    "en"
+                                  ]
+                                },
                                 "label_size_id": {
                                   "type": "string",
                                   "description": "Identifier of the label size, as `label_size` of a print request.",
