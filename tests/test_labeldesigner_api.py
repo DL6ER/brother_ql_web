@@ -2033,3 +2033,20 @@ def test_fast_printing(tmp_path, monkeypatch, route, fast):
     data = sent[0]
     flags = data[data.index(b'\x1biz') + 3]
     assert bool(flags & 0x40) == (fast != '1')
+
+
+@pytest.mark.parametrize('model, label_size, ptouch', [('PT-E550W', 'pt12', True), ('QL-700', '62', False)])
+def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkeypatch, model, label_size, ptouch):
+    # A PT-E550W hung after the half cut with uncompressed raster lines over
+    # Wi-Fi, and with media type 0x00 ("no tape") also over USB
+    from app.labeldesigner import printer
+    sent = []
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    client = make_client(tmp_path, model=model)
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size=label_size, orientation='rotated'))
+    assert response.get_json()['success'] is True
+    data = sent[0]
+    flags = data[data.index(b'\x1biz') + 3]
+    # Valid flag of the media type
+    assert bool(flags & 0x02) != ptouch
+    assert (b'M\x02' in data) == ptouch

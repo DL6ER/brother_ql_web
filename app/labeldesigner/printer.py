@@ -228,6 +228,17 @@ def _prune_simulated_labels():
             logger.debug('Failed to remove simulated label %s', entry.path, exc_info=True)
 
 
+class _Raster(BrotherQLRaster):
+    """brother_ql gives P-touch tapes the media type 0x00, which PT printers
+    read as "no tape": a PT-E550W half cut the tape and hung in the printing
+    state. Without it, the printer checks the width of the tape only."""
+
+    def add_media_and_quality(self, rnumber):
+        if self.model.startswith('PT-') and getattr(self, '_mtype', None) == b'\x00':
+            self._mtype = None
+        super().add_media_and_quality(rnumber)
+
+
 class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
         # A clear message instead of "Wrong pixel width" from brother_ql
@@ -251,7 +262,8 @@ class PrinterQueue:
     def _rasterize_entries(self, entries):
         """Rasterize a list of queue entries into a BrotherQLRaster and
         return ``(qlr, generated_images)``."""
-        qlr = BrotherQLRaster(self.model)
+        qlr = _Raster(self.model)
+        ptouch = self.model.startswith('PT-')
         generated_images = []
         simulation = is_simulation(self.device_specifier)
         for entry in entries:
@@ -269,6 +281,9 @@ class PrinterQueue:
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
             # 3.0 s instead of 1.8 s with it, a little sharper.
+            # PT printers get compressed raster lines, as from Brother's
+            # apps: a PT-E550W read uncompressed ones wrongly over Wi-Fi,
+            # half cut the tape and hung in the printing state.
             create_label(
                 qlr,
                 img,
@@ -278,7 +293,8 @@ class PrinterQueue:
                 cut=cut,
                 dpi_600=high_res,
                 hq=not entry['fast'],
-                rotate=rotate
+                rotate=rotate,
+                compress=ptouch
             )
         return qlr, generated_images
 
