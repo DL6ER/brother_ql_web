@@ -907,13 +907,24 @@ function restoreAllSettingsFromLocalStorage() {
     });
 }
 
-// --- Repository UI functions ---------------------------------------------------------
+// --- Saved and demo labels ------------------------------------------------------------
+// The dialog shows the saved labels or one category of the demo labels that
+// come with the label designer. Demo labels are loaded and printed like
+// saved ones, but cannot be deleted.
+let labelCategory = 'saved';
+let demoCategories = null;
+// The demo labels are shown in one language, by default that of the browser
+const LS_DEMO_LANGUAGE = 'labeldesigner_demo_language_v1';
+// The previews of the demo labels do not change
+const demoThumbnails = new Map();
+
 function openRepositoryModal() {
     // show modal and load list
     const modalEl = document.getElementById('repoModal');
     if (!modalEl) return;
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    loadRepositoryList();
+    loadDemoCategories();
+    showLabelCategory(labelCategory);
 }
 
 // Bootstrap ignores hide() while the dialog is still opening, e.g. when a
@@ -932,16 +943,74 @@ function closeRepositoryModal() {
     }
 }
 
+function loadDemoCategories() {
+    if (demoCategories !== null) {
+        updateCategoryCounts();
+        return;
+    }
+    demoCategories = [];
+    fetch(url_for_demo_list)
+        .then(r => r.json())
+        .then(data => {
+            demoCategories = data.categories || [];
+            const nav = $('#labelCategories');
+            demoCategories.forEach(category => {
+                nav.append($('<button type="button" class="nav-link"></button>').attr('data-category', category.id)
+                    .append($('<span></span>').text(category.name), ' ', $('<span class="labels-count"></span>')));
+            });
+            updateCategoryCounts();
+        })
+        .catch(e => {
+            // Asked again when the dialog is opened next time
+            demoCategories = null;
+            console.error(e);
+        });
+}
+
+function showLabelCategory(category) {
+    labelCategory = category;
+    $('#labelCategories .nav-link').each(function () {
+        const active = this.dataset.category === category;
+        $(this).toggleClass('active', active).attr('aria-current', active ? 'true' : null);
+    });
+    $('#repoSaveForm').prop('hidden', category !== 'saved');
+    $('.demo-language').prop('hidden', category === 'saved');
+    if (category === 'saved') {
+        $('#labelListTitle').text('Saved labels');
+        loadRepositoryList();
+        return;
+    }
+    const demos = (demoCategories || []).find(c => c.id === category) || { name: '', labels: [] };
+    $('#labelListTitle').text(demos.name);
+    renderLabelList(demos.labels.map(l => ({ key: l.id, title: l.title, language: l.language, label_size: l.label_size, label_size_id: l.label_size_id })), true);
+}
+
+// How many demo labels of each category fit the selected label size, in
+// the selected language
+function updateCategoryCounts() {
+    const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
+    const language = $('.demo-language').val();
+    (demoCategories || []).forEach(category => {
+        const count = category.labels.filter(l => (size === null || l.label_size_id === size) && l.language === language).length;
+        $(`#labelCategories .nav-link[data-category="${category.id}"]`).toggleClass('labels-none', count === 0)
+            .find('.labels-count').text(count);
+    });
+}
+
 function loadRepositoryList() {
     const body = $('#repoListBody');
     body.html('<p class="text-muted">Loading...</p>');
     fetch(url_for_repo_list)
         .then(r => r.json())
         .then(data => {
-            renderRepoList(data.files || []);
+            // Another category may have been chosen meanwhile
+            if (labelCategory !== 'saved') return;
+            renderLabelList((data.files || []).map(f => ({
+                key: f.name, title: repoDisplayName(f.name), label_size: f.label_size, label_size_id: f.label_size_id, mtime: f.mtime
+            })), false);
         })
         .catch(e => {
-            body.html('<div class="text-danger">Failed to load repository list.</div>');
+            body.html('<div class="text-danger">Failed to load the saved labels.</div>');
             console.error(e);
         });
 }
@@ -951,58 +1020,37 @@ function repoDisplayName(name) {
     return String(name).replace(/\.json$/i, '');
 }
 
-function renderRepoList(files) {
+// Saved labels are addressed by their file name (data-name), demo labels by
+// their id (data-demo)
+function renderLabelList(entries, demo) {
     const body = $('#repoListBody');
-    if (!files || files.length === 0) {
-        body.html('<p class="text-body-secondary mb-0">No saved labels yet. Enter a name above to save the current label.</p>');
+    if (entries.length === 0) {
+        body.html('<p class="text-body-secondary mb-0">No saved labels yet. Enter a name above to save the current label, or start from a demo label.</p>');
+        filterRepoList();
         return;
     }
     const list = $('<div class="list-group repo-list"></div>');
-    files.forEach(f => {
-        const name = escapeHtml(f.name);
-        const item = $(
-            `<div class="list-group-item repo-item" data-search="${escapeHtml(repoDisplayName(f.name).toLowerCase())}" data-size="${escapeHtml(f.label_size_id || '')}">
+    entries.forEach(entry => {
+        const key = escapeHtml(entry.key);
+        const ref = demo ? `data-demo="${key}"` : `data-name="${key}"`;
+        list.append(
+            `<div class="list-group-item repo-item" data-search="${escapeHtml(entry.title.toLowerCase())}" data-size="${escapeHtml(entry.label_size_id || '')}" data-language="${escapeHtml(entry.language || '')}" ${ref}>
                 <img class="repo-thumb" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAAAQCAYAAAB49c9kAAAAE0lEQVR42mNgGAWjYBSMglEwCQAAP1gF8bQqT9kAAAAASUVORK5CYII=" />
                 <div class="repo-info">
-                    <div class="repo-name">${escapeHtml(repoDisplayName(f.name))}</div>
-                    <div class="small text-body-secondary">${f.label_size ? escapeHtml(f.label_size) : 'Unknown label size'}</div>
-                    <div class="small text-body-secondary">Saved ${new Date(f.mtime * 1000).toLocaleString()}</div>
+                    <div class="repo-name">${escapeHtml(entry.title)}</div>
+                    <div class="small text-body-secondary">${entry.label_size ? escapeHtml(entry.label_size) : 'Unknown label size'}</div>
+                    ${entry.mtime ? `<div class="small text-body-secondary">Saved ${new Date(entry.mtime * 1000).toLocaleString()}</div>` : ''}
                 </div>
                 <div class="repo-actions">
-                    <button class="btn btn-sm btn-primary repo-load" data-name="${name}">Load</button>
-                    <button class="btn btn-sm btn-outline-secondary repo-print" data-name="${name}"><span class="fas fa-print me-1" aria-hidden="true"></span>Print</button>
-                    <button class="btn btn-sm btn-outline-danger repo-delete" data-name="${name}" title="Delete" aria-label="Delete ${escapeHtml(repoDisplayName(f.name))}"><span class="fas fa-trash" aria-hidden="true"></span></button>
+                    <button class="btn btn-sm btn-primary repo-load" ${ref}>Load</button>
+                    <button class="btn btn-sm btn-outline-secondary repo-print" ${ref}><span class="fas fa-print me-1" aria-hidden="true"></span>Print</button>
+                    ${demo ? '' : `<button class="btn btn-sm btn-outline-danger repo-delete" ${ref} title="Delete" aria-label="Delete ${escapeHtml(entry.title)}"><span class="fas fa-trash" aria-hidden="true"></span></button>`}
                 </div>
             </div>`
         );
-        list.append(item);
-        // fetch thumbnail asynchronously (do not override main preview)
-        const img = item.find('.repo-thumb')[0];
-        if (img) {
-            repoFetchThumbnail(f.name, img);
-        }
     });
     body.html(list);
     filterRepoList();
-
-    // Attach handlers
-    $('.repo-preview').off('click').on('click', function () {
-        const name = $(this).data('name');
-        repoPreview(name);
-    });
-    $('.repo-load').off('click').on('click', function () {
-        const name = $(this).data('name');
-        repoLoad(name);
-    });
-    $('.repo-delete').off('click').on('click', function () {
-        const name = $(this).data('name');
-        if (!confirm('Delete the saved label "' + repoDisplayName(name) + '"?')) return;
-        repoDelete(name);
-    });
-    $('.repo-print').off('click').on('click', function () {
-        const name = $(this).data('name');
-        repoPrint(name);
-    });
 }
 
 function repoSaveCurrent() {
@@ -1087,7 +1135,15 @@ function repoSaveCurrent() {
 }
 
 function repoLoad(name) {
-    fetch(url_for_repo_load + '?name=' + encodeURIComponent(name))
+    loadStoredLabel(url_for_repo_load + '?name=' + encodeURIComponent(name));
+}
+
+function demoLoad(id) {
+    loadStoredLabel(url_for_demo_load + '?id=' + encodeURIComponent(id));
+}
+
+function loadStoredLabel(url) {
+    fetch(url)
         .then(r => {
             if (!r.ok) throw new Error('Load failed');
             return r.json();
@@ -1145,31 +1201,24 @@ function repoDelete(name) {
         });
 }
 
-function repoPreview(name) {
-    // request base64 preview
-    fetch(url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64')
-        .then(r => {
-            if (!r.ok) throw new Error('Preview failed');
-            return r.text();
-        })
-        .then(b64 => {
-            updatePreview(b64);
-        }).catch(e => {
-            console.error(e);
-            alert('Preview failed');
-        });
+function repoPrint(name) {
+    printStoredLabel(url_for_repo_print, 'name', name);
 }
 
-function repoPrint(name) {
-    // Ask server to print a repository template by name
+function demoPrint(id) {
+    printStoredLabel(url_for_demo_print, 'id', id);
+}
+
+// Ask the server to print a saved or demo label
+function printStoredLabel(url, field, value) {
     const printerSelect = document.getElementById('printer');
     const body = new URLSearchParams();
-    body.append('name', name);
+    body.append(field, value);
     if (printerSelect && printerSelect.value) body.append('printer', printerSelect.value);
     const modelVal = getModelFromSelectedPrinter(printerSelect);
     if (modelVal) body.append('model', modelVal);
 
-    fetch(url_for_repo_print, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body: body })
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' }, body: body })
         .then(r => r.json())
         .then(resp => {
             if (resp && resp.success) {
@@ -1186,11 +1235,22 @@ function repoPrint(name) {
         });
 }
 
-function repoFetchThumbnail(name, imgEl) {
+// The preview of a saved or demo label in the list, fetched once it is shown
+function fetchThumbnail(item) {
+    if (item.dataset.thumb) return;
+    item.dataset.thumb = 'loading';
+    const imgEl = item.querySelector('.repo-thumb');
+    const demo = item.dataset.demo;
+    if (demo && demoThumbnails.has(demo)) {
+        imgEl.src = demoThumbnails.get(demo);
+        return;
+    }
     // include selected printer if present so preview matches selected device
     const printerSelect = document.getElementById('printer');
     const printer = printerSelect && printerSelect.value ? printerSelect.value : null;
-    let url = url_for_repo_preview + '?name=' + encodeURIComponent(name) + '&return_format=base64';
+    let url = demo ? url_for_demo_preview + '?id=' + encodeURIComponent(demo)
+        : url_for_repo_preview + '?name=' + encodeURIComponent(item.dataset.name);
+    url += '&return_format=base64';
     if (printer) url += '&printer=' + encodeURIComponent(printer);
     fetch(url)
         .then(r => {
@@ -1199,31 +1259,37 @@ function repoFetchThumbnail(name, imgEl) {
         })
         .then(b64 => {
             imgEl.src = 'data:image/png;base64,' + b64;
+            if (demo) demoThumbnails.set(demo, imgEl.src);
         })
         .catch(e => {
-            console.debug('Thumbnail fetch failed for', name, e);
+            console.debug('Thumbnail fetch failed for', demo || item.dataset.name, e);
             imgEl.style.opacity = 0.4;
         });
 }
 
 // Show only the saved labels whose name contains the search text and that
-// fit the selected label size
+// fit the selected label size, of the demo labels those in the selected
+// language
 function filterRepoList() {
     const query = ($('.repo-search').val() || '').trim().toLowerCase();
     // Only labels for the selected label size, unless "All sizes" is on.
     // Labels saved without a size are always shown.
     const size = $('.repo-all-sizes').is(':checked') ? null : $('#label_size').val();
+    const language = $('.demo-language').val();
     let otherSizes = 0;
     $('#repoListBody .repo-item').each(function () {
-        const matches = query === '' || this.dataset.search.includes(query);
+        const matches = (query === '' || this.dataset.search.includes(query))
+            && (this.dataset.language === '' || this.dataset.language === language);
         const otherSize = size !== null && this.dataset.size !== '' && this.dataset.size !== size;
         if (matches && otherSize) otherSizes++;
         this.hidden = !matches || otherSize;
+        if (!this.hidden) fetchThumbnail(this);
     });
     // Say why labels are missing, the list may even be empty
+    const kind = labelCategory === 'saved' ? 'saved' : 'demo';
     $('#repoHiddenSizes').prop('hidden', otherSizes === 0).text(otherSizes === 1
-        ? '1 saved label of another size is hidden, turn on All sizes to show it.'
-        : `${otherSizes} saved labels of other sizes are hidden, turn on All sizes to show them.`);
+        ? `1 ${kind} label of another size is hidden, turn on All sizes to show it.`
+        : `${otherSizes} ${kind} labels of other sizes are hidden, turn on All sizes to show them.`);
 }
 
 // Show the margins in mm, the unit of the label sizes
@@ -1249,7 +1315,34 @@ $(document).ready(function () {
     });
     $('#repoSaveBtn').off('click').on('click', repoSaveCurrent);
     $('.repo-search').on('input', filterRepoList);
-    $('.repo-all-sizes').on('change', filterRepoList);
+    $('.repo-all-sizes').on('change', function () {
+        filterRepoList();
+        updateCategoryCounts();
+    });
+    let language = null;
+    try { language = localStorage.getItem(LS_DEMO_LANGUAGE); } catch { }
+    if (!$(`.demo-language option[value="${language}"]`).length) {
+        language = (navigator.language || '').toLowerCase().startsWith('de') ? 'de' : 'en';
+    }
+    $('.demo-language').val(language).on('change', function () {
+        try { localStorage.setItem(LS_DEMO_LANGUAGE, this.value); } catch { }
+        filterRepoList();
+        updateCategoryCounts();
+    });
+    $('#labelCategories').on('click', '.nav-link', function () {
+        showLabelCategory(this.dataset.category);
+    });
+    $('#repoListBody').on('click', '.repo-load', function () {
+        this.dataset.demo ? demoLoad(this.dataset.demo) : repoLoad(this.dataset.name);
+    });
+    $('#repoListBody').on('click', '.repo-print', function () {
+        this.dataset.demo ? demoPrint(this.dataset.demo) : repoPrint(this.dataset.name);
+    });
+    $('#repoListBody').on('click', '.repo-delete', function () {
+        const name = this.dataset.name;
+        if (!confirm('Delete the saved label "' + repoDisplayName(name) + '"?')) return;
+        repoDelete(name);
+    });
 
     // Copies: buttons next to the number field
     $('#printCountDown, #printCountUp').on('click', function () {

@@ -448,31 +448,42 @@
     </div>
 </div>
 
-<!-- Repository Modal -->
+<!-- Saved and demo labels -->
 <div class="modal fade" id="repoModal" tabindex="-1" aria-labelledby="repoModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="repoModalLabel">Saved labels</h5>
+                <h5 class="modal-title" id="repoModalLabel">Saved and demo labels</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body">
-                <label for="repoSaveName" class="form-label">Save the current label</label>
-                <div class="d-flex gap-2 mb-4">
-                    <input id="repoSaveName" class="form-control" placeholder="Name, e.g. Spice jars">
-                    <button id="repoSaveBtn" class="btn btn-primary text-nowrap"><span class="fas fa-save me-1" aria-hidden="true"></span>Save</button>
-                </div>
-                <div class="d-flex align-items-center gap-2 mb-2">
-                    <span class="form-label mb-0 me-auto">Saved labels</span>
-                    <div class="form-check form-switch mb-0 text-nowrap">
-                        <input class="form-check-input repo-all-sizes" type="checkbox" role="switch" id="repoAllSizes">
-                        <label class="form-check-label" for="repoAllSizes">All sizes</label>
+            <div class="modal-body labels-layout">
+                <nav class="nav nav-pills labels-categories" id="labelCategories" aria-label="Categories">
+                    <button type="button" class="nav-link active" data-category="saved" aria-current="true">Saved labels</button>
+                </nav>
+                <div class="labels-content">
+                    <div id="repoSaveForm">
+                        <label for="repoSaveName" class="form-label">Save the current label</label>
+                        <div class="d-flex gap-2 mb-4">
+                            <input id="repoSaveName" class="form-control" placeholder="Name, e.g. Spice jars">
+                            <button id="repoSaveBtn" class="btn btn-primary text-nowrap"><span class="fas fa-save me-1" aria-hidden="true"></span>Save</button>
+                        </div>
                     </div>
-                    <input type="search" class="form-control form-control-sm repo-search" placeholder="Search" aria-label="Search saved labels" autocomplete="off">
-                </div>
-                <p class="form-text mt-0 mb-2" id="repoHiddenSizes" hidden></p>
-                <div id="repoListBody">
-                    <p class="text-body-secondary">Loading...</p>
+                    <div class="labels-toolbar">
+                        <span class="form-label mb-0 me-auto" id="labelListTitle">Saved labels</span>
+                        <select class="form-select form-select-sm w-auto demo-language" aria-label="Language of the demo labels" hidden>
+                            <option value="en">English</option>
+                            <option value="de">Deutsch</option>
+                        </select>
+                        <div class="form-check form-switch mb-0 text-nowrap">
+                            <input class="form-check-input repo-all-sizes" type="checkbox" role="switch" id="repoAllSizes">
+                            <label class="form-check-label" for="repoAllSizes">All sizes</label>
+                        </div>
+                        <input type="search" class="form-control form-control-sm repo-search" placeholder="Search" aria-label="Search the labels" autocomplete="off">
+                    </div>
+                    <p class="form-text mt-0 mb-2" id="repoHiddenSizes" hidden></p>
+                    <div id="repoListBody">
+                        <p class="text-body-secondary">Loading...</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -493,6 +504,10 @@ const url_for_repo_load = '{{ url_for('.repo_load') }}';
 const url_for_repo_delete = '{{ url_for('.repo_delete') }}';
 const url_for_repo_preview = '{{ url_for('.repo_preview') }}';
 const url_for_repo_print = '{{ url_for('.repo_print') }}';
+const url_for_demo_list = '{{ url_for('.demo_list') }}';
+const url_for_demo_load = '{{ url_for('.demo_load') }}';
+const url_for_demo_preview = '{{ url_for('.demo_preview') }}';
+const url_for_demo_print = '{{ url_for('.demo_print') }}';
 const url_for_shared = '{{ url_for('.shared') }}';
 
 {{ super() }}

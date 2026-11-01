@@ -798,6 +798,360 @@
         }
       }
     },
+    "/labeldesigner/api/demos/list": {
+      "get": {
+        "summary": "List the demo labels",
+        "description": "The demo labels that come with the label designer, read-only, in the categories shown in the label designer.",
+        "operationId": "demoList",
+        "responses": {
+          "200": {
+            "description": "The categories with their demo labels.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "examples": [
+                              "signs"
+                            ]
+                          },
+                          "name": {
+                            "type": "string",
+                            "examples": [
+                              "Safety signs"
+                            ]
+                          },
+                          "labels": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "description": "Id of the demo label.",
+                                  "examples": [
+                                    "signs/01-fire-extinguisher-62.json"
+                                  ]
+                                },
+                                "title": {
+                                  "type": "string",
+                                  "examples": [
+                                    "Fire extinguisher"
+                                  ]
+                                },
+                                "language": {
+                                  "type": "string",
+                                  "description": "Language of the label, `en` or `de`.",
+                                  "examples": [
+                                    "en"
+                                  ]
+                                },
+                                "label_size_id": {
+                                  "type": "string",
+                                  "description": "Identifier of the label size, as `label_size` of a print request.",
+                                  "examples": [
+                                    "62"
+                                  ]
+                                },
+                                "label_size": {
+                                  "type": "string",
+                                  "description": "Name of the label size."
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/demos/load": {
+      "get": {
+        "summary": "Load a demo label",
+        "operationId": "demoLoad",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "description": "Id of the demo label from the list, e.g. `signs/01-fire-extinguisher-62.json`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The demo label like a saved label, its image as base64 in `image_data`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedLabel"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/demos/preview": {
+      "get": {
+        "summary": "Generate the image of a demo label",
+        "operationId": "demoPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "description": "Id of the demo label from the list, e.g. `signs/01-fire-extinguisher-62.json`.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` returns the image, `base64` the image as base64 text.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "png",
+                "base64"
+              ],
+              "default": "png"
+            }
+          },
+          {
+            "name": "printer",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Printer the label is generated for."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The label as it is printed.",
+            "headers": {
+              "X-Label-Warning": {
+                "description": "Set when text, a code or an image does not fit on the label and is cut off, or when a font is not installed and the default font is used instead.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string",
+                  "description": "The PNG image as base64 (`return_format=base64`)."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/labeldesigner/api/demos/print": {
+      "post": {
+        "summary": "Print a demo label",
+        "operationId": "demoPrint",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "query",
+            "required": false,
+            "description": "Id of the demo label, also accepted as `id` in a JSON body or form.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "high_res": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "fast_printing": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ]
+                  },
+                  "printer": {
+                    "type": "string",
+                    "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                  },
+                  "model": {
+                    "type": "string",
+                    "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                  },
+                  "print_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                  },
+                  "cut_once": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 0,
+                    "description": "1 cuts only after the last label."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Printed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/labeldesigner/api/webhook/print": {
       "post": {
         "summary": "Print images, for other services",

@@ -36,7 +36,8 @@ jobs:
       - name: Run browser tests
         run: pytest tests/browser
 
-  # Typos and British spellings in code, comments and docs, see .codespellrc
+  # Typos and British spellings in code, comments and docs, see .codespellrc,
+  # and the spelling of the German demo labels
   spelling:
     runs-on: ubuntu-latest
     steps:
@@ -48,3 +49,7 @@ jobs:
         run: pip install -r requirements-spelling.txt
       - name: Check spelling
         run: codespell
+      - name: Install hunspell and the German dictionary
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends hunspell hunspell-de-de
+      - name: Check the spelling of the German demo labels
+        run: python tools/spelling_de.py

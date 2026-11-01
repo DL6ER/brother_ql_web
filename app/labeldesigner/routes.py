@@ -13,7 +13,7 @@ from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
 from urllib.parse import urlparse
-from . import bp
+from . import bp, demos
 from app import get_fonts
 from app.fonts import FontNotFound
 from PIL import Image
@@ -296,17 +296,16 @@ def repo_list():
         # Parse label size (support both snake_case and legacy camelCase)
         label_size = data.get('label_size') or data.get('labelSize')
         entry['label_size_id'] = label_size
-        if label_size:
-            label_size_human = next(
-                (label_name(label) for label in ALL_LABELS if label.identifier == label_size), None
-            )
-            if label_size_human:
-                label_size = f"{label_size_human}"
-            entry['label_size'] = str(label_size)
-        else:
-            entry['label_size'] = None
+        entry['label_size'] = _label_size_name(label_size)
         files.append(entry)
     return {'files': files}
+
+
+def _label_size_name(label_size: str | None) -> str | None:
+    """The readable name of a label size, e.g. "62 mm endless (DK-22205 / DK-2205)"."""
+    if not label_size:
+        return None
+    return next((label_name(label) for label in ALL_LABELS if label.identifier == label_size), str(label_size))
 
 
 @bp.route('/api/repository/save', methods=['POST'])
@@ -399,31 +398,34 @@ def repo_load():
     try:
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
-        text = data.get('text', [])
-        data['text'] = json.dumps(text)
-        data = fill_first_line_fields(text, data)
-        # If the saved JSON references an image file, include the image as
-        # base64 in the response so the frontend can populate the
-        # Dropzone control when loading a template.
-        try:
-            image_ref = data.get('image')
-            if isinstance(image_ref, str) and len(image_ref) > 0:
-                repo = _get_repo_dir()
-                image_path = os.path.join(repo, secure_filename(image_ref))
-                if os.path.exists(image_path):
-                    with open(image_path, 'rb') as imgfh:
-                        b = imgfh.read()
-                    # Guess mime from extension
-                    ext = os.path.splitext(image_path)[1].lower()
-                    data['image_name'] = image_ref
-                    data['image_mime'] = REPO_IMAGE_MIME_TYPES.get(ext, 'application/octet-stream')
-                    data['image_data'] = base64.b64encode(b).decode('ascii')
-        except Exception:
-            current_app.logger.exception('Failed to include repository image in load response')
-        return data
+        return _label_for_designer(data, repo)
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
+
+
+def _label_for_designer(data: dict, image_dir: str) -> dict:
+    """A stored label as the label designer loads it: the text as JSON, the
+    settings of the first line, and the image from image_dir as base64 in
+    image_data, so that the page can put it into its image upload."""
+    text = data.get('text', [])
+    data['text'] = json.dumps(text)
+    data = fill_first_line_fields(text, data)
+    try:
+        image_ref = data.get('image')
+        if isinstance(image_ref, str) and len(image_ref) > 0:
+            image_path = os.path.join(image_dir, secure_filename(image_ref))
+            if os.path.exists(image_path):
+                with open(image_path, 'rb') as imgfh:
+                    b = imgfh.read()
+                # Guess mime from extension
+                ext = os.path.splitext(image_path)[1].lower()
+                data['image_name'] = image_ref
+                data['image_mime'] = REPO_IMAGE_MIME_TYPES.get(ext, 'application/octet-stream')
+                data['image_data'] = base64.b64encode(b).decode('ascii')
+    except Exception:
+        current_app.logger.exception('Failed to include the image of the label')
+    return data
 
 
 @bp.route('/api/repository/delete', methods=['POST'])
@@ -471,12 +473,18 @@ def repo_preview():
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to preview file'}), 500)
 
+    return _preview_response(data, _get_repo_dir())
+
+
+def _preview_response(data: dict, image_dir: str):
+    """The preview of a stored label whose image is in image_dir, as PNG or
+    base64 (return_format)."""
     # allow override printer via query param
     if request.values.get('printer'):
         data['printer'] = request.values.get('printer')
 
     try:
-        label = create_label_from_request(data)
+        label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir))
         im = label.generate()
     except Exception as e:
         current_app.logger.exception(e)
@@ -510,7 +518,11 @@ def repo_print():
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
+    return _print_stored_label(data, _get_repo_dir())
 
+
+def _print_stored_label(data: dict, image_dir: str):
+    """Print a stored label whose image is in image_dir like /api/print."""
     # Allow overriding printer or other request-like parameters via form/query
     if request.values.get('printer'):
         data['printer'] = request.values.get('printer')
@@ -536,7 +548,7 @@ def repo_print():
     status = ""
     try:
         # Of a PDF each selected page is a label of its own
-        images, _ = load_label_images(data, {}, copies=print_count)
+        images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir)
         labels = [image for _ in range(print_count) for image in images]
         for i, image in enumerate(labels):
             label = create_label_from_request(data, {}, i, image)
@@ -552,6 +564,50 @@ def repo_print():
         result['message'] = status
         return make_response(jsonify(result), 400)
     return result
+
+
+# --- Demo labels --------------------------------------------------------------------------
+@bp.route('/api/demos/list', methods=['GET'])
+def demo_list():
+    categories = []
+    for category in demos.categories():
+        labels = [{'id': label_id, 'title': data.get('title') or label_id, 'language': data.get('language'),
+                   'label_size_id': data.get('label_size'), 'label_size': _label_size_name(data.get('label_size'))}
+                  for label_id, data in demos.labels(category['id'])]
+        categories.append({'id': category['id'], 'name': category['name'], 'labels': labels})
+    return {'categories': categories}
+
+
+def _demo_response(label_id: str | None, respond, text_as_json: bool = True):
+    """respond(label) for the demo label with the id, or why there is none.
+    Only fixed messages are returned, never those of exceptions."""
+    if not label_id:
+        return make_response(jsonify({'success': False, 'message': 'No demo label specified'}), 400)
+    try:
+        data = demos.load(label_id)
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load the demo label'}), 500)
+    if text_as_json:
+        data['text'] = json.dumps(data.get('text', []))
+    return respond(data)
+
+
+@bp.route('/api/demos/load', methods=['GET'])
+def demo_load():
+    return _demo_response(request.values.get('id'), lambda data: _label_for_designer(data, demos.IMAGE_DIR), text_as_json=False)
+
+
+@bp.route('/api/demos/preview', methods=['GET'])
+def demo_preview():
+    return _demo_response(request.values.get('id'), lambda data: _preview_response(data, demos.IMAGE_DIR))
+
+
+@bp.route('/api/demos/print', methods=['POST'])
+def demo_print():
+    return _demo_response(_json_body().get('id') or request.values.get('id'), lambda data: _print_stored_label(data, demos.IMAGE_DIR))
 
 
 def _check_print_count(print_count: int) -> int:
@@ -871,19 +927,20 @@ def _font_name(font: str) -> str:
     return f'{family} ({style})'
 
 
-def load_label_image(d: dict, files: dict) -> Image.Image | None:
+def load_label_image(d: dict, files: dict, image_dir: str | None = None) -> Image.Image | None:
     """Return the uploaded image, or the image stored with a repository label,
     converted to the image mode of the request. Of a PDF the first selected
     page."""
-    return load_label_images(d, files, first_only=True)[0][0]
+    return load_label_images(d, files, first_only=True, image_dir=image_dir)[0][0]
 
 
-def load_label_images(d: dict, files: dict, first_only: bool = False,
-                      copies: int = 1) -> tuple[list[Image.Image | None], int | None]:
+def load_label_images(d: dict, files: dict, first_only: bool = False, copies: int = 1,
+                      image_dir: str | None = None) -> tuple[list[Image.Image | None], int | None]:
     """The images of a label like load_label_image(), of a PDF one for each
     page pdf_pages selects, e.g. "1-3, 5" or "all", each printed as a label
     of its own. The second value is the page count of a PDF, None
-    otherwise. Labels without image get [None]."""
+    otherwise. Labels without image get [None]. A stored label has its
+    image in image_dir, by default the repository."""
     image_mode = d.get('image_mode', 'grayscale')
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
@@ -920,7 +977,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False,
     image_ref = d.get('image')
     if isinstance(image_ref, str) and len(image_ref) > 0:
         try:
-            image_path = os.path.join(_get_repo_dir(), secure_filename(image_ref))
+            image_path = os.path.join(image_dir or _get_repo_dir(), secure_filename(image_ref))
             if os.path.exists(image_path):
                 with open(image_path, 'rb') as fh:
                     images, page_count = open_images(fh, image_path, dpi, pdf_pages, first_only, copies)

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "address",
+    "name": "Address and shipping"
+  },
+  {
+    "id": "mail",
+    "name": "Letters and parcels"
+  },
+  {
+    "id": "signs",
+    "name": "Safety signs"
+  },
+  {
+    "id": "doors",
+    "name": "Door signs"
+  },
+  {
+    "id": "visitors",
+    "name": "Visitor badges"
+  },
+  {
+    "id": "names",
+    "name": "Name tags"
+  },
+  {
+    "id": "prices",
+    "name": "Price tags"
+  },
+  {
+    "id": "hazards",
+    "name": "Hazardous substances (GHS)"
+  },
+  {
+    "id": "lab",
+    "name": "Laboratory and samples"
+  },
+  {
+    "id": "health",
+    "name": "Medicine and health"
+  },
+  {
+    "id": "workshop",
+    "name": "Workshop and electrical"
+  },
+  {
+    "id": "office",
+    "name": "Office and cables"
+  },
+  {
+    "id": "storage",
+    "name": "Storage and moving"
+  },
+  {
+    "id": "kitchen",
+    "name": "Kitchen and freezer"
+  },
+  {
+    "id": "garden",
+    "name": "Garden and plants"
+  },
+  {
+    "id": "events",
+    "name": "Events and gifts"
+  },
+  {
+    "id": "school",
+    "name": "School and kids"
+  },
+  {
+    "id": "letters",
+    "name": "Large letters and numbers"
+  }
+]
