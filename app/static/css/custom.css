@@ -335,7 +335,80 @@ textarea#label_text {
     font-size: 1rem;
 }
 
-/* --- Saved labels ------------------------------------------------------- */
+/* --- Saved and demo labels ---------------------------------------------- */
+
+/* The categories in a column beside the list, on phones in a row above it
+   that scrolls sideways */
+.labels-layout {
+    display: grid;
+    grid-template-columns: 14rem minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.labels-categories {
+    --bs-nav-link-color: var(--bs-body-color);
+    --bs-nav-link-hover-color: var(--bs-emphasis-color);
+    flex-direction: column;
+    gap: 0.125rem;
+    position: sticky;
+    top: 0;
+}
+
+.labels-categories .nav-link {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.875rem;
+    text-align: start;
+}
+
+.labels-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.labels-count {
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.labels-categories .nav-link.active .labels-count {
+    color: inherit;
+}
+
+/* No demo labels of the selected label size */
+.labels-categories .nav-link.labels-none:not(.active) {
+    opacity: 0.6;
+}
+
+@media (max-width: 768px) {
+    /* In a grid of limited height the row would shrink, it scrolls */
+    .labels-layout {
+        display: block;
+    }
+
+    .labels-categories {
+        position: static;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        margin-bottom: 1rem;
+        padding-bottom: 0.25rem;
+    }
+
+    .labels-categories .nav-link {
+        white-space: nowrap;
+    }
+
+    .labels-toolbar .repo-search {
+        width: 100%;
+    }
+}
 
 .repo-search {
     width: 12rem;

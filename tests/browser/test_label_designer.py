@@ -514,3 +514,32 @@ def test_saved_labels_of_the_selected_label_size(page, app):
     finally:
         os.remove(os.path.join(repo, 'Small.json'))
         os.remove(os.path.join(repo, 'No-Size.json'))
+
+
+def test_demo_labels(page):
+    page.click('#openRepoBtn')
+    # The saved labels first, then the categories of the demo labels
+    page.wait_for_selector('#labelCategories .nav-link[data-category="signs"]')
+    categories = page.eval_on_selector_all('#labelCategories .nav-link', 'links => links.map(l => l.dataset.category)')
+    assert categories[:3] == ['saved', 'address', 'mail']
+    page.click('#labelCategories .nav-link[data-category="signs"]')
+    assert page.inner_text('#labelListTitle') == 'Safety signs'
+    assert not page.is_visible('#repoSaveForm')
+    # Those of the selected label size, 62 mm endless
+    shown = page.evaluate("() => Array.from(document.querySelectorAll('#repoListBody .repo-item')).filter(i => !i.hidden).map(i => i.dataset.demo)")
+    assert 'signs/01-fire-extinguisher-62.json' in shown and all(label_id.endswith('-62.json') for label_id in shown)
+    assert 'demo labels of other sizes are hidden' in page.inner_text('#repoHiddenSizes')
+    assert page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count') == str(len(shown))
+    page.wait_for_function("() => document.querySelector('.repo-item[data-demo=\"signs/01-fire-extinguisher-62.json\"] .repo-thumb').src.length > 1000")
+    # They cannot be deleted
+    assert page.locator('#repoListBody .repo-delete').count() == 0
+    page.click('.repo-load[data-demo="signs/01-fire-extinguisher-62.json"]')
+    page.wait_for_selector('#repoModal', state='hidden')
+    page.wait_for_function("() => imageDropZone.files.length === 1 && imageDropZone.files[0].name === 'fire-extinguisher.png'")
+    assert page.input_value('#label_size') == '62'
+    assert page.is_checked('#orientation_rotated') and page.is_checked('#printTypeImage')
+    assert page.input_value('#label_text') == 'Fire\nextinguisher'
+    wait_for_status(page, 'Preview updated')
+    # The dialog opens with the same category again
+    page.click('#openRepoBtn')
+    page.wait_for_selector('#labelCategories .nav-link.active[data-category="signs"]')

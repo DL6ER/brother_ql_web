@@ -1,0 +1,62 @@
+{
+  "label_size": "62",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": true,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "24",
+  "margin_bottom": "24",
+  "margin_left": "35",
+  "margin_right": "35",
+  "border_thickness": "6",
+  "border_roundness": "10",
+  "border_distance_x": "14",
+  "border_distance_y": "14",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Personal and confidential",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "64",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "PERSONAL AND"
+    },
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "64",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "CONFIDENTIAL"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "30",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "To be opened by the addressee only"
+    }
+  ],
+  "label_text": "PERSONAL AND\nCONFIDENTIAL\nTo be opened by the addressee only"
+}

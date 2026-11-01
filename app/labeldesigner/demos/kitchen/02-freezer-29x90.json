@@ -1,0 +1,52 @@
+{
+  "label_size": "29x90",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": true,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "16",
+  "margin_bottom": "16",
+  "margin_left": "30",
+  "margin_right": "30",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Freezer",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "100",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Tomato soup"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "54",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Frozen {{datetime:%Y-%m-%d}}"
+    }
+  ],
+  "label_text": "Tomato soup\nFrozen {{datetime:%Y-%m-%d}}"
+}

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "address",
+    "name": "Address and shipping"
+  },
+  {
+    "id": "mail",
+    "name": "Letters and parcels"
+  },
+  {
+    "id": "signs",
+    "name": "Safety signs"
+  },
+  {
+    "id": "doors",
+    "name": "Door signs"
+  },
+  {
+    "id": "visitors",
+    "name": "Visitor badges"
+  },
+  {
+    "id": "names",
+    "name": "Name tags"
+  },
+  {
+    "id": "prices",
+    "name": "Price tags"
+  },
+  {
+    "id": "hazards",
+    "name": "Hazardous substances (GHS)"
+  },
+  {
+    "id": "letters",
+    "name": "Large letters and numbers"
+  },
+  {
+    "id": "storage",
+    "name": "Storage and moving"
+  },
+  {
+    "id": "kitchen",
+    "name": "Kitchen and freezer"
+  },
+  {
+    "id": "office",
+    "name": "Office and cables"
+  }
+]
