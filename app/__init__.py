@@ -37,6 +37,13 @@ def _non_negative_int(value: str) -> int:
     return number
 
 
+def _port(value: str) -> int:
+    number = int(value)
+    if not 1 <= number <= 65535:
+        raise ValueError(value)
+    return number
+
+
 def _printer_list(value: str) -> list[tuple[str, str]]:
     """Parse "MODEL=DEVICE,MODEL=DEVICE" into (model, device) pairs."""
     models = [model.identifier for model in ALL_MODELS]
@@ -63,6 +70,7 @@ def _log_level(value: str) -> str:
 # config files, command-line arguments (see parse_args) take precedence over
 # them.
 ENV_OVERRIDES = {
+    'SERVER_PORT': _port,
     'PRINTER_MODEL': str,
     'PRINTER_PRINTER': str,
     'PRINTERS': _printer_list,

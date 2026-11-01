@@ -24,7 +24,7 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
 - **Label repository:** save, load and print labels, export and import them as JSON
 - **Printers:** several printers at once, and a simulator to try everything without a printer
-- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing
+- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
@@ -101,12 +101,13 @@ The navbar shows the version and build time of the running image, please add the
 | `PRINT_MAX_COUNT` | Most labels per print request | `100` |
 | `MAX_CONTENT_LENGTH` | Largest request in bytes, e.g. for uploaded images | 32 MB |
 | `LOG_LEVEL` | `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` | `WARNING` |
+| `SERVER_PORT` | Port the server listens on with `python3 run.py`, e.g. for several instances on one host. The container always uses 8013, map another port with `ports:`. | `8013` |
 
 Other settings, e.g. the default font and margins, go into `instance/application.py`, see [`config.py`](./config.py). Environment variables take precedence over it. An invalid value stops the server at startup with a message naming the variable.
 
 Fonts: the label designer offers all `.ttf` and `.otf` fonts it finds in the system font folders when it starts. The image comes with DejaVu, Droid, FreeFont, Liberation, Noto and Inconsolata. To add fonts, mount a folder with them, e.g. `./fonts:/usr/local/share/fonts/custom:ro`, and restart the container. A saved label whose font is not installed is shown and printed with the default font, and the preview says so.
 
-Network printers are found when they announce themselves like for Bonjour, which in Docker needs `network_mode: host`, or by a known MAC address prefix in the ARP table. Add others with `tcp://<IP address>` and please open an issue. Network printers that speak IPP (port 631), e.g. the QL-810W, report their model and errors: jobs are not sent while they report one, and an error after a job is shown like for USB printers. The QL-810W also names loaded die-cut labels, but not endless rolls, and reports an open cover as an error without saying which. Older printers only take print jobs on port 9100 and report nothing.
+Network printers are found when they announce themselves like for Bonjour, which in Docker needs `network_mode: host`, or by a known MAC address prefix in the ARP table. Add others with `tcp://<IP address>` and please open an issue. Network printers report their model, the loaded labels and errors over SNMP (UDP port 161) like to Brother's apps, with the same status as over USB, or else over IPP (port 631), which e.g. on the QL-810W names neither the cause of every error nor endless rolls. Jobs are not sent while a printer reports an error, and an error after a job is shown like for USB printers. Printers that answer neither only take print jobs on port 9100 and report nothing.
 
 The printer `simulation` saves the labels as PNG files in `simulated_labels` (the newest 100) instead of printing them.
 

@@ -26,6 +26,15 @@ def test_environment_overrides_config(monkeypatch):
     assert app.config['LABEL_DEFAULT_SIZE'] == '29'
 
 
+def test_server_port_from_environment(monkeypatch):
+    monkeypatch.setenv('SERVER_PORT', '8700')
+    assert create_app().config['SERVER_PORT'] == 8700
+    for value in ('http', '0', '70000'):
+        monkeypatch.setenv('SERVER_PORT', value)
+        with pytest.raises(ValueError, match='SERVER_PORT'):
+            create_app()
+
+
 def test_empty_environment_variables_keep_defaults(monkeypatch):
     # e.g. PRINTER_PRINTER=${PRINTER:-} in a compose file
     monkeypatch.setenv('PRINTER_PRINTER', '')

@@ -1989,3 +1989,27 @@ def test_several_files_count_against_the_print_limit(tmp_path):
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
     assert response.get_json()['message'] == 'A print job must not have more than 100 labels, 2 files with 3 labels and 40 copies would be 120'
+
+
+@pytest.mark.parametrize('route', ['print', 'webhook', 'repository'])
+@pytest.mark.parametrize('fast', [None, '0', '1'])
+def test_fast_printing(tmp_path, monkeypatch, route, fast):
+    # Unless printing fast, the printer gives priority to print quality, bit
+    # 6 of the media and quality command (ESC i z), which makes it slower
+    from app.labeldesigner import printer
+    sent = []
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    client = make_client(tmp_path)
+    options = {} if fast is None else {'fast_printing': fast}
+    if route == 'print':
+        response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, **options))
+    elif route == 'webhook':
+        client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+        image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
+        response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '62', **options})
+    else:
+        response = client.post('/labeldesigner/api/repository/print', data={'name': 'QR-Example.json', **options})
+    assert response.get_json()['success'] is True
+    data = sent[0]
+    flags = data[data.index(b'\x1biz') + 3]
+    assert bool(flags & 0x40) == (fast != '1')

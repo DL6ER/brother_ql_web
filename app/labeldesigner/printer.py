@@ -20,7 +20,7 @@ from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
 from werkzeug.security import safe_join
-from . import ipp, mdns
+from . import ipp, mdns, snmp
 
 try:
     import fcntl
@@ -237,14 +237,15 @@ class PrinterQueue:
         self.label_size = label_size
         self._print_queue = []
 
-    def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False):
+    def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False, fast: bool = False):
         problem = resolution_problem(self.model, high_res)
         if problem:
             raise ValueError(problem)
         self._print_queue.append({
             'label': label,
             'cut': cut,
-            'high_res': high_res
+            'high_res': high_res,
+            'fast': fast
         })
 
     def _rasterize_entries(self, entries):
@@ -265,6 +266,9 @@ class PrinterQueue:
             if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
+            # Unless printing fast, the printer gives priority to print
+            # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
+            # 3.0 s instead of 1.8 s with it, a little sharper.
             create_label(
                 qlr,
                 img,
@@ -273,6 +277,7 @@ class PrinterQueue:
                 dither=dither,
                 cut=cut,
                 dpi_600=high_res,
+                hq=not entry['fast'],
                 rotate=rotate
             )
         return qlr, generated_images
@@ -530,6 +535,42 @@ IPP_REASON_MESSAGES = {
 # media-type values of endless rolls (PWG 5100.7)
 IPP_ENDLESS_MEDIA_TYPES = {'continuous', 'continuous-long', 'continuous-short', 'roll'}
 
+# Brother printers answer SNMP requests like those of Brother's apps: with
+# the status they send back over USB for "ESC i S", which tells the cause
+# of an error and the loaded roll, and whether they print (Host Resources
+# MIB). Over IPP a QL-810W tells neither the cause of some errors (only
+# "other", e.g. for labels that cannot be fed) nor endless rolls or a
+# missing roll (no media for both), so IPP is asked only when a printer
+# does not answer over SNMP. The phase in the status is not reliable over
+# the network, a QL-810W reports waiting while it prints.
+SNMP_PORT = 161
+SNMP_STATUS_OID = '1.3.6.1.4.1.2435.3.3.9.1.6.1.0'
+# hrPrinterStatus (RFC 2790): 1 other (an error, or briefly at the end of
+# every job), 2 unknown, 3 idle, 4 printing, 5 warmup
+SNMP_PRINTER_STATUS_OID = '1.3.6.1.2.1.25.3.5.1.1.1'
+SNMP_READY = (2, 3)
+SNMP_PRINTING = 4
+# An idle QL-810W answered only after several seconds
+SNMP_TIMEOUT = 3.0
+# A printer without SNMP is asked again after this many seconds
+SNMP_RETRY = 60
+_snmp_unavailable = {}
+
+NO_LABELS = IPP_REASON_MESSAGES['media-empty']
+# The printer keeps the job and prints it once the labels are fed
+FEED_ERROR = ('The labels cannot be fed. Feed them into the slot (or insert a new roll) and close the cover, '
+              'then the printer prints the waiting label by itself. Do not print it again')
+
+# Messages for the errors of the status, by the names brother_ql gives them
+STATUS_ERROR_MESSAGES = {
+    'No media when printing': NO_LABELS,
+    'End of media (die-cut size only)': 'The labels are used up',
+    'Tape cutter jam': 'The cutter is jammed',
+    'Replace media error': 'The loaded labels do not fit the job',
+    'Cover opened while printing (Except QL-500)': IPP_REASON_MESSAGES['cover-open'],
+    'Media cannot be fed (also when the media end is detected)': FEED_ERROR,
+}
+
 
 def _network_printer(device_specifier: str, model: str) -> dict:
     """Status of a network printer that tells nothing about itself."""
@@ -594,6 +635,45 @@ def _ipp_errors(attributes: dict) -> list:
     return errors
 
 
+def _snmp_network_status(device_specifier: str, host: str, default_model: str) -> dict | None:
+    """Status of a Brother printer over SNMP: model, loaded labels, why it
+    cannot print and whether it prints. None if it does not answer."""
+    failed = _snmp_unavailable.get(host)
+    if failed is not None and time.monotonic() - failed < SNMP_RETRY:
+        return None
+    try:
+        data, printer_status = snmp.get_values(host, [SNMP_STATUS_OID, SNMP_PRINTER_STATUS_OID],
+                                               port=SNMP_PORT, timeout=SNMP_TIMEOUT)
+        if not isinstance(data, bytes) or not isinstance(printer_status, int):
+            raise snmp.SNMPError(f'No status: {data!r}, {printer_status!r}')
+        state = interpret_response(data)
+    except (OSError, snmp.SNMPError, NameError) as e:
+        # brother_ql raises NameError for an answer that is no status
+        logger.debug('No status over SNMP from %s: %s', host, e)
+        _snmp_unavailable[host] = time.monotonic()
+        return None
+    _snmp_unavailable.pop(host, None)
+    model = state.get('model')
+    status = _network_printer(device_specifier, model if model in [m.identifier for m in ALL_MODELS] else default_model)
+    errors = [STATUS_ERROR_MESSAGES.get(error, error) for error in state['errors']]
+    if state['media_width']:
+        status['media_width'] = state['media_width']
+        status['media_length'] = state['media_length']
+        status['media_type'] = state['media_type']
+    elif not errors:
+        errors = [NO_LABELS]
+    status['errors'] = errors
+    printing = printer_status == SNMP_PRINTING
+    if errors:
+        status['status_type'] = 'Error occurred'
+    elif printing:
+        status['status_type'] = BUSY_STATUS_TYPE
+    else:
+        status['status_type'] = 'Reply to status request' if printer_status in SNMP_READY else STOPPED_STATUS_TYPE
+    status['phase_type'] = 'Printing state' if printing else 'Waiting to receive'
+    return status
+
+
 def _label_printer_model(name: str) -> str | None:
     """The brother_ql model of a name like "Brother QL-810W", None for other
     devices, e.g. office printers."""
@@ -603,12 +683,23 @@ def _label_printer_model(name: str) -> str | None:
 
 def query_network_status(device_specifier: str, default_model: str = 'Unknown',
                          label_printers_only: bool = False) -> dict | None:
-    """Status of a network printer over IPP: model, loaded labels and why it
-    cannot print. Printers without IPP only take jobs on port 9100 and tell
-    nothing about themselves. With label_printers_only, None for a device
-    whose IPP model is no label printer. Raises OSError if the printer does
-    not answer at all."""
+    """Status of a network printer: model, loaded labels, why it cannot
+    print and whether it prints, over SNMP like Brother's apps ask for it,
+    else over IPP. Printers that answer neither only take jobs on port 9100
+    and tell nothing about themselves. With label_printers_only, None for
+    a device whose IPP model is no label printer. Raises OSError if the
+    printer does not answer at all."""
     host = urlsplit(device_specifier).hostname
+    status = _snmp_network_status(device_specifier, host, default_model)
+    if status is None:
+        return _ipp_network_status(device_specifier, host, default_model, label_printers_only)
+    # Kept for when the printer does not answer
+    _status_cache[_lock_key(device_specifier)] = status
+    return dict(status)
+
+
+def _ipp_network_status(device_specifier: str, host: str, default_model: str, label_printers_only: bool) -> dict | None:
+    """Status of a network printer over IPP, see query_network_status."""
     try:
         attributes = ipp.get_printer_attributes(host, IPP_PORT)
     except (ConnectionRefusedError, ipp.IPPError, http.client.HTTPException) as e:

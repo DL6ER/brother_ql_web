@@ -524,6 +524,7 @@ def repo_print():
         print_count = _check_print_count(int(request.values.get('print_count') or data.get('print_count') or 1))
         cut_once = int(request.values.get('cut_once') or data.get('cut_once') or 0) == 1
         high_res = int(request.values.get('high_res') or data.get('high_res') or 0) != 0
+        fast = int(request.values.get('fast_printing') or data.get('fast_printing') or 0) != 0
         # The label and its image have to be generated with the resolution
         # it is printed with
         data['high_res'] = high_res
@@ -539,7 +540,7 @@ def repo_print():
         for i, image in enumerate(labels):
             label = create_label_from_request(data, {}, i, image)
             cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res)
+            printer.add_label_to_queue(label, cut, high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)
@@ -633,6 +634,7 @@ def print_label():
         print_count = _check_print_count(int(request.values.get('print_count', 1)))
         cut_once = int(request.values.get('cut_once', 0)) == 1
         high_res = int(request.values.get('high_res', 0)) != 0
+        fast = int(request.values.get('fast_printing', 0)) != 0
     except HTTPException:
         raise
     except Exception as e:
@@ -655,7 +657,7 @@ def print_label():
             # - always cut, or
             # - we cut only once and this is the last label to be generated
             cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res)
+            printer.add_label_to_queue(label, cut, high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)
@@ -1048,6 +1050,7 @@ def webhook_print():
         - image_mode: "grayscale", "bw", "red_and_black", "colored" (default: from config)
         - bw_threshold: black/white threshold 0-255 (default: from config)
         - high_res: 0 or 1 for 600 DPI (default: 0)
+        - fast_printing: 0 or 1, 1 prints faster and a little less sharp (default: 0)
         - printer: printer device specifier (default: from config)
         - model: printer model (default: from config)
 
@@ -1093,6 +1096,7 @@ def webhook_print():
         image_mode = _param('image_mode', current_app.config['IMAGE_DEFAULT_MODE'])
         bw_threshold = int(_param('bw_threshold', current_app.config['IMAGE_DEFAULT_BW_THRESHOLD']))
         high_res = int(_param('high_res', 0)) != 0
+        fast = int(_param('fast_printing', 0)) != 0
         device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size
@@ -1190,7 +1194,7 @@ def webhook_print():
                 image_fit=True,
                 text=[],
             )
-            printer.add_label_to_queue(label, cut=True, high_res=high_res)
+            printer.add_label_to_queue(label, cut=True, high_res=high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)
