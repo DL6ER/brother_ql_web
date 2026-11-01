@@ -1278,6 +1278,16 @@
               "null"
             ],
             "description": "Name of the label size."
+          },
+          "label_size_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Identifier of the label size, as `label_size` of a print request.",
+            "examples": [
+              "62"
+            ]
           }
         }
       },

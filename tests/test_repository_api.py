@@ -43,6 +43,7 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     assert entry is not None
     assert entry.get('label_size') == ('62 mm endless (DK-22205 / DK-2205)' if label != 'URGENT-Text'
                                        else '62 mm endless, black/red/white (DK-22251 / DK-2251)')
+    assert entry.get('label_size_id') == ('62' if label != 'URGENT-Text' else '62red')
 
     # Preview the stored label (base64)
     preview_url = (
