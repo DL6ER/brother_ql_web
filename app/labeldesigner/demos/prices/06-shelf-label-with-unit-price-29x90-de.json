@@ -46,7 +46,7 @@
       "align": "left",
       "line_spacing": "100",
       "color": "black",
-      "text": "7,49 EUR"
+      "text": "7,49 €"
     },
     {
       "font": "DejaVu Sans,Book",
@@ -56,8 +56,8 @@
       "align": "left",
       "line_spacing": "100",
       "color": "black",
-      "text": "1 l = 14,98 EUR"
+      "text": "1 l = 14,98 €"
     }
   ],
-  "label_text": "Olivenöl, 500 ml\n7,49 EUR\n1 l = 14,98 EUR"
+  "label_text": "Olivenöl, 500 ml\n7,49 €\n1 l = 14,98 €"
 }

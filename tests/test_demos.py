@@ -51,8 +51,8 @@ def test_every_demo_label_in_english_and_german():
 def test_every_demo_label_fits(client, label_id):
     data = demos.load(label_id)
     assert data['title'] and data['label_size'] in LABEL_SIZES
-    # Only ASCII, like everything else in the repository, and German umlauts
-    assert set(json.dumps(data, ensure_ascii=False)) - set(map(chr, range(128))) <= set('äöüÄÖÜß')
+    # Only ASCII, like everything else in the repository, German umlauts and the euro sign
+    assert set(json.dumps(data, ensure_ascii=False)) - set(map(chr, range(128))) <= set('äöüÄÖÜß€')
     response = client.get('/labeldesigner/api/demos/preview', query_string={'id': label_id})
     assert response.status_code == 200
     assert response.headers.get('X-Label-Warning') is None
