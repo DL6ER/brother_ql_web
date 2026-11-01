@@ -527,13 +527,13 @@ def test_demo_labels(page):
     assert not page.is_visible('#repoSaveForm')
     # Those of the selected label size, 62 mm endless
     shown = page.evaluate("() => Array.from(document.querySelectorAll('#repoListBody .repo-item')).filter(i => !i.hidden).map(i => i.dataset.demo)")
-    assert 'signs/01-fire-extinguisher-62.json' in shown and all(label_id.endswith('-62.json') for label_id in shown)
+    assert 'signs/001-fire-extinguisher-62.json' in shown and all(label_id.endswith('-62.json') for label_id in shown)
     assert 'demo labels of other sizes are hidden' in page.inner_text('#repoHiddenSizes')
     assert page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count') == str(len(shown))
-    page.wait_for_function("() => document.querySelector('.repo-item[data-demo=\"signs/01-fire-extinguisher-62.json\"] .repo-thumb').src.length > 1000")
+    page.wait_for_function("() => document.querySelector('.repo-item[data-demo=\"signs/001-fire-extinguisher-62.json\"] .repo-thumb').src.length > 1000")
     # They cannot be deleted
     assert page.locator('#repoListBody .repo-delete').count() == 0
-    page.click('.repo-load[data-demo="signs/01-fire-extinguisher-62.json"]')
+    page.click('.repo-load[data-demo="signs/001-fire-extinguisher-62.json"]')
     page.wait_for_selector('#repoModal', state='hidden')
     page.wait_for_function("() => imageDropZone.files.length === 1 && imageDropZone.files[0].name === 'fire-extinguisher.png'")
     assert page.input_value('#label_size') == '62'

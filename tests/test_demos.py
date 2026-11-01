@@ -27,10 +27,10 @@ def test_list(client):
     assert categories[0] == dict(categories[0], id='address', name='Address and shipping')
     labels = [label for category in categories for label in category['labels']]
     assert len(labels) == len(DEMO_IDS)
-    fire = next(label for label in labels if label['id'] == 'signs/01-fire-extinguisher-62.json')
-    assert fire == {'id': 'signs/01-fire-extinguisher-62.json', 'title': 'Fire extinguisher', 'language': 'en',
+    fire = next(label for label in labels if label['id'] == 'signs/001-fire-extinguisher-62.json')
+    assert fire == {'id': 'signs/001-fire-extinguisher-62.json', 'title': 'Fire extinguisher', 'language': 'en',
                     'label_size_id': '62', 'label_size': '62 mm endless (DK-22205 / DK-2205)'}
-    german = next(label for label in labels if label['id'] == 'signs/01-fire-extinguisher-62-de.json')
+    german = next(label for label in labels if label['id'] == 'signs/001-fire-extinguisher-62-de.json')
     assert german['title'] == 'Feuerlöscher' and german['language'] == 'de'
 
 
@@ -72,7 +72,7 @@ def test_images_and_their_sources():
 
 
 def test_load(client):
-    data = client.get('/labeldesigner/api/demos/load', query_string={'id': 'signs/01-fire-extinguisher-62.json'}).get_json()
+    data = client.get('/labeldesigner/api/demos/load', query_string={'id': 'signs/001-fire-extinguisher-62.json'}).get_json()
     assert data['title'] == 'Fire extinguisher'
     assert json.loads(data['text'])[0]['text'] == 'Fire'
     # The settings of the first line for the font controls
@@ -83,8 +83,8 @@ def test_load(client):
         assert base64.b64decode(data['image_data']) == fh.read()
 
 
-@pytest.mark.parametrize('label_id', ['signs/99-unknown-62.json', 'unknown/01-fire-extinguisher-62.json', 'signs/../categories.json',
-                                      '../demos/signs/01-fire-extinguisher-62.json', 'signs/x/../01-fire-extinguisher-62.json',
+@pytest.mark.parametrize('label_id', ['signs/999-unknown-62.json', 'unknown/001-fire-extinguisher-62.json', 'signs/../categories.json',
+                                      '../demos/signs/001-fire-extinguisher-62.json', 'signs/x/../001-fire-extinguisher-62.json',
                                       'images/fire-extinguisher.png', 'signs'])
 def test_unknown_demo_labels(client, label_id):
     for url in ('/labeldesigner/api/demos/load', '/labeldesigner/api/demos/preview'):
@@ -101,7 +101,7 @@ def test_no_demo_label(client):
         assert response.get_json() == {'success': False, 'message': 'No demo label specified'}
 
 
-@pytest.mark.parametrize('label_id', ['signs/01-fire-extinguisher-62.json', 'signs/02-fire-extinguisher-62red.json'])
+@pytest.mark.parametrize('label_id', ['signs/001-fire-extinguisher-62.json', 'signs/002-fire-extinguisher-62red.json'])
 def test_print(client, monkeypatch, label_id):
     from app.labeldesigner import printer
     queued = []
