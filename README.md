@@ -30,9 +30,9 @@ USB printers are detected automatically, network printers with some limits. The 
 
 ## Screenshots
 
-| Label repository | Image with auto-fit |
+| Saved and demo labels | Image with auto-fit |
 |---|---|
-| ![Label repository](./screenshots/image2.png) | ![Image with auto-fit](./screenshots/image3.png) |
+| ![Saved and demo labels](./screenshots/image2.png) | ![Image with auto-fit](./screenshots/image3.png) |
 | **Barcodes** | **Dark mode** |
 | ![Barcodes](./screenshots/image4.png) | ![Dark mode](./screenshots/image6.png) |
 | **Templates** | **Symbol picker** |
