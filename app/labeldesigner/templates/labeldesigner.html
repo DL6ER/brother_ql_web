@@ -45,32 +45,28 @@
                                 </div>
                                 <div class="form-text" id="autoOrientation" hidden>Turned automatically to fit the label best</div>
                             </div>
-                            <div class="mb-3">
-                                <span class="form-label d-block" id="fastPrintingLabel">Printing</span>
-                                <div class="btn-group segmented" role="radiogroup" aria-labelledby="fastPrintingLabel">
-                                    <input type="radio" class="btn-check" name="fast_printing" id="fast_printing_0" autocomplete="off" value="0" checked data-default="1">
-                                    <label class="btn" for="fast_printing_0">Quality</label>
-                                    <input type="radio" class="btn-check" name="fast_printing" id="fast_printing_1" autocomplete="off" value="1">
-                                    <label class="btn" for="fast_printing_1">Fast</label>
-                                </div>
-                                <div class="form-text">Fast printing is quicker, the print is a little less sharp</div>
-                            </div>
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="form-check mb-0">
-                                    <input class="form-check-input" type="checkbox" onchange="preview()" id="high_res" data-default="0">
-                                    <label class="form-check-label" for="high_res">600 dpi printing</label>
-                                </div>
-                                <button type="button" class="btn btn-link p-0 info-button" data-bs-toggle="collapse" data-bs-target="#highResInfo"
-                                    aria-expanded="false" aria-controls="highResInfo" title="About 600 dpi printing">
+                            <div class="d-flex align-items-center gap-2 mb-2">
+                                <span class="form-label mb-0" id="printModeLabel">Printing</span>
+                                <button type="button" class="btn btn-link p-0 info-button" data-bs-toggle="collapse" data-bs-target="#printModeInfo"
+                                    aria-expanded="false" aria-controls="printModeInfo" title="About the printing options">
                                     <span class="fas fa-circle-info" aria-hidden="true"></span>
-                                    <span class="visually-hidden">About 600 dpi printing</span>
+                                    <span class="visually-hidden">About the printing options</span>
                                 </button>
                             </div>
+                            <div class="btn-group segmented" role="radiogroup" aria-labelledby="printModeLabel">
+                                <input type="radio" class="btn-check" name="print_mode" id="print_mode_fast" autocomplete="off" value="fast" onchange="preview()">
+                                <label class="btn" for="print_mode_fast">Fast</label>
+                                <input type="radio" class="btn-check" name="print_mode" id="print_mode_quality" autocomplete="off" value="quality" onchange="preview()" checked data-default="1">
+                                <label class="btn" for="print_mode_quality">Quality</label>
+                                <input type="radio" class="btn-check" name="print_mode" id="print_mode_high_res" autocomplete="off" value="high_res" onchange="preview()">
+                                <label class="btn" for="print_mode_high_res">600 dpi</label>
+                            </div>
                             <div class="form-text" id="highResUnsupported" hidden>The <span id="highResModel"></span> prints at 300 dpi only</div>
-                            <div id="highResInfo" class="collapse">
+                            <div id="printModeInfo" class="collapse">
                                 <div class="alert alert-info small mt-2 mb-0">
+                                    <p class="mb-2">Fast printing is quicker, the print is a little less sharp.</p>
                                     600 dpi printing prints twice as many lines along the label. Labels usually come out much
-                                    darker, printing is slower, and the result is often worse than with standard printing.
+                                    darker, printing is slower, and the result is often worse than at 300 dpi.
                                     It is only confirmed for the QL-800. The QL-1100 series cannot do it, Brother's
                                     <a href="https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf" target="_blank" rel="noopener">command reference</a>
                                     lists 300 dpi only.

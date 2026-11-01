@@ -209,41 +209,59 @@ def test_copies_buttons(page):
     assert page.input_value('#print_count') == '1'
 
 
-def test_600_dpi_printing_is_explained(page):
+def test_printing_options_are_explained(page):
     page.click('button[data-bs-target="#accordionLabelSize"]')
-    page.click('button[data-bs-target="#highResInfo"]')
-    page.wait_for_selector('#highResInfo.show')
-    assert 'only confirmed for the QL-800' in page.inner_text('#highResInfo')
+    page.click('button[data-bs-target="#printModeInfo"]')
+    page.wait_for_selector('#printModeInfo.show')
+    assert 'a little less sharp' in page.inner_text('#printModeInfo')
+    assert 'only confirmed for the QL-800' in page.inner_text('#printModeInfo')
     # The info button does not change the option
-    assert not page.is_checked('#high_res')
+    assert page.is_checked('#print_mode_quality')
 
 
-def test_fast_printing(page):
+def test_printing_options(page):
     page.click('button[data-bs-target="#accordionLabelSize"]')
     # Quality unless chosen otherwise
-    assert page.is_checked('#fast_printing_0')
-    assert page.evaluate('formData().fast_printing') == 0
-    page.click('label[for=fast_printing_1]')
-    assert page.evaluate('formData().fast_printing') == 1
-    # Kept like the other settings
-    page.reload()
-    wait_until_ready(page)
-    assert page.is_checked('#fast_printing_1')
+    assert page.is_checked('#print_mode_quality')
+    assert page.evaluate('[formData().fast_printing, formData().high_res]') == [0, 0]
+    page.click('label[for=print_mode_fast]')
+    assert page.evaluate('[formData().fast_printing, formData().high_res]') == [1, 0]
+    # 600 dpi prints with priority to quality
+    page.click('label[for=print_mode_high_res]')
+    assert page.evaluate('[formData().fast_printing, formData().high_res]') == [0, 1]
+    assert page.evaluate('get_dpi()') == 600
+    # Saved like before 600 dpi was one of the options
+    settings = stored_settings(page)
+    assert settings['high_res'] is True and settings['fast_printing'] is False
+    assert 'print_mode' not in settings
+    reload(page)
+    assert page.is_checked('#print_mode_high_res')
+
+
+def test_printing_option_of_older_settings_and_labels(page):
+    store_settings(page, {**stored_settings(page), 'high_res': True})
+    reload(page)
+    assert page.is_checked('#print_mode_high_res')
+    # Labels saved before fast printing print with priority to quality
+    page.click('button[data-bs-target="#accordionLabelSize"]')
+    page.click('label[for=print_mode_fast]')
+    load_saved_label(page, 'EAN-Label.json')
+    assert page.is_checked('#print_mode_quality')
 
 
 def test_no_600_dpi_on_the_ql1100(page):
     page.click('button[data-bs-target="#accordionLabelSize"]')
-    page.check('#high_res')
+    page.click('label[for=print_mode_high_res]')
     assert page.evaluate('get_dpi()') == 600
     fake_printer(page, model='QL-1100', media_width=62)
     page.wait_for_selector('#highResUnsupported', state='visible')
     assert page.inner_text('#highResUnsupported') == 'The QL-1100 prints at 300 dpi only'
     # The choice is kept for other printers, but not used
-    assert page.is_checked('#high_res') and page.is_disabled('#high_res')
+    assert page.is_checked('#print_mode_high_res') and page.is_disabled('#print_mode_high_res')
     assert page.evaluate('get_dpi()') == 300
-    page.click('button[data-bs-target="#highResInfo"]')
-    page.wait_for_selector('#highResInfo.show')
-    assert page.get_attribute('#highResInfo a', 'href').endswith('cv_ql1100_eng_raster_100.pdf')
+    page.click('button[data-bs-target="#printModeInfo"]')
+    page.wait_for_selector('#printModeInfo.show')
+    assert page.get_attribute('#printModeInfo a', 'href').endswith('cv_ql1100_eng_raster_100.pdf')
 
 
 def fake_printer(page, **media):

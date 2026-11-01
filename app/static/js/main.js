@@ -242,8 +242,8 @@ function formData(cut_once = false) {
         border_roundness: parseInt($('#border_roundness').val(), 10) || 0,
         border_distance_x: parseInt($('#border_distance_x').val(), 10) || 0,
         border_distance_y: parseInt($('#border_distance_y').val(), 10) || 0,
-        high_res: $('#high_res').is(':checked:enabled') ? 1 : 0,
-        fast_printing: $('input[name=fast_printing]:checked').val() === '1' ? 1 : 0,
+        high_res: $('#print_mode_high_res').is(':checked:enabled') ? 1 : 0,
+        fast_printing: $('#print_mode_fast').is(':checked') ? 1 : 0,
         shrink_text: $('#shrink_text').is(':checked') ? 1 : 0,
         pdf_pages: $('#pdf_pages').val() || '',
         image_scaling_factor: parseInt($('#image_scaling_factor').val(), 10) || 0,
@@ -271,7 +271,7 @@ function formData(cut_once = false) {
 }
 
 function get_dpi() {
-    return $('#high_res').is(':checked:enabled') ? 600 : 300;
+    return $('#print_mode_high_res').is(':checked:enabled') ? 600 : 300;
 }
 
 // With auto-fit, an image without text on a die-cut label is turned to the
@@ -592,9 +592,9 @@ function update600Dpi() {
     const unsupported = models_without_600_dpi.includes(printer_status.model);
     $('#highResUnsupported').prop('hidden', !unsupported);
     $('#highResModel').text(printer_status.model);
-    const changed = $('#high_res').prop('disabled') !== unsupported;
-    $('#high_res').prop('disabled', unsupported);
-    if (changed && $('#high_res').is(':checked')) {
+    const changed = $('#print_mode_high_res').prop('disabled') !== unsupported;
+    $('#print_mode_high_res').prop('disabled', unsupported);
+    if (changed && $('#print_mode_high_res').is(':checked')) {
         updateMarginHints();
         preview();
     }
@@ -722,7 +722,7 @@ function saveAllSettingsToLocalStorage() {
         if (this.id === 'lineSelect') return;
         // Prefer name over id for correct handling of radio buttons
         const key = this.type === 'radio' && this.name.length > 0 ? this.name : this.id;
-        if (key.length == 0) return;
+        if (key.length == 0 || key === 'print_mode') return;
         if (this.type === 'checkbox') {
             data[key] = $(this).is(':checked');
         }
@@ -734,6 +734,12 @@ function saveAllSettingsToLocalStorage() {
             data[key] = $(this).val();
         }
     });
+    // The printing option is saved as high_res and fast_printing, like
+    // before 600 dpi became one of its choices, so that saved labels keep
+    // working with the server and with older versions
+    const printMode = $('input[name=print_mode]:checked').val();
+    data['high_res'] = printMode === 'high_res';
+    data['fast_printing'] = printMode === 'fast';
     // Save the font settings of each line. fontSettingsPerLine is declared
     // with let, so it is not available as window.fontSettingsPerLine.
     if (fontSettingsPerLine) {
@@ -843,6 +849,10 @@ function restoreAllSettingsFromLocalStorage() {
             console.log(key + ": " + data[key]);
         }
     });
+    if ('high_res' in data || 'fast_printing' in data) {
+        const printMode = Number(data.high_res) ? 'high_res' : Number(data.fast_printing) ? 'fast' : 'quality';
+        $(`#print_mode_${printMode}`).prop('checked', true);
+    }
 
     // Restore the font settings of each line and show those of the first
     // line in the font controls, otherwise the next preview would copy the
@@ -1238,7 +1248,7 @@ $(document).ready(function () {
         input.val(Math.min(max, Math.max(min, value))).trigger('change');
     });
 
-    $('#margin_top, #margin_bottom, #margin_left, #margin_right, #high_res').on('input change', updateMarginHints);
+    $('#margin_top, #margin_bottom, #margin_left, #margin_right, input[name=print_mode]').on('input change', updateMarginHints);
 });
 
 function resetSettings() {
