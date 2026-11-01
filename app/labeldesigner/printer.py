@@ -37,6 +37,7 @@ MAX_SIMULATED_LABELS = 100
 # Sending too many labels at once can cause printer timeouts/failures.
 # Override via PRINT_BATCH_SIZE environment variable or Flask config.
 DEFAULT_BATCH_SIZE = 5
+PTOUCH_BATCH_SIZE = 99
 
 logger = logging.getLogger(__name__)
 
@@ -236,10 +237,27 @@ class _Raster(BrotherQLRaster):
     read as "no tape": a PT-E550W half cut the tape and hung in the printing
     state. Without it, the printer checks the width of the tape only."""
 
+    # Labels after which a PT printer cuts the tape, between them it only
+    # half cuts. brother_ql sends no "cut each * labels" (ESC i A) to PT
+    # printers, which then cut after every label.
+    cut_every = 1
+
     def add_media_and_quality(self, rnumber):
         if self.model.startswith('PT-') and getattr(self, '_mtype', None) == b'\x00':
             self._mtype = None
         super().add_media_and_quality(rnumber)
+
+    def add_cut_every(self, n=1):
+        if self.model.startswith('PT-'):
+            self.data += b'\x1biA' + bytes([self.cut_every])
+        else:
+            super().add_cut_every(n)
+
+    def add_print(self, last_page=True):
+        super().add_print(last_page)
+        # The print information of the following labels says that they are
+        # not the first page, brother_ql leaves it at 0
+        self.page_number += 1
 
 
 class PrinterQueue:
@@ -269,10 +287,9 @@ class PrinterQueue:
         ptouch = self.model.startswith('PT-')
         generated_images = []
         simulation = is_simulation(self.device_specifier)
+        jobs = []
         for entry in entries:
             label = entry['label']
-            cut = entry['cut']
-            high_res = entry['high_res']
             if label.label_type == LabelType.ENDLESS_LABEL:
                 rotate = 0 if label.label_orientation == LabelOrientation.STANDARD else 90
             else:
@@ -281,21 +298,35 @@ class PrinterQueue:
             if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
+            # The labels of a PT printer are one job, so that it half cuts
+            # between them and cuts the tape after the last one. As jobs of
+            # their own, a PT-E550W fed, half cut and cut the tape for each.
+            settings = (rotate, dither, entry['high_res'], entry['fast'])
+            if ptouch and jobs and jobs[-1]['settings'] == settings:
+                jobs[-1]['images'].append(img)
+                jobs[-1]['cut'] = jobs[-1]['cut'] or entry['cut']
+            else:
+                jobs.append({'settings': settings, 'images': [img], 'cut': entry['cut']})
+        for job in jobs:
+            rotate, dither, high_res, fast = job['settings']
+            if ptouch:
+                qlr.cut_every = len(job['images'])
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
             # 3.0 s instead of 1.8 s with it, a little sharper.
             # PT printers get compressed raster lines, as from Brother's
             # apps: a PT-E550W read uncompressed ones wrongly over Wi-Fi,
             # half cut the tape and hung in the printing state.
+            qlr.page_number = 0
             create_label(
                 qlr,
-                img,
+                job['images'],
                 self.label_size,
                 red='red' in str(self.label_size),
                 dither=dither,
-                cut=cut,
+                cut=job['cut'],
                 dpi_600=high_res,
-                hq=not entry['fast'],
+                hq=not fast,
                 rotate=rotate,
                 compress=ptouch
             )
@@ -359,6 +390,11 @@ class PrinterQueue:
             batch_size = int(os.environ.get('PRINT_BATCH_SIZE', DEFAULT_BATCH_SIZE))
         if batch_size < 1:
             batch_size = DEFAULT_BATCH_SIZE
+        if self.model.startswith('PT-'):
+            # One job, so that the tape is cut after the last label only.
+            # Chain printing the batches did not help, a PT-E550W cut the
+            # tape after each anyway. 99 is the most for "cut each * labels".
+            batch_size = PTOUCH_BATCH_SIZE
 
         total = len(self._print_queue)
         entries = list(self._print_queue)
