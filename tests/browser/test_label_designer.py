@@ -569,3 +569,22 @@ def test_demo_labels_in_german(page):
     page.wait_for_selector('#labelCategories .nav-link[data-category="signs"]')
     page.click('#labelCategories .nav-link[data-category="signs"]')
     assert page.input_value('.demo-language') == 'de'
+
+
+def test_icon_picker_inserts_the_name_of_an_icon(page):
+    type_text(page, 'Light ')
+    page.evaluate('() => { const ta = document.getElementById("label_text"); ta.selectionStart = ta.selectionEnd = ta.value.length; }')
+    page.click('#symbolPickerBtn')
+    # Without a search the first icons are shown, all of them on request
+    page.wait_for_selector('#iconGrid .icon-btn')
+    count = "() => document.querySelectorAll('#iconGrid .icon-btn').length"
+    assert page.evaluate(count) == 120
+    page.click('#iconShowAll')
+    assert page.evaluate(count) > 7000
+    assert page.is_hidden('#iconShowAll')
+    page.fill('#iconSearch', 'lightbulb')
+    page.wait_for_selector('#iconGrid .icon-btn')
+    assert page.get_attribute('#iconGrid .icon-btn', 'title') == 'mdi:lightbulb'
+    page.click('#iconGrid .icon-btn')
+    assert page.input_value('#label_text') == 'Light {{mdi:lightbulb}}'
+    wait_for_status(page, 'Preview updated')
