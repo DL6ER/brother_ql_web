@@ -270,7 +270,12 @@ function formData(cut_once = false) {
     return data;
 }
 
+// P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
+// command reference of the PT-E550W, PT-P750W and PT-P710BT)
 function get_dpi() {
+    if (printer_status.model && printer_status.model.startsWith('PT-')) {
+        return 180;
+    }
     return $('#print_mode_high_res').is(':checked:enabled') ? 600 : 300;
 }
 
@@ -603,6 +608,8 @@ function update600Dpi() {
 function updatePrinterStatus() {
     filterLabelSizes(printer_status.model);
     update600Dpi();
+    // The resolution may differ from that of the printer selected before
+    updateMarginHints();
     if ($('#label_size option:selected').val().includes('red')) {
         $(".red-support").show();
     } else {
