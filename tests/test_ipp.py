@@ -166,6 +166,11 @@ def fake_printer(monkeypatch):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     monkeypatch.setattr(printer, 'IPP_PORT', server.server_port)
     monkeypatch.setattr(printer, '_status_cache', {})
+    # No SNMP, unless a test brings an agent
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as unused:
+        unused.bind(('127.0.0.1', 0))
+        monkeypatch.setattr(printer, 'SNMP_PORT', unused.getsockname()[1])
+    monkeypatch.setattr(printer, '_snmp_unavailable', {})
     yield answer
     server.shutdown()
 
