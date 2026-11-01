@@ -1721,23 +1721,25 @@ def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
     assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
 
 
-@pytest.mark.parametrize('model', ['QL-1100', 'QL-1110NWB', 'QL-1115NWB'])
-def test_600_dpi_is_refused_for_the_ql1100_series(tmp_path, model):
-    # Brother's command reference of the series lists 300 dpi only (#103)
+@pytest.mark.parametrize('model', ['QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W'])
+def test_600_dpi_is_refused_for_the_ql1100_series_and_ptouch_printers(tmp_path, model):
+    # Brother's command reference of the QL-1100 series lists 300 dpi only
+    # (#103), the P-touch printers print at 180 dpi
     client = make_client(tmp_path)
+    label_size = 'pt12' if model.startswith('PT-') else '62'
     data = EXAMPLE_FORMDATA.copy()
-    data.update({'label_size': '62', 'model': model, 'high_res': '1'})
+    data.update({'label_size': label_size, 'model': model, 'high_res': '1'})
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+    assert response.get_json()['message'] == f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
 
     client.application.config['WEBHOOK_PASSWORD'] = 'secret'
     image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
-    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '62', 'model': model, 'high_res': 1})
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': label_size, 'model': model, 'high_res': 1})
     assert response.status_code == 400
-    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+    assert response.get_json()['message'] == f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
 
-    # At 300 dpi they print
+    # At normal resolution they print
     data['high_res'] = '0'
     assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
 

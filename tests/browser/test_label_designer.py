@@ -255,13 +255,13 @@ def test_no_600_dpi_on_the_ql1100(page):
     assert page.evaluate('get_dpi()') == 600
     fake_printer(page, model='QL-1100', media_width=62)
     page.wait_for_selector('#highResUnsupported', state='visible')
-    assert page.inner_text('#highResUnsupported') == 'The QL-1100 prints at 300 dpi only'
+    assert page.inner_text('#highResUnsupported') == 'The QL-1100 cannot print at 600 dpi'
     # The choice is kept for other printers, but not used
     assert page.is_checked('#print_mode_high_res') and page.is_disabled('#print_mode_high_res')
     assert page.evaluate('get_dpi()') == 300
     page.click('button[data-bs-target="#printModeInfo"]')
     page.wait_for_selector('#printModeInfo.show')
-    assert 'The QL-1100, QL-1110NWB and QL-1115NWB cannot print at 600 dpi.' in page.inner_text('#printModeInfo')
+    assert 'The QL-1100, QL-1110NWB, QL-1115NWB, PT-E550W, PT-P700 and PT-P750W cannot print at 600 dpi.' in page.inner_text('#printModeInfo')
 
 
 def fake_printer(page, **media):

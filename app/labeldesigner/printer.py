@@ -74,13 +74,16 @@ LABEL_OFFSET_CORRECTIONS = {
 # reference of these models lists no 600 dpi resolution, unlike that of the
 # QL-800, and a 600 dpi label came out twice as long on a QL-1100 (#103):
 # https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
-MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB')
+# The P-touch printers print at 180 dpi. For 600 dpi brother_ql sets bit 5
+# of ESC i K, which their reference marks as not used:
+# https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
+MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W')
 
 
 def resolution_problem(model: str, high_res: bool) -> str:
     """Why the model cannot print at the resolution, or an empty string."""
     if high_res and model in MODELS_WITHOUT_600_DPI:
-        return f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+        return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
     return ''
 
 
