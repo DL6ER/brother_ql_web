@@ -166,7 +166,6 @@ def test_printers_from_environment(monkeypatch):
             create_app()
 
 
-
 def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     headers = {'X-Forwarded-Prefix': '/labels', 'X-Forwarded-Host': 'example.com', 'X-Forwarded-Proto': 'https'}
     # With PROXY_COUNT=0, the default, the headers are not trusted
