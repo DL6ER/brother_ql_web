@@ -395,7 +395,7 @@ def test_concurrent_saves_keep_label_readable(tmp_path):
 def test_repository_print_uses_requested_resolution(tmp_path, monkeypatch):
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False: queued.append((label._width, high_res)))
+    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append((label._width, high_res)))
     monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
     client = make_client(tmp_path)
     resp = client.post('/labeldesigner/api/repository/print', data={'name': 'QR-Example.json', 'high_res': '1'})
