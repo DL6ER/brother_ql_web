@@ -261,7 +261,7 @@ def test_no_600_dpi_on_the_ql1100(page):
     assert page.evaluate('get_dpi()') == 300
     page.click('button[data-bs-target="#printModeInfo"]')
     page.wait_for_selector('#printModeInfo.show')
-    assert page.get_attribute('#printModeInfo a', 'href').endswith('cv_ql1100_eng_raster_100.pdf')
+    assert 'The QL-1100, QL-1110NWB and QL-1115NWB cannot print at 600 dpi.' in page.inner_text('#printModeInfo')
 
 
 def fake_printer(page, **media):

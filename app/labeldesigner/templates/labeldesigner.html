@@ -67,9 +67,8 @@
                                     <p class="mb-2">Fast printing is quicker, the print is a little less sharp.</p>
                                     600 dpi printing prints twice as many lines along the label. Labels usually come out much
                                     darker, printing is slower, and the result is often worse than at 300 dpi.
-                                    It is only confirmed for the QL-800. The QL-1100 series cannot do it, Brother's
-                                    <a href="https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf" target="_blank" rel="noopener">command reference</a>
-                                    lists 300 dpi only.
+                                    It is only confirmed for the QL-800.
+                                    The {{ models_without_600_dpi[:-1]|join(', ') }} and {{ models_without_600_dpi[-1] }} cannot print at 600 dpi.
                                 </div>
                             </div>
                         </div>
