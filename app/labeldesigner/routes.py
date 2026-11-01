@@ -578,49 +578,36 @@ def demo_list():
     return {'categories': categories}
 
 
-def _load_demo(label_id: str | None, text_as_json: bool = True) -> dict:
+def _demo_response(label_id: str | None, respond, text_as_json: bool = True):
+    """respond(label) for the demo label with the id, or why there is none.
+    Only fixed messages are returned, never those of exceptions."""
     if not label_id:
-        raise ValueError('No demo label specified')
-    data = demos.load(label_id)
+        return make_response(jsonify({'success': False, 'message': 'No demo label specified'}), 400)
+    try:
+        data = demos.load(label_id)
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except Exception as e:
+        current_app.logger.exception(e)
+        return make_response(jsonify({'success': False, 'message': 'Failed to load the demo label'}), 500)
     if text_as_json:
         data['text'] = json.dumps(data.get('text', []))
-    return data
-
-
-def _demo_error(e: Exception):
-    if isinstance(e, FileNotFoundError):
-        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
-    if isinstance(e, ValueError):
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
-    current_app.logger.exception(e)
-    return make_response(jsonify({'success': False, 'message': 'Failed to load the demo label'}), 500)
+    return respond(data)
 
 
 @bp.route('/api/demos/load', methods=['GET'])
 def demo_load():
-    try:
-        data = _load_demo(request.values.get('id'), text_as_json=False)
-    except Exception as e:
-        return _demo_error(e)
-    return _label_for_designer(data, demos.IMAGE_DIR)
+    return _demo_response(request.values.get('id'), lambda data: _label_for_designer(data, demos.IMAGE_DIR), text_as_json=False)
 
 
 @bp.route('/api/demos/preview', methods=['GET'])
 def demo_preview():
-    try:
-        data = _load_demo(request.values.get('id'))
-    except Exception as e:
-        return _demo_error(e)
-    return _preview_response(data, demos.IMAGE_DIR)
+    return _demo_response(request.values.get('id'), lambda data: _preview_response(data, demos.IMAGE_DIR))
 
 
 @bp.route('/api/demos/print', methods=['POST'])
 def demo_print():
-    try:
-        data = _load_demo(_json_body().get('id') or request.values.get('id'))
-    except Exception as e:
-        return _demo_error(e)
-    return _print_stored_label(data, demos.IMAGE_DIR)
+    return _demo_response(_json_body().get('id') or request.values.get('id'), lambda data: _print_stored_label(data, demos.IMAGE_DIR))
 
 
 def _check_print_count(print_count: int) -> int:
