@@ -11,9 +11,10 @@ import sys
 
 DEMOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'labeldesigner', 'demos')
 # Correct, but not in the dictionary: technical terms, compound words and
-# abbreviations
-KNOWN = {'AED', 'Brandfördernd', 'Defibrillator', 'Inventaretikett', 'ml', 'Olivenöl', 'Oxidationsmittel', 'Pesto', 'QR',
-         'Regaletikett', 'Umweltgefährlich'}
+# abbreviations, also in capitals
+KNOWN = {'AED', 'Brandfördernd', 'Chili', 'Defibrillator', 'Ibuprofen', 'Inventaretikett', 'mg', 'Minze', 'ml', 'Olivenöl',
+         'Oxidationsmittel', 'Patchfeld', 'Pesto', 'QR', 'Rack', 'Reagenz', 'Regaletikett', 'Rutschgefahr', 'Umweltgefährlich',
+         'Verbandkasten'}
 
 
 def label_words():
@@ -34,7 +35,8 @@ def main():
     words = sorted(set().union(*(words for _, words in labels)))
     result = subprocess.run(['hunspell', '-i', 'utf-8', '-d', 'de_DE', '-l'], input='\n'.join(words),
                             capture_output=True, text=True, encoding='utf-8', check=True)
-    unknown = set(result.stdout.split()) - KNOWN
+    known = {word.lower() for word in KNOWN}
+    unknown = {word for word in result.stdout.split() if word.lower() not in known}
     for name, label in labels:
         for word in sorted(label & unknown):
             print(f'{name}: {word}')

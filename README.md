@@ -22,7 +22,7 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
-- **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 190 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name and price tags
+- **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 470 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name and price tags
 - **Printers:** several printers at once, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu

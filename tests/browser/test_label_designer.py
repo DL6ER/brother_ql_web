@@ -556,12 +556,13 @@ def test_demo_labels_in_german(page):
     assert page.input_value('.demo-language') == 'en'
     assert 'Fire extinguisher' in page.evaluate(shown)
     count = page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count')
+    hidden = page.inner_text('#repoHiddenSizes')
     page.select_option('.demo-language', 'de')
     names = page.evaluate(shown)
     assert 'Feuerlöscher' in names and 'Fire extinguisher' not in names
     assert page.inner_text('#labelCategories .nav-link[data-category="signs"] .labels-count') == count
-    # Only labels of other sizes count as hidden
-    assert page.inner_text('#repoHiddenSizes').startswith('34 demo labels of other sizes')
+    # Only labels of other sizes count as hidden, every label is there in both languages
+    assert page.inner_text('#repoHiddenSizes') == hidden
     # Kept for the next visit
     reload(page)
     page.click('#openRepoBtn')
