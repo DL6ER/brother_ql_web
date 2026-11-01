@@ -242,6 +242,12 @@ textarea#label_text {
     color: var(--bs-secondary-color);
 }
 
+/* The images are sent with the label, never uploaded on their own, so the
+   upload progress bar of Dropzone would stay over them */
+.dropzone .dz-preview .dz-progress {
+    display: none;
+}
+
 /* --- Preview ------------------------------------------------------------ */
 
 @media (min-width: 1200px) {
