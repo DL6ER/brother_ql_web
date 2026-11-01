@@ -772,6 +772,16 @@ def create_printer_from_request(request: Request):
 _LOAD_IMAGE = object()
 
 
+def _label_type(kind: FormFactor) -> LabelType:
+    """The label type of a brother_ql form factor. P-touch tapes are endless,
+    they were taken for round die-cut labels and came out 1 dot long."""
+    if kind in (FormFactor.ENDLESS, FormFactor.PTOUCH_ENDLESS):
+        return LabelType.ENDLESS_LABEL
+    if kind == FormFactor.DIE_CUT:
+        return LabelType.DIE_CUT_LABEL
+    return LabelType.ROUND_DIE_CUT_LABEL
+
+
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
@@ -827,12 +837,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         label_content = LabelContent.IMAGE_BW
 
     label_orientation = LabelOrientation.ROTATED if context['label_orientation'] == 'rotated' else LabelOrientation.STANDARD
-    if context['kind'] == FormFactor.ENDLESS:
-        label_type = LabelType.ENDLESS_LABEL
-    elif context['kind'] == FormFactor.DIE_CUT:
-        label_type = LabelType.DIE_CUT_LABEL
-    else:
-        label_type = LabelType.ROUND_DIE_CUT_LABEL
+    label_type = _label_type(context['kind'])
 
     width, height = _get_label_dimensions(context['label_size'], context['high_res'])
     if height > width:
@@ -1053,7 +1058,7 @@ def _scale_image_to_label(img: Image.Image, label_size: str, orientation: str,
         height, width = width, height
 
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
-    is_endless = kind == FormFactor.ENDLESS
+    is_endless = _label_type(kind) == LabelType.ENDLESS_LABEL
 
     img_width, img_height = img.size
     if is_endless:
@@ -1178,12 +1183,7 @@ def webhook_print():
             label_content = LabelContent.IMAGE_BW
 
         label_orientation = LabelOrientation.ROTATED if orientation == 'rotated' else LabelOrientation.STANDARD
-        if kind == FormFactor.ENDLESS:
-            label_type = LabelType.ENDLESS_LABEL
-        elif kind == FormFactor.DIE_CUT:
-            label_type = LabelType.DIE_CUT_LABEL
-        else:
-            label_type = LabelType.ROUND_DIE_CUT_LABEL
+        label_type = _label_type(kind)
 
         width, height = _get_label_dimensions(label_size, high_res)
         if height > width:

@@ -2033,3 +2033,17 @@ def test_fast_printing(tmp_path, monkeypatch, route, fast):
     data = sent[0]
     flags = data[data.index(b'\x1biz') + 3]
     assert bool(flags & 0x40) == (fast != '1')
+
+
+def test_ptouch_tape_is_endless(tmp_path):
+    # P-touch tapes were taken for round die-cut labels: the label was 1 dot
+    # long and the printer stopped after a few millimeters
+    client = make_client(tmp_path, model='PT-E550W')
+    text = json.dumps([{'text': 'PT-E550W', 'font': 'DejaVu Sans,Book', 'size': 40}])
+    response = client.post('/labeldesigner/api/preview?return_format=png', data={
+        'printer': 'simulation', 'label_size': 'pt12', 'orientation': 'rotated', 'text': text})
+    assert response.status_code == 200
+    assert 'X-Label-Warning' not in response.headers
+    image = Image.open(io.BytesIO(response.data))
+    # Across the tape the printable 70 dots, along it as long as the text
+    assert image.height == 70 and image.width > 100
