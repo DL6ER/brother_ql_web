@@ -66,3 +66,21 @@ def test_check_label_size():
         check_label_size('pt36', 'PT-P700')
     with pytest.raises(ValueError, match='^Unknown label size: 99x99$'):
         check_label_size('99x99', 'QL-800')
+
+
+@pytest.mark.parametrize('identifier, pins', [('pt6', range(48, 80)), ('pt9', range(39, 89)), ('pt12', range(29, 99))])
+def test_narrow_tze_tapes_use_the_pins_of_the_raster_command_reference(identifier, pins):
+    # brother_ql has no 6 and 9 mm tapes, the label designer adds them
+    printers = label_printers(_label(identifier))
+    assert 'PT-E550W' in printers
+    assert ('PT-P900W' in printers) == (identifier == 'pt12')
+    image = Image.new('1', (len(pins), 40), 0)
+    data = convert(BrotherQLRaster('PT-E550W'), [image], identifier, cut=True, rotate=0)
+    used = set()
+    i = data.index(b'M\x00') + 2
+    while data[i] == 0x47:
+        n = int.from_bytes(data[i + 1:i + 3], 'little')
+        bits = int.from_bytes(data[i + 3:i + 3 + n], 'big')
+        used |= {pin for pin in range(128) if bits >> (127 - pin) & 1}
+        i += 3 + n
+    assert used == set(pins)
