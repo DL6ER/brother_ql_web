@@ -54,11 +54,13 @@ function fmtTime(ts) {
 
 // Endless rolls and P-touch tape grow with the label
 const isEndless = s => s.form === 'endless' || s.form === 'ptouch_endless';
+// TZe tape, only P-touch printers take it
+const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].models.every(m => m.startsWith('PT-'));
 
 function sizeName(id) {
     const s = SIZES[id];
     if (!s) return id;
-    if (s.form === 'ptouch_endless') return `${s.tape[0]} mm tape`;
+    if (isPtouch(id)) return s.name;
     if (s.form === 'endless') return `${s.tape[0]} mm endless${s.red ? ', black and red' : ''}`;
     if (s.form === 'round_die_cut') return `${s.tape[0]} mm round`;
     return `${s.tape[0]} x ${s.tape[1]} mm`;
@@ -210,6 +212,10 @@ function b64ToBlob(b64, mime) {
 
 // 600 dpi, if chosen and the printer can print it
 const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_without_600_dpi.includes(S.printer.model));
+// P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
+// command reference of the PT-E550W, PT-P750W and PT-P710BT), QL printers
+// at 300 dpi, or 600
+const dpiOf = (labelSize, high = highRes()) => (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
 
 function formFor(design, copies = 1, forPrint = false) {
     const fd = new FormData();
@@ -813,7 +819,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     if (seq !== el._seq) return;
     const size = SIZES[design.label_size] || { tape: [62, 0], dots: [696, 0], form: 'endless' };
     // At 600 dpi the label has twice as many dots each way
-    const scale = p.highRes ? 2 : 1, dpi = 300 * scale;
+    const scale = p.highRes ? 2 : 1, dpi = dpiOf(design.label_size, p.highRes);
     const w = img.naturalWidth, h = img.naturalHeight, span = size.dots[0] * scale;
     const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
@@ -1498,7 +1504,7 @@ function renderEditor() {
                     </div>
                     <div id="edMargins"><span class="label-s">Margins, empty space around the content</span>
                         <div class="margins">${['top', 'bottom', 'left', 'right'].map(side => `
-                        <label><span>${side[0].toUpperCase() + side.slice(1)}, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-margin="${side}" value="${dotsToMm(d['margin_' + side])}"></label>`).join('')}</div>
+                        <label><span>${side[0].toUpperCase() + side.slice(1)}, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-margin="${side}" value="${dotsToMm(d['margin_' + side], dpiOf(d.label_size))}"></label>`).join('')}</div>
 </div>
                 </div></div>
         </aside>
@@ -1530,8 +1536,10 @@ function renderEditor() {
 // one is always offered, e.g. that of a label made for another printer.
 function sizeOptions(chosen, name) {
     const offered = s => s.id === chosen || printerTakes(s);
-    return [['Endless', 'endless'], ['Die-cut', 'die_cut'], ['Round', 'round_die_cut'], ['P-touch tape', 'ptouch_endless']].map(([group, form]) => {
-        const sizes = C.label_sizes.filter(s => s.form === form && offered(s));
+    const groups = [['Endless', s => s.form === 'endless' && !isPtouch(s.id)], ['Die-cut', s => s.form === 'die_cut'],
+        ['Round', s => s.form === 'round_die_cut'], ['P-touch tape', s => isPtouch(s.id)]];
+    return groups.map(([group, inGroup]) => {
+        const sizes = C.label_sizes.filter(s => inGroup(s) && offered(s));
         return sizes.length ? `<optgroup label="${group}">${sizes.map(s => `<option value="${esc(s.id)}"${s.id === chosen ? ' selected' : ''}>${name(s)}</option>`).join('')}</optgroup>` : '';
     }).join('');
 }
@@ -1576,18 +1584,18 @@ const GAP_TITLE = 'Leave it empty for a distance that suits the size of the text
 function gapField(d) {
     const on = hasTextLines(d);
     return `<label title="${on ? GAP_TITLE : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Distance to the text, mm</span>
-        <input class="field" type="number" min="0" max="50" step="0.5" id="edGap" value="${d.image_text_gap === '' ? '' : dotsToMm(d.image_text_gap)}" placeholder="${on ? 'Automatic' : 'Only with text'}" style="width:10rem"${on ? '' : ' disabled'}></label>`;
+        <input class="field" type="number" min="0" max="50" step="0.5" id="edGap" value="${d.image_text_gap === '' ? '' : dotsToMm(d.image_text_gap, dpiOf(d.label_size))}" placeholder="${on ? 'Automatic' : 'Only with text'}" style="width:10rem"${on ? '' : ' disabled'}></label>`;
 }
 
 function frameDetails(d) {
-    const red = redTape(d);
+    const red = redTape(d), dpi = dpiOf(d.label_size);
     // Shown whenever there is a frame, it is what the frame consists of
     return `<div class="frame-details" id="edFrameMore">
         <div class="margins">
-            <label><span>Line, mm</span><input class="field" type="number" min="0.1" max="5" step="0.1" data-frame-k="border_thickness" value="${dotsToMm(d.border_thickness)}"></label>
-            <label><span>Sides, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_distance_x" value="${dotsToMm(d.border_distance_x)}"></label>
-            <label><span>Top, bottom</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_distance_y" value="${dotsToMm(d.border_distance_y)}"></label>
-            ${(rd => `<label title="${rd ? '' : 'Only for rounded frames'}"><span class="${rd ? '' : 'off'}">Corners, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_roundness" value="${dotsToMm(d.border_roundness)}"${rd ? '' : ' disabled'}></label>`)(frameOf(d) === 'rounded')}
+            <label><span>Line, mm</span><input class="field" type="number" min="0.1" max="5" step="0.1" data-frame-k="border_thickness" value="${dotsToMm(d.border_thickness, dpi)}"></label>
+            <label><span>Sides, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_distance_x" value="${dotsToMm(d.border_distance_x, dpi)}"></label>
+            <label><span>Top, bottom</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_distance_y" value="${dotsToMm(d.border_distance_y, dpi)}"></label>
+            ${(rd => `<label title="${rd ? '' : 'Only for rounded frames'}"><span class="${rd ? '' : 'off'}">Corners, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_roundness" value="${dotsToMm(d.border_roundness, dpi)}"${rd ? '' : ' disabled'}></label>`)(frameOf(d) === 'rounded')}
         </div>
         <p class="muted small" style="margin:.4rem 0 0">Sides, top and bottom: the distance from the edge of the label. The margins grow so that the text stays inside.</p>
         <div style="margin-top:.5rem"><span class="label-s">Color</span><div class="seg"><button type="button" data-bcolor="black" class="${d.border_color === 'red' ? '' : 'on'}">Black</button><button type="button" data-bcolor="red" class="${d.border_color === 'red' ? 'on' : ''}"${red || d.border_color === 'red' ? '' : ' disabled title="Needs black and red tape"'}>Red</button></div></div>
@@ -1601,9 +1609,10 @@ function mainFamily(d) {
     return Object.keys(count).sort((a, b) => count[b] - count[a])[0] || DEFAULT_FAMILY;
 }
 
-// Margins are kept in dots of 300 dpi, the editor shows millimeters
-const dotsToMm = dots => Math.round((+dots || 0) / 300 * 25.4 * 10) / 10;
-const mmToDots = mm => Math.round(mm * 300 / 25.4);
+// Margins, frames and distances are kept in dots, the editor shows them in
+// millimeters at the resolution the label is printed with
+const dotsToMm = (dots, dpi) => Math.round((+dots || 0) / dpi * 25.4 * 10) / 10;
+const mmToDots = (mm, dpi) => Math.round(mm * dpi / 25.4);
 
 // The frame is drawn at a distance from the edge of the label, independent
 // of the text, so the margins grow with it to keep the text inside
@@ -1753,7 +1762,7 @@ const drawEditor = debounce(() => {
     }
     showOnStage($('#edStage'), shown, E.values, (w, err, p) => {
         if (p && p.auto && !empty) setTimeout(() => $('#edFits') && $('#edFits').insertAdjacentHTML('beforeend', ' <span class="muted">Turned automatically to fit the label best.</span>'));
-        if (gap && p && hasTextLines(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap)}` : 'Automatic';
+        if (gap && p && hasTextLines(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
     }, empty);
@@ -1842,7 +1851,7 @@ function bindEditor() {
     if ($('#edGap')) $('#edGap').addEventListener('input', e => {
         const v = e.target.value.trim();
         if (v !== '' && !(+v >= 0)) return;
-        d.image_text_gap = v === '' ? '' : String(mmToDots(+v));
+        d.image_text_gap = v === '' ? '' : String(mmToDots(+v, dpiOf(d.label_size)));
         redrawEditor();
     });
     // Image
@@ -1862,7 +1871,7 @@ function bindEditor() {
     $$('[data-frame-k]').forEach(inp => inp.addEventListener('change', () => {
         const mm = parseFloat(inp.value);
         if (!(mm >= 0)) return;
-        d[inp.dataset.frameK] = String(Math.max(inp.dataset.frameK === 'border_thickness' ? 1 : 0, mmToDots(mm)));
+        d[inp.dataset.frameK] = String(Math.max(inp.dataset.frameK === 'border_thickness' ? 1 : 0, mmToDots(mm, dpiOf(d.label_size))));
         fitMarginsToFrame(d);
         renderEditor();
     }));
@@ -1875,7 +1884,7 @@ function bindEditor() {
     $$('[data-margin]').forEach(inp => inp.addEventListener('input', () => {
         const mm = parseFloat(inp.value);
         if (!(mm >= 0)) return;
-        d['margin_' + inp.dataset.margin] = String(mmToDots(mm));
+        d['margin_' + inp.dataset.margin] = String(mmToDots(mm, dpiOf(d.label_size)));
         redrawEditor();
     }));
     bindCopies($('.ed-top'));

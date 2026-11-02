@@ -199,6 +199,23 @@ def test_settings_that_do_not_apply_are_disabled(designer):
     assert designer.is_disabled('#edThr')
 
 
+def test_ptouch_tape_is_shown_at_180_dpi(designer):
+    designer.evaluate("""() => {
+        S.printer = { path: 'a', model: 'PT-E550W', media_width: 12, media_length: 0 };
+        detectTape();
+        S.edit.design.label_size = S.tape;
+        renderEditor();
+    }""")
+    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
+    assert 'pt6' in offered and 'pt9' in offered and '62' not in offered
+    # 35 dots at 180 dpi
+    assert designer.input_value('[data-margin="left"]') == '4.9'
+    type_line(designer, 0, 'Hello')
+    _, height = preview_size(designer)
+    assert designer.inner_text('#edStage .dim-x') == '12 mm'
+    assert designer.inner_text('#edStage .dim-y') == f'{round(height / 180 * 25.4)} mm'
+
+
 def test_distance_between_code_and_text(designer):
     designer.click('[data-lay="codetext"]')
     wait_for_preview(designer)
