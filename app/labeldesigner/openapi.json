@@ -77,6 +77,12 @@
                     "auto"
                   ]
                 }
+              },
+              "X-Label-Image-Text-Gap": {
+                "description": "Distance between the image or code and the text in dots, for labels with both. The given `image_text_gap` or the one chosen without it.",
+                "schema": {
+                  "type": "integer"
+                }
               }
             },
             "content": {
@@ -1429,6 +1435,11 @@
             ],
             "default": 0,
             "description": "Make all lines of text smaller by the same factor until they fit on the label, instead of cutting the text off."
+          },
+          "image_text_gap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distance between the image or code and the text in dots, for labels with both. Empty or left out chooses two fifths of the largest text size, for a QR code at least two of its modules."
           },
           "print_type": {
             "type": "string",

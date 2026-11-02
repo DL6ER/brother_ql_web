@@ -91,6 +91,7 @@ class SimpleLabel:
         warnings: list[str] | None = None,
         shrink_text: bool = False,
         auto_orientation: bool = False,
+        image_text_gap: int | None = None,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed."""
@@ -142,6 +143,13 @@ class SimpleLabel:
         self._text_scale = 1.0
         # The orientation was chosen to fit an image best, not by the request
         self.auto_orientation = auto_orientation
+        # Distance between an image or code and the text in dots. None
+        # chooses it from the size of the text.
+        if image_text_gap is not None and image_text_gap < 0:
+            raise ValueError("The distance between image and text must be non-negative.")
+        self._image_text_gap = image_text_gap
+        # The distance used, known once the label is generated
+        self.image_text_gap = 0
 
     @property
     def label_content(self):
@@ -173,12 +181,15 @@ class SimpleLabel:
         return False
 
     @property
-    def need_image_text_distance(self):
-        return self._label_content in (LabelContent.TEXT_QRCODE,
-                                       LabelContent.IMAGE_BW,
-                                       LabelContent.IMAGE_GRAYSCALE,
-                                       LabelContent.IMAGE_RED_BLACK,
-                                       LabelContent.IMAGE_COLORED)
+    def auto_image_text_gap(self) -> int:
+        """The distance between an image or code and the text when none is
+        given: two fifths of the largest text, for a QR code at least two of
+        its modules, so that it stays readable."""
+        sizes = [int(line['size']) for line in self.text if str(line.get('text', '')).strip()]
+        gap = round(0.4 * max(sizes)) if sizes else 0
+        if self._label_content == LabelContent.TEXT_QRCODE and self.barcode_type == "QR":
+            gap = max(gap, 2 * self._qr_size)
+        return gap
 
     @property
     def text(self):
@@ -390,26 +401,27 @@ class SimpleLabel:
             bboxes = []
             textsize = (0, 0, 0, 0)
 
+        # Distance between image or code and text, only where the label has
+        # both
+        gap = self._gap(img_width, img_height) if bboxes else 0
+        self.image_text_gap = gap
+
         # Adjust label size for endless label
         if self._label_orientation == LabelOrientation.STANDARD:
             if self._label_type in (LabelType.ENDLESS_LABEL,):
-                height = img_height + textsize[3] - textsize[1] + margin_top + margin_bottom
+                height = img_height + gap + textsize[3] - textsize[1] + margin_top + margin_bottom
         elif self._label_orientation == LabelOrientation.ROTATED:
             if self._label_type in (LabelType.ENDLESS_LABEL,):
-                width = img_width + textsize[2] + margin_left + margin_right
+                width = img_width + gap + textsize[2] + margin_left + margin_right
 
         if self._label_orientation == LabelOrientation.STANDARD:
             if self._label_type in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL):
-                vertical_offset_text = (height - img_height - textsize[3])//2
+                vertical_offset_text = (height - img_height - gap - textsize[3])//2
                 vertical_offset_text += (margin_top - margin_bottom)//2
             else:
                 vertical_offset_text = margin_top
-                if self.need_image_text_distance:
-                    # Slightly increase the margin to get some distance from the
-                    # QR code
-                    vertical_offset_text *= 1.25
 
-            vertical_offset_text += img_height
+            vertical_offset_text += img_height + gap
             horizontal_offset_text = max((width - textsize[2])//2, 0)
             horizontal_offset_image = (width - img_width)//2
             vertical_offset_image = margin_top
@@ -418,15 +430,11 @@ class SimpleLabel:
             vertical_offset_text = (height - textsize[3])//2
             vertical_offset_text += (margin_top - margin_bottom)//2
             if self._label_type in (LabelType.DIE_CUT_LABEL, LabelType.ROUND_DIE_CUT_LABEL):
-                horizontal_offset_text = max((width - img_width - textsize[2])//2, 0)
+                horizontal_offset_text = max((width - img_width - gap - textsize[2])//2, 0)
             else:
                 horizontal_offset_text = margin_left
-                if self.need_image_text_distance:
-                    # Slightly increase the margin to get some distance from the
-                    # QR code
-                    horizontal_offset_text *= 1.25
 
-            horizontal_offset_text += img_width
+            horizontal_offset_text += img_width + gap
             horizontal_offset_image = margin_left
             vertical_offset_image = (height - img_height)//2
 
@@ -702,17 +710,27 @@ class SimpleLabel:
         """Room for the checkbox in front of a line: the box and a gap."""
         return math.ceil(1.2 * (8 * self._line_size(line) // 10))
 
+    def _gap(self, img_width, img_height) -> int:
+        """The distance between an image or code and the text, where both
+        are on the label: as given, or else the automatic one."""
+        if not (img_width or img_height):
+            return 0
+        if self._image_text_gap is None:
+            return self.auto_image_text_gap
+        return self._image_text_gap
+
     def _text_space(self, width, height, img_width, img_height):
         """Width and height the text may take within the margins, beside or
         below an image or code. None where an endless label grows with the
         text."""
         margin_left, margin_right, margin_top, margin_bottom = self._label_margin
         endless = self._label_type == LabelType.ENDLESS_LABEL
+        gap = self._gap(img_width, img_height)
         if self._label_orientation == LabelOrientation.STANDARD:
             max_width = width - margin_left - margin_right
-            max_height = None if endless else height - img_height - margin_top - margin_bottom
+            max_height = None if endless else height - img_height - gap - margin_top - margin_bottom
         else:
-            max_width = None if endless else width - img_width - margin_left - margin_right
+            max_width = None if endless else width - img_width - gap - margin_left - margin_right
             max_height = height - margin_top - margin_bottom
         return max_width, max_height
 

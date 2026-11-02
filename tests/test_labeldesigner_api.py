@@ -1007,6 +1007,36 @@ class TestLabelDesignerAPI:
         # Check image
         verify_image(response.data, 'todo_list.png')
 
+    def test_image_text_gap(self, client: FlaskClient):
+        # Code and text along the tape: the label grows by the distance
+        data = EXAMPLE_FORMDATA.copy()
+        data.update({'print_type': 'qrcode_text', 'orientation': 'rotated', 'code_text': 'https://example.com', 'qrcode_size': '5',
+                     'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Item', 'size': '50', 'align': 'left'}])})
+        widths, gaps = {}, {}
+        for gap in ('', '0', '60'):
+            data['image_text_gap'] = gap
+            response = client.post('/labeldesigner/api/preview', data=data)
+            assert response.status_code == 200
+            widths[gap] = Image.open(io.BytesIO(response.data)).width
+            gaps[gap] = response.headers.get('X-Label-Image-Text-Gap')
+        assert widths['60'] - widths['0'] == 60
+        # Without a distance: two fifths of the largest text
+        assert widths[''] - widths['0'] == 20
+        assert gaps == {'': '20', '0': None, '60': '60'}
+        # A QR code keeps at least two of its modules
+        data.update({'image_text_gap': '', 'qrcode_size': '20'})
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.headers['X-Label-Image-Text-Gap'] == '40'
+        # Without text there is nothing to keep a distance from
+        data['text'] = json.dumps([])
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert 'X-Label-Image-Text-Gap' not in response.headers
+
+        data['image_text_gap'] = '-1'
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 400
+
     def test_large_font_not_cropped(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['border_thickness'] = 1

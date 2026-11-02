@@ -661,6 +661,10 @@ def preview_from_image():
     # The orientation setting has no effect, the label designer says so
     if label.auto_orientation:
         response.headers.set('X-Label-Orientation', 'auto')
+    # The distance between image or code and text, shown by the label
+    # designer next to its setting
+    if label.image_text_gap:
+        response.headers.set('X-Label-Image-Text-Gap', str(label.image_text_gap))
     return response
 
 
@@ -817,6 +821,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'high_res': int(d.get('high_res', 0)) != 0,
         'code_text': d.get('code_text', '').strip(),
         'shrink_text': int(d.get('shrink_text', 0)) != 0,
+        # Empty: the distance between image and text follows the text size
+        'image_text_gap': int(d['image_text_gap']) if str(d.get('image_text_gap', '')).strip() != '' else None,
     }
 
     print_type = context['print_type']
@@ -922,7 +928,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         template_env_vars=_template_env_vars(),
         warnings=warnings,
         shrink_text=context['shrink_text'],
-        auto_orientation=auto_orientation
+        auto_orientation=auto_orientation,
+        image_text_gap=context['image_text_gap'],
     )
 
 
