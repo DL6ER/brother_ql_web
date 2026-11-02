@@ -136,6 +136,8 @@ class SimpleLabel:
         self._timestamp = timestamp
         self._red_support = red_support
         self._code_text = code_text
+        # The code with its templates replaced, set when the label is generated
+        self.code_text = code_text
         self._template_env_vars = template_env_vars
         # Text that does not fit is drawn smaller by this factor instead of
         # being cut off
@@ -227,86 +229,97 @@ class SimpleLabel:
         self._label_type = value
 
     def process_templates(self) -> None:
-        """Process and replace templates in the text lines."""
+        """Process and replace templates in the text lines and the code."""
         self.text = copy.deepcopy(self.input_text)
         total_length = 0
         for line in self.text:
             text_val = line.get('text', '')
-            random_length = 0
             if len(text_val) > WARNING_TEXT_LENGTH:
                 logger.warning(
                     f"Text line is very long (> {WARNING_TEXT_LENGTH} characters), "
                     "this may lead to long processing times.")
-
-            # Replace {{counter[:<start>]}} with current label counter (<start> is
-            # an optional offset defaulting to 1)
-            def counter_replacer(match):
-                offset = int(match.group(1)) if match.group(1) else 1
-                return str(self._counter + offset)
-            text_val = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, text_val)
-
-            # Replace {{datetime:<format>}} with current datetime formatted as <format>
-            def datetime_replacer(match):
-                fmt = match.group(1)
-                now = datetime.datetime.fromtimestamp(self._timestamp) if self._timestamp > 0 else datetime.datetime.now()
-                return now.strftime(fmt)
-            text_val = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, text_val)
-
-            # Replace {{uuid}} with a new UUID
-            if "{{uuid}}" in text_val:
-                ui = uuid.UUID(int=random.getrandbits(128))
-                text_val = text_val.replace("{{uuid}}", str(ui))
-
-            # Replace {{short-uuid}} with a shortened UUID
-            if "{{short-uuid}}" in text_val:
-                ui = uuid.UUID(int=random.getrandbits(128))
-                text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
-
-            # Replace {{mdi:<name>}} with the Material Design Icon of the name,
-            # e.g. {{mdi:lightbulb}}. Unknown names stay as they
-            # are, so that a typo shows on the label.
-            text_val = re.sub(r"\{\{mdi:([a-z0-9-]+)\}\}", lambda match: icons.icon(match.group(1)) or match.group(0), text_val)
-
-            # Replace {{env:<var>}} with the value of the environment variable
-            # var. Only explicitly allowed variables are inserted, others could
-            # leak secrets into the preview.
-            def env_replacer(match):
-                var_name = match.group(1)
-                if var_name not in self._template_env_vars:
-                    # Previews are rendered on every change, log only once
-                    if var_name not in _REFUSED_ENV_VARS and len(_REFUSED_ENV_VARS) < _MAX_REFUSED_ENV_VARS:
-                        _REFUSED_ENV_VARS.add(var_name)
-                        # repr() so that a name cannot add lines to the log
-                        logger.warning(f"Environment variable {var_name!r} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
-                    return ""
-                return os.getenv(var_name, "")
-            text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
-
-            # Replace {{random[:<len>][:shift]}} with random string of optional
-            # length <len> and shifting instruction. ":s" is accepted as
-            # shorthand for ":shift"
-            def random_replacer(match):
-                nonlocal random_length
-                length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
-                if length > MAX_RANDOM_LENGTH:
-                    raise ValueError(f"Random text length must not exceed {MAX_RANDOM_LENGTH}")
-                # Many short templates must not add up to a huge line either
-                random_length += length
-                if random_length > MAX_TEXT_LENGTH:
-                    raise ValueError("Text is too long")
-                if match.group(2):
-                    line['shift'] = True
-                return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
-            text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(s(hift)?))?\}\}", random_replacer, text_val)
+            text_val = self._expand_templates(text_val, line)
 
             # The limits apply to the text after expanding the templates
             total_length += len(text_val)
             if len(text_val) > MAX_TEXT_LENGTH or total_length > MAX_TOTAL_TEXT_LENGTH:
                 raise ValueError("Text is too long")
             line['text'] = text_val
+        # The code with the same counter and date as the text, so that e.g.
+        # each copy has its own number in the code as well. Icons are drawn
+        # with their font, a code keeps their name.
+        self.code_text = self._expand_templates(self._code_text, {}, with_icons=False)
+
+    def _expand_templates(self, text_val: str, line: dict, with_icons: bool = True) -> str:
+        """Return text_val with its templates replaced. A random text that
+        shifts sets 'shift' in line."""
+        random_length = 0
+
+        # Replace {{counter[:<start>]}} with current label counter (<start> is
+        # an optional offset defaulting to 1)
+        def counter_replacer(match):
+            offset = int(match.group(1)) if match.group(1) else 1
+            return str(self._counter + offset)
+        text_val = re.sub(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer, text_val)
+
+        # Replace {{datetime:<format>}} with current datetime formatted as <format>
+        def datetime_replacer(match):
+            fmt = match.group(1)
+            now = datetime.datetime.fromtimestamp(self._timestamp) if self._timestamp > 0 else datetime.datetime.now()
+            return now.strftime(fmt)
+        text_val = re.sub(r"\{\{datetime:([^}]+)\}\}", datetime_replacer, text_val)
+
+        # Replace {{uuid}} with a new UUID
+        if "{{uuid}}" in text_val:
+            ui = uuid.UUID(int=random.getrandbits(128))
+            text_val = text_val.replace("{{uuid}}", str(ui))
+
+        # Replace {{short-uuid}} with a shortened UUID
+        if "{{short-uuid}}" in text_val:
+            ui = uuid.UUID(int=random.getrandbits(128))
+            text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
+
+        # Replace {{mdi:<name>}} with the Material Design Icon of the name,
+        # e.g. {{mdi:lightbulb}}. Unknown names stay as they
+        # are, so that a typo shows on the label.
+        if with_icons:
+            text_val = re.sub(r"\{\{mdi:([a-z0-9-]+)\}\}", lambda match: icons.icon(match.group(1)) or match.group(0), text_val)
+
+        # Replace {{env:<var>}} with the value of the environment variable
+        # var. Only explicitly allowed variables are inserted, others could
+        # leak secrets into the preview.
+        def env_replacer(match):
+            var_name = match.group(1)
+            if var_name not in self._template_env_vars:
+                # Previews are rendered on every change, log only once
+                if var_name not in _REFUSED_ENV_VARS and len(_REFUSED_ENV_VARS) < _MAX_REFUSED_ENV_VARS:
+                    _REFUSED_ENV_VARS.add(var_name)
+                    # repr() so that a name cannot add lines to the log
+                    logger.warning(f"Environment variable {var_name!r} is not listed in LABEL_TEMPLATE_ENV_VARS, inserting nothing")
+                return ""
+            return os.getenv(var_name, "")
+        text_val = re.sub(r"\{\{env:([^}]+)\}\}", env_replacer, text_val)
+
+        # Replace {{random[:<len>][:shift]}} with random string of optional
+        # length <len> and shifting instruction. ":s" is accepted as
+        # shorthand for ":shift"
+        def random_replacer(match):
+            nonlocal random_length
+            length = int(match.group(1)) if match.group(1) else DEFAULT_RANDOM_LENGTH
+            if length > MAX_RANDOM_LENGTH:
+                raise ValueError(f"Random text length must not exceed {MAX_RANDOM_LENGTH}")
+            # Many short templates must not add up to a huge line either
+            random_length += length
+            if random_length > MAX_TEXT_LENGTH:
+                raise ValueError("Text is too long")
+            if match.group(2):
+                line['shift'] = True
+            return ''.join(random.choices(string.ascii_letters + string.digits + string.punctuation, k=length))
+        text_val = re.sub(r"\{\{random(?:\:(\d+))?(?:\:(s(hift)?))?\}\}", random_replacer, text_val)
+        return text_val
 
     def generate(self):
-        # Process possible templates in the text
+        # Process possible templates in the text and the code
         self.process_templates()
 
         # Generate codes or load images if requested
@@ -513,11 +526,14 @@ class SimpleLabel:
 
     def _generate_barcode(self):
         barcode_generator = barcode.get_barcode_class(self.barcode_type)
+        # A given code stays the code, even if its templates fill in nothing
         if len(self._code_text) > 0:
-            value = self._code_text
+            value = self.code_text
         else:
             # Take value from the first line of text
             value = self.text[0].get('text', '') if self.text and self.text[0].get('text', '') else ''
+        if not value:
+            raise ValueError("The barcode is empty")
         if len(value) > MAX_BARCODE_LENGTH:
             raise ValueError(f"Barcode value must not exceed {MAX_BARCODE_LENGTH} characters")
         my_barcode = barcode_generator(value, writer=ImageWriter())
@@ -531,7 +547,7 @@ class SimpleLabel:
             border=0,
         )
         if len(self._code_text) > 0:
-            text = self._code_text
+            text = self.code_text
         else:
             # Combine texts from all lines for QR code
             text = "\n".join(line.get('text', '') for line in self.text)

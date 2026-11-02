@@ -1463,7 +1463,7 @@
           "code_text": {
             "type": "string",
             "maxLength": 1000,
-            "description": "Content of the code. Without it the code contains the text of all lines."
+            "description": "Content of the code, its templates are filled in like those of the text. Without it the code contains the text of all lines."
           },
           "barcode_type": {
             "type": "string",

@@ -1683,6 +1683,38 @@ def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):
     assert added == ['https://example.com/Größe'.encode('utf-8')]
 
 
+def test_templates_in_the_code_are_filled_in(tmp_path):
+    # Like the text, each copy has its own number in the code. Icons are
+    # drawn, a code keeps their name.
+    client = make_client(tmp_path)
+    data = {'print_type': 'qrcode_text', 'code_text': 'Box {{counter:100}}, {{datetime:%Y}} {{mdi:lightbulb}}', 'timestamp': '1785000000',
+            'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Box {{counter:100}}', 'size': '40'}])}
+    with client.application.test_request_context():
+        labels = [create_label_from_request(data, {}, counter) for counter in range(2)]
+    for label in labels:
+        label.process_templates()
+    assert [label.code_text for label in labels] == ['Box 100, 2026 {{mdi:lightbulb}}', 'Box 101, 2026 {{mdi:lightbulb}}']
+    assert [label.text[0]['text'] for label in labels] == ['Box 100', 'Box 101']
+
+
+def test_code_that_fills_in_to_nothing_keeps_the_text_out(tmp_path, monkeypatch):
+    # A variable that is not listed inserts nothing, the code must not hold
+    # the text of the label instead
+    from app.labeldesigner import label
+    added = []
+    original = label.QRCode.add_data
+    monkeypatch.setattr(label.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
+    client = make_client(tmp_path)
+    data = EXAMPLE_FORMDATA.copy()
+    data.update({'print_type': 'qrcode_text', 'barcode_type': 'QR', 'code_text': '{{env:NOT_LISTED_FOR_CODE_TEST}}',
+                 'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Server room', 'size': '40'}])})
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
+    assert added == [b'']
+    data['barcode_type'] = 'code128'
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400 and response.get_json()['message'] == 'The barcode is empty'
+
+
 def _auto_orientation_label(tmp_path, size, **values):
     client = make_client(tmp_path)
     data = {'print_type': 'image', 'image_mode': 'grayscale', 'image_fit': '1', 'orientation': 'standard', 'text': '[]',
