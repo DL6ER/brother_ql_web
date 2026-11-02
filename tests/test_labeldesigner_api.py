@@ -1008,9 +1008,10 @@ class TestLabelDesignerAPI:
         verify_image(response.data, 'todo_list.png')
 
     def test_image_text_gap(self, client: FlaskClient):
-        # Code and text along the tape: the label grows by the distance
+        # Code and text along the tape: the label grows by the distance. The
+        # code keeps its size, a fitted one is tested below.
         data = EXAMPLE_FORMDATA.copy()
-        data.update({'print_type': 'qrcode_text', 'orientation': 'rotated', 'code_text': 'https://example.com', 'qrcode_size': '5',
+        data.update({'print_type': 'qrcode_text', 'orientation': 'rotated', 'code_text': 'https://example.com', 'qrcode_size': '5', 'image_fit': '0',
                      'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Item', 'size': '50', 'align': 'left'}])})
         widths, gaps = {}, {}
         for gap in ('', '0', '60'):
@@ -1036,6 +1037,18 @@ class TestLabelDesignerAPI:
         data['image_text_gap'] = '-1'
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
+
+    def test_image_text_gap_of_a_fitted_qr_code(self, client: FlaskClient):
+        # Fitted to the tape, the modules of 5 dots become 5.4 times larger,
+        # the distance keeps two of them
+        data = EXAMPLE_FORMDATA.copy()
+        data.update({'print_type': 'qrcode_text', 'orientation': 'rotated', 'code_text': 'https://example.com', 'qrcode_size': '5',
+                     'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Item', 'size': '50', 'align': 'left'}])})
+        gaps = {}
+        for fit in ('0', '1'):
+            data['image_fit'] = fit
+            gaps[fit] = client.post('/labeldesigner/api/preview', data=data).headers['X-Label-Image-Text-Gap']
+        assert gaps == {'0': '20', '1': '54'}
 
     def test_large_font_not_cropped(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -1906,6 +1919,14 @@ def test_default_font_is_selected(tmp_path):
     family, style = client.application.extensions['fonts'].get_default_font()
     html = client.get('/labeldesigner/').get_data(as_text=True)
     assert f'"default_font": "{family},{style}"' in html
+
+
+def test_label_designer_gets_the_configured_defaults(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config.update({'LABEL_DEFAULT_MARGIN_LEFT': 0, 'LABEL_DEFAULT_FONT_SIZE': 55, 'LABEL_DEFAULT_ORIENTATION': 'rotated'})
+    html = client.get('/labeldesigner/').get_data(as_text=True)
+    defaults = json.loads(re.search(r'const DESIGNER_CONFIG = (.*);</script>', html).group(1))['defaults']
+    assert (defaults['margin_left'], defaults['font_size'], defaults['orientation']) == (0, 55, 'rotated')
 
 
 def test_text_line_without_font_uses_the_default_font(tmp_path):

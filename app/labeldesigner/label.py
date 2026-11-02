@@ -150,6 +150,8 @@ class SimpleLabel:
         if image_text_gap is not None and image_text_gap < 0:
             raise ValueError("The distance between image and text must be non-negative.")
         self._image_text_gap = image_text_gap
+        # How much the image or code was enlarged or shrunk to fit the label
+        self._image_scale = 1.0
         # The distance used, known once the label is generated
         self.image_text_gap = 0
 
@@ -186,11 +188,11 @@ class SimpleLabel:
     def auto_image_text_gap(self) -> int:
         """The distance between an image or code and the text when none is
         given: two fifths of the largest text, for a QR code at least two of
-        its modules, so that it stays readable."""
+        its modules as printed, so that it stays readable."""
         sizes = [int(line['size']) for line in self.text if str(line.get('text', '')).strip()]
         gap = round(0.4 * max(sizes)) if sizes else 0
         if self._label_content == LabelContent.TEXT_QRCODE and self.barcode_type == "QR":
-            gap = max(gap, 2 * self._qr_size)
+            gap = max(gap, round(2 * self._qr_size * self._image_scale))
         return gap
 
     @property
@@ -384,6 +386,7 @@ class SimpleLabel:
                         # Both dimensions are considered for standard label
                         scale = min(max_width / img_width, max_height / img_height)
                 logger.debug(f"Scaling image by factor: {scale}")
+                self._image_scale = scale
                 new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")
                 check_image_size(*new_size)
@@ -394,6 +397,7 @@ class SimpleLabel:
                 # Use image_scaling_factor if provided
                 img_width, img_height = img.size
                 scale = self._image_scaling_factor / 100.0
+                self._image_scale = scale
                 logger.debug(f"Manual image scaling factor: {scale}")
                 new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
                 logger.debug(f"Resized image size: {new_size} px")

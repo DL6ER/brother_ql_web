@@ -1,5 +1,6 @@
 """The label designer in a browser: the editor, the wizard and what they
 share. The API itself is tested without a browser."""
+import base64
 import io
 import json
 import os
@@ -330,6 +331,10 @@ def test_no_600_dpi_on_the_ql1100(designer):
 def test_settings_that_do_not_apply_are_disabled(designer):
     type_line(designer, 0, 'Hello')
     designer.click('[data-lay="codetext"]')
+    wait_for_preview(designer)
+    # A QR code fitted to the label has no size of a dot
+    assert designer.is_disabled('#edQrSize') and designer.is_enabled('#edQrCorr')
+    designer.click('[data-fit="0"]')
     wait_for_preview(designer)
     assert designer.is_enabled('#edQrSize')
     designer.select_option('#edBarcode', 'EAN13')
@@ -782,3 +787,111 @@ def test_phone_width_does_not_scroll_sideways(browser, server, view):
     page.wait_for_load_state('networkidle')
     assert page.evaluate('() => document.documentElement.scrollWidth') <= 390
     context.close()
+
+
+def test_title_ending_in_json_keeps_the_other_label(designer):
+    # "QR-Example.json" is saved as a label of its own, the saved label
+    # QR-Example stays as it was
+    name = designer.evaluate("""async () => {
+        await loadSaved();
+        return saveLabel('QR-Example.json', Object.assign(baseDesign('62'), { text: [L('Copy', 40)] }));
+    }""")
+    try:
+        assert name != 'QR-Example.json'
+        titles = designer.evaluate('() => Object.fromEntries(S.saved.map(x => [x.name, x.title]))')
+        assert titles['QR-Example.json'] != 'QR-Example.json'
+    finally:
+        designer.evaluate("""name => fetch(API + '/repository/delete', { method: 'POST', body: JSON.stringify({ name }),
+            headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } })""", name)
+
+
+def test_new_labels_start_with_the_configured_defaults(browser, server, app, monkeypatch):
+    for key, value in (('LABEL_DEFAULT_MARGIN_LEFT', 0), ('LABEL_DEFAULT_FONT_SIZE', 55), ('LABEL_DEFAULT_QR_SIZE', 6)):
+        monkeypatch.setitem(app.config, key, value)
+    context = browser.new_context(locale='en-US')
+    page = context.new_page()
+    page.goto(server + '/labeldesigner/#edit')
+    wait_for_preview(page)
+    design = page.evaluate('() => S.edit.design')
+    assert (design['margin_left'], design['text'][0]['size'], design['qrcode_size']) == ('0', '55', '6')
+    context.close()
+
+
+def test_size_of_a_dot_applies_to_a_code_of_fixed_size(designer):
+    designer.click('[data-lay="code"]')
+    wait_for_preview(designer)
+    # Fitted to the label, the size of a dot does not apply
+    assert designer.is_disabled('#edQrSize')
+    designer.click('[data-fit="0"]')
+    wait_for_preview(designer)
+    length = preview_size(designer)[1]
+    designer.fill('#edQrSize', '20')
+    wait_for_preview(designer)
+    assert preview_size(designer)[1] > length
+
+
+def test_text_blanks_keep_what_looks_like_a_date(designer):
+    # Only date blanks are written as set in the printer panel
+    text = designer.evaluate("""() => {
+        S.settings.dateFmt = '%d.%m.%Y';
+        const d = Object.assign(baseDesign('62'), { text: [L('{{blank:Code}} {{blank:Due}}', 40)], fields: { Code: { type: 'text' }, Due: { type: 'date' } } });
+        return fillBlanks(d, { Code: '2026-11-01', Due: '2026-11-01' }, false).text[0].text;
+    }""")
+    assert text == '2026-11-01 01.11.2026'
+
+
+def test_job_printed_again_keeps_its_image(designer):
+    # Printed again, the ninth job moves to the front and the history keeps
+    # its image no longer, the request still has it. Jobs whose image was
+    # not kept are not printed again without it.
+    bodies = []
+    designer.route('**/api/print', lambda route: (bodies.append(route.request.post_data_buffer), route.continue_()))
+    designer.evaluate("""data => {
+        S.history = Array.from({ length: 11 }, (_, i) => ({ id: 'h' + i, time: Date.now() - i * 1000, title: 'Job ' + i, values: {}, copies: 1,
+            source: null, printer: 'QL-800', state: 'printed', message: '',
+            design: Object.assign(baseDesign('62'), { print_type: 'image', image: { data, mime: 'image/png', name: 'job.png' } }) }));
+        saveHistory();
+    }""", base64.b64encode(png()).decode())
+    assert designer.evaluate('() => S.history.map(h => !!h.noImage)') == [False] * 9 + [True] * 2
+    designer.evaluate('() => again(S.history[8])')
+    printed(designer, 12)
+    assert len(bodies) == 1 and b'filename="job.png"' in bodies[0]
+    designer.evaluate('() => again(S.history[11])')
+    designer.wait_for_timeout(300)
+    assert len(bodies) == 1
+
+
+def test_preview_of_a_replaced_stage_is_dropped(designer):
+    # The stage is gone by the time its preview arrives
+    result = designer.evaluate("""async () => {
+        const el = document.createElement('div');
+        document.body.append(el);
+        let warned = false;
+        const done = showOnStage(el, Object.assign(baseDesign('62'), { text: [L('Gone', 40)] }), {}, () => { warned = true; });
+        el.remove();
+        await done;
+        return [warned, el.innerHTML.includes('Label preview')];
+    }""")
+    assert result == [False, False]
+
+
+def test_copies_stay_when_the_editor_is_drawn_again(designer):
+    type_line(designer, 0, 'Jars')
+    designer.fill('#edCopies', '2')
+    designer.click('.ed-top [data-step="1"]')
+    # Bold draws the editor again
+    designer.click('[data-row="0"] [data-act="bold"]')
+    wait_for_preview(designer)
+    assert designer.input_value('#edCopies') == '3'
+    designer.click('#edPrint')
+    printed(designer)
+    assert designer.evaluate('() => S.history[0].copies') == 3
+
+
+def test_number_blanks_are_asked_for(designer):
+    # An empty number is missing like an empty text
+    designer.click('[data-tab="wizard"]')
+    designer.fill('#wzText', 'Box [Number]')
+    designer.wait_for_function("() => document.querySelectorAll('#fzLooks .tile').length === 6")
+    designer.click('#fzLooks [data-plook="0"]')
+    designer.wait_for_selector('#libFields input[data-blank="Number"]:focus', timeout=5000)

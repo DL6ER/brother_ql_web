@@ -86,15 +86,17 @@ const familyOf = font => String(font || C.default_font).split(',')[0];
 function L(text, size, bold = false, align = 'center', extra = {}) {
     return Object.assign({
         text, size: String(size), font: fontOf(DEFAULT_FAMILY, bold), align,
-        inverted: false, checkbox: false, color: 'black', line_spacing: '100'
+        inverted: false, checkbox: false, color: 'black', line_spacing: String(C.defaults.line_spacing)
     }, extra);
 }
 
+// With the defaults of the server's configuration
 function baseDesign(size) {
+    const def = C.defaults;
     return {
-        label_size: size, orientation: 'standard', print_type: 'text', text: [],
-        code_text: '', barcode_type: 'QR', qrcode_size: '10', qrcode_correction: 'M',
-        margin_top: '24', margin_bottom: '24', margin_left: '35', margin_right: '35',
+        label_size: size, orientation: def.orientation, print_type: 'text', text: [],
+        code_text: '', barcode_type: 'QR', qrcode_size: String(def.qrcode_size), qrcode_correction: 'M',
+        margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
         image_mode: 'black_and_white', image_bw_threshold: '128', image_fit: '1', image_crop: '0',
         image_scaling_factor: '100', image_rotation: '0', shrink_text: '1', print_color: 'black', high_res: '0', pdf_pages: '',
@@ -193,7 +195,8 @@ function fillBlanks(design, values, forPreview) {
     const sub = s => String(s || '').replace(BLANK_RE, (m, name) => {
         let v = values ? values[name] : undefined;
         if (v === undefined || v === '') return forPreview ? name + '?' : '';
-        if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return formatDate(v);
+        // Dates are written as set in the printer panel, text stays as typed
+        if (/^\d{4}-\d{2}-\d{2}$/.test(v) && fieldType({ design }, name) === 'date') return formatDate(v);
         return v;
     });
     d.text = d.text.map(l => Object.assign(l, { text: sub(l.text) }));
@@ -429,8 +432,11 @@ const saveHistory = () => {
     // Images make the history big: the last few jobs keep them, fewer if the
     // browser has no room for them
     S.history = S.history.slice(0, 60);
+    // Jobs without their image cannot be printed again
     for (const keep of [9, 3, 1, 0]) {
-        S.history.forEach((h, i) => { if (i >= keep) { delete h.design.image; delete h.design.more_images; } });
+        S.history.forEach((h, i) => {
+            if (i >= keep && (h.design.image || h.design.more_images)) { delete h.design.image; delete h.design.more_images; h.noImage = true; }
+        });
         if (storeQuiet('designer_history', S.history)) return;
     }
     store('designer_history', S.history);
@@ -530,6 +536,9 @@ function renderPrinterChip() {
 
 async function printJob(job) {
     // job: { title, design, values, copies, source }
+    // A copy: printing a job again passes its design, which the history may
+    // strip of its image before the request is sent
+    job = Object.assign({}, job, { design: clone(job.design) });
     if (!fitsTape(job.design.label_size)) {
         const choice = await tapeGuard(job);
         if (choice === 'cancel') return false;
@@ -597,7 +606,9 @@ function entryName(e) {
     return line || e.title || 'Label';
 }
 
+const NO_IMAGE = 'Its image was not kept, open it in the editor to add it again';
 function again(entry) {
+    if (entry.noImage) { toast(NO_IMAGE); return; }
     printJob({ title: entry.title, design: entry.design, values: entry.values, copies: entry.copies, source: entry.source });
 }
 
@@ -677,7 +688,9 @@ async function saveLabel(title, design, overwrite = null) {
         name = serverName(title);
         for (let n = 2; S.saved.some(x => x.name.toLowerCase() === name.toLowerCase()); n++) name = serverName(`${title} ${n}`);
     }
-    const body = Object.assign({}, design, { name: name.replace(/\.json$/i, ''), title, text: design.text });
+    // The name that was checked above, with ".json": the server only adds it
+    // when it is missing, "a.json" would replace a.json instead of a.json.json
+    const body = Object.assign({}, design, { name, title, text: design.text });
     if (design.fields) body.fields = Object.fromEntries(Object.entries(design.fields).filter(([k]) => blanksOf(design).includes(k)));
     delete body.image;
     delete body.more_images;
@@ -830,22 +843,24 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
     el._seq = (el._seq || 0) + 1;
     const seq = el._seq;
+    // A newer preview was asked for, or the stage was replaced meanwhile
+    const outdated = () => seq !== el._seq || !el.isConnected;
     el.classList.add('busy');
     let p;
     try {
         p = await preview(design, values);
     } catch (e) {
-        if (seq !== el._seq) return;
+        if (outdated()) return;
         el.className = 'stage';
         el.innerHTML = `${SPIN}<div class="err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(e.message)}</div>`;
         if (onWarning) onWarning(e.message, true);
         return;
     }
-    if (seq !== el._seq) return;
+    if (outdated()) return;
     const img = new Image();
     img.src = p.url;
     try { await img.decode(); } catch (e) { }
-    if (seq !== el._seq) return;
+    if (outdated()) return;
     const size = SIZES[design.label_size] || { tape: [62, 0], dots: [696, 0], form: 'endless' };
     // At 600 dpi the label has twice as many dots each way
     const scale = p.highRes ? 2 : 1, dpi = dpiOf(design.label_size, p.highRes);
@@ -1115,7 +1130,7 @@ function againCard(n) {
     return `<div class="card hist"><h2>Print again</h2>${rows.length ? rows.map(h => `
         <div class="hr"><div class="mini-bed">${lazyTag(h.design, h.values)}</div>
             <div><b>${esc(entryName(h))}</b><span>${h.state === 'failed' ? 'Failed ' + esc(fmtTime(h.time)) : `${h.copies} ${h.copies === 1 ? 'copy' : 'copies'}, ${esc(fmtTime(h.time))}`}</span></div>
-            <button class="btn quiet icon" type="button" data-again="${h.id}" title="Print again"${h.state === 'failed' ? ' style="color:var(--bad)"' : ''}><i class="fa-solid fa-rotate-right"></i></button></div>`).join('')
+            <button class="btn quiet icon" type="button" data-again="${h.id}" title="${h.noImage ? NO_IMAGE : 'Print again'}"${h.noImage ? ' disabled' : h.state === 'failed' ? ' style="color:var(--bad)"' : ''}><i class="fa-solid fa-rotate-right"></i></button></div>`).join('')
         : '<p class="empty small">Labels you print show up here, ready to print again.</p>'}</div>`;
 }
 function bindAgain(root) {
@@ -1281,7 +1296,7 @@ async function showDetail(item) {
         <div class="fields" id="libFields"></div>
         <div class="fits" id="libFitsNote"></div>
         <div class="acts"><div class="copies"><button type="button" data-step="-1" aria-label="One less"><i class="fa-solid fa-minus"></i></button><input id="libCopies" type="number" min="1" max="100" value="${item.entry ? item.entry.copies : 1}" aria-label="Copies"><button type="button" data-step="1" aria-label="One more"><i class="fa-solid fa-plus"></i></button></div>
-            <button class="btn-print" type="button" id="libPrint"><i class="fa-solid fa-print"></i>Print</button></div>
+            <button class="btn-print" type="button" id="libPrint"${item.entry && item.entry.noImage ? ` disabled title="${NO_IMAGE}"` : ''}><i class="fa-solid fa-print"></i>Print</button></div>
         ${item.kind === 'saved' && blanks.length ? '<div class="hint"><span class="kbd">Enter</span>prints and empties the first field for the next one</div>' : ''}
         <div class="acts">
             <button class="btn" type="button" id="libEdit"><i class="fa-solid fa-pen-ruler"></i>Change the design</button>
@@ -1305,11 +1320,12 @@ async function showDetail(item) {
         const printed = S.history.filter(h => h.source && h.source.kind === 'saved' && h.source.id === item.id).slice(0, 3);
         hb.innerHTML = printed.length ? `<h3>Printed with this template</h3>` + printed.map(h => `
             <div class="row"><div class="grow"><b>${esc(entryName(h))}</b> <span class="muted small">${h.copies} x, ${esc(fmtTime(h.time))}</span></div>
-            <button class="btn quiet sm" type="button" data-again="${h.id}"><i class="fa-solid fa-rotate-right"></i>Again</button></div>`).join('') : '';
+            <button class="btn quiet sm" type="button" data-again="${h.id}"${h.noImage ? ` disabled title="${NO_IMAGE}"` : ''}><i class="fa-solid fa-rotate-right"></i>Again</button></div>`).join('') : '';
         bindAgain(hb);
     };
     drawHist();
     const doPrint = async () => {
+        if (item.entry && item.entry.noImage) { toast(NO_IMAGE); return; }
         const ok = await printJob({ title: item.title, design: work.design, values: Object.assign({}, work.values), copies: copiesIn(box, '#libCopies'), source: { kind: item.kind, id: item.id } });
         drawHist();
         // Ready for the next one: the first blank is emptied
@@ -1404,6 +1420,7 @@ function bindCopies(root) {
     $$('[data-step]', root).forEach(b => b.onclick = () => {
         const inp = b.parentElement.querySelector('input');
         inp.value = Math.min(100, Math.max(1, (parseInt(inp.value, 10) || 1) + +b.dataset.step));
+        inp.dispatchEvent(new Event('input', { bubbles: true }));
     });
 }
 const copiesIn = (root, sel) => Math.min(100, Math.max(1, parseInt($(sel, root).value, 10) || 1));
@@ -1461,7 +1478,7 @@ function linksDialog(m) {
 // --- Editor ----------------------------------------------------------------------------
 
 function newEdit() {
-    return { title: 'New label', design: Object.assign(baseDesign(S.tape), { text: [L('', 70, true)] }), origin: null };
+    return { title: 'New label', design: Object.assign(baseDesign(S.tape), { text: [L('', C.defaults.font_size, true)] }), origin: null };
 }
 const isEmptyDesign = d => d.print_type === 'text' && !d.text.some(l => String(l.text || '').trim());
 
@@ -1507,10 +1524,11 @@ function renderEditor() {
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
                 <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'codetext' ? 'Link or text, empty for the text of the label' : 'Link or text in the code'}" aria-label="Content of the code">
-                ${(qr => `<div class="pair"${qr ? '' : ' title="Only for QR codes"'}>
-                    <label><span class="label-s${qr ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${qr ? '' : ' disabled'}></label>
+                <div><span class="label-s">Size</span><div class="seg"><button type="button" data-fit="1" class="${d.image_fit === '1' ? 'on' : ''}">Fit to the label</button><button type="button" data-fit="0" class="${d.image_fit === '1' ? '' : 'on'}">Fixed</button></div></div>
+                ${((qr, dots) => `<div class="pair"${qr ? '' : ' title="Only for QR codes"'}>
+                    <label${qr && !dots ? ' title="The code fits the label"' : ''}><span class="label-s${dots ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${dots ? '' : ' disabled'}></label>
                     <label><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-                </div>${qr ? '' : '<span class="muted small">Size and error correction exist for QR codes only.</span>'}`)(d.barcode_type === 'QR')}
+                </div>${qr ? '' : '<span class="muted small">Size and error correction exist for QR codes only.</span>'}`)(d.barcode_type === 'QR', d.barcode_type === 'QR' && d.image_fit !== '1')}
                 ${lay === 'codetext' ? gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' ? imageBlock(d) : ''}
             ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? '' : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
@@ -1550,7 +1568,7 @@ function renderEditor() {
                     </div>
                     <button class="btn" type="button" id="edSave" title="${E.origin ? 'Save' : 'Save to your labels'}"><i class="fa-regular fa-bookmark"></i><span class="lbl">${E.origin ? 'Save' : 'Save to your labels'}</span></button>
                     <span class="break" aria-hidden="true"></span>
-                    <div class="copies"><button type="button" data-step="-1" aria-label="One less"><i class="fa-solid fa-minus"></i></button><input id="edCopies" type="number" min="1" max="100" value="1" aria-label="Copies"><button type="button" data-step="1" aria-label="One more"><i class="fa-solid fa-plus"></i></button></div>
+                    <div class="copies"><button type="button" data-step="-1" aria-label="One less"><i class="fa-solid fa-minus"></i></button><input id="edCopies" type="number" min="1" max="100" value="${E.copies || 1}" aria-label="Copies"><button type="button" data-step="1" aria-label="One more"><i class="fa-solid fa-plus"></i></button></div>
                     <button class="btn-print" type="button" id="edPrint"><i class="fa-solid fa-print"></i>Print</button>
                 </div>
             </div>
@@ -1920,6 +1938,8 @@ function bindEditor() {
         redrawEditor();
     }));
     bindCopies($('.ed-top'));
+    // The count stays when the editor is drawn again, e.g. after Bold
+    $('#edCopies').addEventListener('input', () => { E.copies = copiesIn(document, '#edCopies'); });
     $('#edPrint').onclick = () => printJob({ title: E.title, design: d, values: E.values || {}, copies: copiesIn(document, '#edCopies'), source: E.origin });
     $('#edSave').onclick = async () => {
         const over = E.origin && E.origin.kind === 'saved' ? E.origin.id : null;
@@ -2004,7 +2024,7 @@ function readImages(files) {
 // A blank stays marked until something is typed into it
 function markBlanks(root) {
     for (const box of $$('.fill-in, #libFields', root)) {
-        $$('input[data-blank]:not([type=number]):not([type=date])', box).forEach(inp => inp.classList.toggle('need', !inp.value.trim()));
+        $$('input[data-blank]', box).forEach(inp => inp.classList.toggle('need', !inp.value.trim()));
         const open = $$('input.need', box).length;
         box.classList.toggle('pending', open > 0);
         const n = $('.open-count', box);
