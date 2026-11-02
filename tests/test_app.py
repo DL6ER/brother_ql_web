@@ -178,7 +178,9 @@ def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     html = client.get('/labeldesigner/', headers=headers).get_data(as_text=True)
     manifest_url = re.search(r'<link rel="manifest" href="([^"]+)"', html).group(1)
     assert manifest_url.startswith('/labels/')
-    # The API is called below the path too
+    # The API is called below the path too, in the previous designer as well
+    assert '"base": "/labels/labeldesigner"' in html
+    html = client.get('/labeldesigner/classic', headers=headers).get_data(as_text=True)
     assert "url_for_print = '/labels/labeldesigner/api/print'" in html
 
 

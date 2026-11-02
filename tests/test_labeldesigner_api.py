@@ -1871,9 +1871,11 @@ def test_shrunk_text_is_the_same_on_every_copy(tmp_path):
 def test_default_font_is_selected(tmp_path):
     client = make_client(tmp_path)
     client.application.config['LABEL_DEFAULT_FONT_FAMILY'] = 'DejaVu Serif'
-    html = client.get('/labeldesigner/').get_data(as_text=True)
-    selected = re.findall(r'<option value="([^"]+)" selected>', html)
     family, style = client.application.extensions['fonts'].get_default_font()
+    html = client.get('/labeldesigner/').get_data(as_text=True)
+    assert f'"default_font": "{family},{style}"' in html
+    html = client.get('/labeldesigner/classic').get_data(as_text=True)
+    selected = re.findall(r'<option value="([^"]+)" selected>', html)
     assert f'{family},{style}' in selected
     assert f'data-default="{family},{style}"' in html
 

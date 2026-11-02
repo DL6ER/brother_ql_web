@@ -18,7 +18,7 @@ from werkzeug.serving import make_server  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.labeldesigner import printer  # noqa: E402
-from browser_helpers import wait_until_ready  # noqa: E402
+from browser_helpers import wait_for_preview, wait_until_ready  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -63,16 +63,32 @@ def browser():
 
 @pytest.fixture
 def page(browser, server):
-    """The label designer in a fresh browser context, without stored
-    settings. Fails the test if the page throws a JavaScript error."""
+    """The previous label designer in a fresh browser context, without
+    stored settings. Fails the test if the page throws a JavaScript error."""
     context = browser.new_context(viewport={'width': 1400, 'height': 900})
     page = context.new_page()
     errors = []
     page.on('pageerror', lambda error: errors.append(str(error)))
     # e.g. the confirmation of "Reset"
     page.on('dialog', lambda dialog: dialog.accept())
-    page.goto(server + '/labeldesigner/')
+    page.goto(server + '/labeldesigner/classic')
     wait_until_ready(page)
+    yield page
+    context.close()
+    assert errors == []
+
+
+@pytest.fixture
+def designer(browser, server):
+    """The label designer in a fresh browser context, in English and without
+    stored labels or settings, showing the editor. Fails the test if the
+    page throws a JavaScript error."""
+    context = browser.new_context(viewport={'width': 1400, 'height': 900}, locale='en-US')
+    page = context.new_page()
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.goto(server + '/labeldesigner/#edit')
+    wait_for_preview(page)
     yield page
     context.close()
     assert errors == []

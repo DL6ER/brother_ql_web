@@ -178,8 +178,9 @@ def shared():
     return jsonify(stored[1])
 
 
-@bp.route('/')
-def index():
+@bp.route('/classic')
+def classic():
+    """The label designer before the redesign, kept for one release."""
     debug = current_app.logger.isEnabledFor(logging.DEBUG)
     fonts = get_fonts()
     label_sizes = [
@@ -208,6 +209,45 @@ def index():
         default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
         default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
         default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
+    )
+
+
+def _asset_version() -> int:
+    """Changes when the script or the style sheet of the label designer
+    changes, so browsers load the new files and cache them otherwise."""
+    static = os.path.join(current_app.root_path, 'static', 'designer')
+    return int(max(os.path.getmtime(os.path.join(static, name)) for name in ('designer.js', 'designer.css')))
+
+
+@bp.route('/')
+def index():
+    """The label designer: an editor, a wizard with the saved and the
+    ready-made labels, and the printer panel. It uses the API below."""
+    fonts = get_fonts()
+    # Previews are made one CPU core short of all of them, at most 16 at a
+    # time, so that printing and other users are not slowed down
+    try:
+        cpus = len(os.sched_getaffinity(0))
+    except AttributeError:
+        cpus = os.cpu_count() or 2
+    label_sizes = [
+        {'id': label.identifier, 'name': label_name(label), 'form': label.form_factor.name.lower(),
+         'tape': list(label.tape_size), 'dots': list(label.dots_printable), 'red': label.color == 1,
+         'models': label_printers(label)}
+        for label in ALL_LABELS
+    ]
+    return render_template(
+        'designer.html',
+        config={
+            'base': url_for('.index').rstrip('/'),
+            'fonts': fonts.fontlist(),
+            'default_font': ','.join(fonts.get_default_font()),
+            'label_sizes': label_sizes,
+            'default_label_size': current_app.config['LABEL_DEFAULT_SIZE'],
+            'models_without_600_dpi': sorted(MODELS_WITHOUT_600_DPI),
+            'preview_parallel': max(1, min(16, cpus - 1)),
+        },
+        version=_asset_version(),
     )
 
 

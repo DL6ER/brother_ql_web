@@ -175,6 +175,7 @@ This fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web)
 
 It is published under the terms of the GPLv3, see [LICENSE](./LICENSE). It includes software of third parties under other licenses:
 
+- [Archivo](https://github.com/Omnibus-Type/Archivo), the typeface of the label designer, [SIL Open Font License 1.1](app/static/designer/OFL.txt)
 - [Bootstrap](https://github.com/twbs/bootstrap), MIT License
 - [Font Awesome](https://github.com/FortAwesome/Font-Awesome), CC BY 4.0 License
 - [jQuery](https://github.com/jquery/jquery), MIT License

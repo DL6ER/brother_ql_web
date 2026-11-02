@@ -1,5 +1,6 @@
-"""The label designer in a browser. Most tests cover a bug that the tests of
-the API could not find, because it was in the page itself."""
+"""The previous label designer (/labeldesigner/classic) in a browser. Most
+tests cover a bug that the tests of the API could not find, because it was in
+the page itself."""
 import base64
 import io
 import json
@@ -385,33 +386,6 @@ def test_text_that_does_not_fit_can_be_shrunk(page):
     reload(page)
     # The choice is kept like the other settings
     assert page.is_checked('#shrink_text')
-
-
-def share(page, server, **form):
-    """What Android does with something shared with the installed app."""
-    response = page.request.post(server + '/labeldesigner/share', multipart=form, max_redirects=0)
-    assert response.status == 303
-    page.goto(server + response.headers['location'])
-    wait_until_ready(page)
-
-
-def test_shared_image_becomes_the_label(page, server):
-    png = io.BytesIO()
-    Image.new('L', (200, 100), 'black').save(png, format='PNG')
-    share(page, server, file={'name': 'photo.png', 'mimeType': 'image/png', 'buffer': png.getvalue()})
-    page.wait_for_function("() => imageDropZone.files.length === 1")
-    wait_for_status(page, 'Preview updated')
-    assert page.is_checked('#printTypeImage')
-    # The token is used up and gone from the address
-    assert 'shared=' not in page.url
-
-
-def test_shared_link_becomes_a_qr_code(page, server):
-    share(page, server, text='https://example.com/shelf/12')
-    page.wait_for_function("() => document.getElementById('label_text').value === 'https://example.com/shelf/12'")
-    assert page.is_checked('#printTypeQrCode')
-    assert page.input_value('#barcode_type') == 'QR'
-    wait_for_status(page, 'Preview updated')
 
 
 def add_file(page, data: bytes, name: str, mime: str):
