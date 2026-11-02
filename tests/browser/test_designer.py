@@ -396,6 +396,23 @@ def test_symbols_are_offered(designer):
     assert designer.locator('.sym-grid .sym').count() > 50
 
 
+def test_icons_are_offered_with_the_symbols(designer):
+    type_line(designer, 0, 'Light ')
+    designer.click('#edSym')
+    designer.wait_for_selector('#icoGrid .ico')
+    # The first ones, all of them on request
+    count = "() => document.querySelectorAll('#icoGrid .ico').length"
+    assert designer.evaluate(count) == 120
+    designer.click('#icoAll')
+    assert designer.evaluate(count) > 7000
+    designer.fill('#icoQ', 'lightbulb')
+    assert designer.get_attribute('#icoGrid .ico', 'title') == 'mdi:lightbulb'
+    designer.click('#icoGrid .ico')
+    assert designer.input_value('[data-row="0"] .tx') == 'Light {{mdi:lightbulb}}'
+    wait_for_preview(designer)
+    assert 'Everything fits.' in fits_note(designer)
+
+
 def test_text_in_the_wizard_shows_looks_and_templates(designer):
     designer.click('[data-tab="wizard"]')
     designer.fill('#wzText', 'Kitchen shelf')

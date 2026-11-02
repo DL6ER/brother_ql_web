@@ -922,14 +922,56 @@ async function loadSymbols() {
     } catch (e) { symbolList = []; }
     return symbolList;
 }
+// Material Design Icons for {{mdi:<name>}}: their names and characters
+let iconList = null;
+async function loadIcons() {
+    if (iconList) return iconList;
+    try {
+        const data = await (await fetch(STATIC + 'mdi/icons.json')).json();
+        iconList = Object.entries(data.icons).map(([name, code]) => ({ name, char: String.fromCodePoint(parseInt(code, 16)) }));
+    } catch (e) { return []; }
+    return iconList;
+}
+// Icons whose names contain all words of the search, exact and leading
+// matches first. Without a search all icons, by name.
+function findIcons(list, query) {
+    const words = query.toLowerCase().replace(/^mdi:/, '').split(/[\s:]+/).filter(Boolean);
+    if (!words.length) return list;
+    const rank = i => i.name === words.join('-') ? 0 : i.name.startsWith(words[0]) ? 1 : 2;
+    return list.filter(i => words.every(w => i.name.includes(w)))
+        .sort((a, b) => rank(a) - rank(b) || a.name.length - b.name.length || a.name.localeCompare(b.name));
+}
+
 async function openSymbols(input) {
     if (!input) return;
-    const list = await loadSymbols();
-    openLayer(`<div class="dialog narrow" role="dialog" aria-label="Insert a symbol">
+    const [list, icons] = await Promise.all([loadSymbols(), loadIcons()]);
+    openLayer(`<div class="dialog narrow${icons.length ? ' symbols' : ''}" role="dialog" aria-label="Insert a symbol">
         <div class="dialog-h"><div class="grow"><h2>Insert a symbol</h2><p>Not every font has every symbol, the preview shows what prints.</p></div>
             <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
-        <div class="sym-grid">${list.map((x, i) => `<button type="button" class="sym" data-sym="${i}">${esc(x)}</button>`).join('')}</div></div>`);
+        <div class="sym-grid">${list.map((x, i) => `<button type="button" class="sym" data-sym="${i}">${esc(x)}</button>`).join('')}</div>
+        ${icons.length ? `<div class="sym-icons"><h3>Icons <span class="muted small">Material Design Icons, in every font</span></h3>
+            <input class="field" type="search" id="icoQ" placeholder="Search, e.g. power or lightbulb" autocomplete="off" aria-label="Search the icons">
+            <div class="sym-grid" id="icoGrid"></div>
+            <p class="muted small" id="icoHint" style="margin:0"></p>
+            <button class="btn sm" type="button" id="icoAll" style="align-self:flex-start" hidden></button></div>` : ''}</div>`);
     $$('[data-sym]').forEach(b => b.onclick = () => { closeLayer(true); insertAt(input, list[+b.dataset.sym], false); });
+    if (!icons.length) return;
+    // The first ones, all of them on request
+    const draw = all => {
+        const found = findIcons(icons, $('#icoQ').value);
+        const shown = all ? found : found.slice(0, 120);
+        $('#icoGrid').innerHTML = shown.map(i => `<button type="button" class="sym ico" data-ico="${esc(i.name)}" title="mdi:${esc(i.name)}">${i.char}</button>`).join('');
+        $('#icoHint').innerHTML = found.length ? 'Inserts the name, e.g. <code>{{mdi:power}}</code>. Point at an icon to see its name.' : 'No icon found.';
+        $('#icoAll').hidden = shown.length >= found.length;
+        $('#icoAll').textContent = `Show all ${found.length} icons`;
+    };
+    draw(false);
+    $('#icoQ').addEventListener('input', () => draw(false));
+    $('#icoAll').onclick = () => draw(true);
+    $('#icoGrid').onclick = e => {
+        const b = e.target.closest('[data-ico]');
+        if (b) { closeLayer(true); insertAt(input, `{{mdi:${b.dataset.ico}}}`, false); }
+    };
 }
 
 function varsHelpHTML() {
@@ -945,6 +987,7 @@ function varsHelpHTML() {
             <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <a href="https://strftime.org/" target="_blank" rel="noopener">strftime</a> codes, e.g. <code>%H:%M:%S %d.%m.%Y</code>.</li>
             <li><code>{{counter[:&lt;start&gt;]}}</code> - a number that counts up, starting at &lt;start&gt; (default 1). When you print several labels at once, each gets the next number.</li>
             <li><code>{{uuid}}</code> - a random UUID, <code>{{short-uuid}}</code> - a shorter random UUID.</li>
+            <li><code>{{mdi:&lt;name&gt;}}</code> - the <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icon</a> &lt;name&gt;, e.g. <code>{{mdi:lightbulb}}</code>. The Symbol button finds the names.</li>
             <li><code>{{env:&lt;var&gt;}}</code> - the environment variable &lt;var&gt;, if it is listed in <code>LABEL_TEMPLATE_ENV_VARS</code>.</li>
             <li><code>{{random[:&lt;len&gt;][:shift]}}</code> - a random string of &lt;len&gt; characters (default 64, at most 10000). <code>shift</code> shifts it around to fill gaps.</li>
         </ul>`;

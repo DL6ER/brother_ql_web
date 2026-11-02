@@ -7,6 +7,12 @@
     font-stretch: 62% 125%;
     font-display: swap;
 }
+/* Material Design Icons for {{mdi:<name>}}, loaded once the symbol dialog
+   shows them */
+@font-face {
+    font-family: "Material Design Icons";
+    src: url("../mdi/materialdesignicons-webfont.ttf") format("truetype");
+}
 
 :root {
     --page: #eceeef;
@@ -313,6 +319,10 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .sym-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: .3rem; max-height: 50vh; overflow: auto; }
 .sym { height: 38px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); font-size: 1.15rem; cursor: pointer; }
 .sym:hover { border-color: var(--muted); background: var(--surface-2); }
+.sym.ico { font-family: "Material Design Icons"; font-size: 1.4rem; }
+.sym-icons { display: flex; flex-direction: column; gap: .55rem; }
+/* Symbols and icons share the height of the screen */
+.dialog.symbols .sym-grid { max-height: 26vh; }
 /* Two rows per line: the text on top, its settings below */
 .lrow { display: flex; flex-direction: column; align-items: stretch; gap: .35rem; padding: .5rem .7rem .55rem; border-top: 1px solid var(--line-soft); }
 .lrow:first-child { border-top: 0; }
