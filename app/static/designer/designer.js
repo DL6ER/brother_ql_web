@@ -2108,8 +2108,8 @@ function settingsCard() {
             <div class="seg">
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
-            <button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer prints 300 dpi only"' : ''}>600 dpi, slow</button></div>
-            ${noHigh ? `<span class="muted small">The ${esc(p.model)} prints at 300 dpi only.</span>` : ''}
+            <button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button></div>
+            ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
                 <p>Fast printing is quicker, the print is a little less sharp.</p>
                 <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>
