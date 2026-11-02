@@ -592,7 +592,7 @@ function loadedLabel() {
     return { value: null, name: length > 0 ? `${width} x ${length} mm` : `${width} mm endless`, selected: false };
 }
 
-// The QL-1100 series prints at 300 dpi only
+// The QL-1100 series and the P-touch printers cannot print at 600 dpi
 function update600Dpi() {
     const unsupported = models_without_600_dpi.includes(printer_status.model);
     $('#highResUnsupported').prop('hidden', !unsupported);

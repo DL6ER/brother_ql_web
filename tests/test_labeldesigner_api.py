@@ -1749,23 +1749,25 @@ def test_label_size_the_printer_cannot_print_is_refused(tmp_path):
     assert response.get_json()['message'] == 'The label size 103 x 164 mm die-cut (DK-11247 / DK-1247) cannot be printed on a QL-800'
 
 
-@pytest.mark.parametrize('model', ['QL-1100', 'QL-1110NWB', 'QL-1115NWB'])
-def test_600_dpi_is_refused_for_the_ql1100_series(tmp_path, model):
-    # Brother's command reference of the series lists 300 dpi only (#103)
+@pytest.mark.parametrize('model', ['QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W'])
+def test_600_dpi_is_refused_for_the_ql1100_series_and_ptouch_printers(tmp_path, model):
+    # Brother's command reference of the QL-1100 series lists 300 dpi only
+    # (#103), the P-touch printers print at 180 dpi
     client = make_client(tmp_path)
+    label_size = 'pt12' if model.startswith('PT-') else '62'
     data = EXAMPLE_FORMDATA.copy()
-    data.update({'label_size': '62', 'model': model, 'high_res': '1'})
+    data.update({'label_size': label_size, 'model': model, 'high_res': '1'})
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+    assert response.get_json()['message'] == f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
 
     client.application.config['WEBHOOK_PASSWORD'] = 'secret'
     image = base64.b64encode(_upload(_red_square(), 'red.png').stream.read()).decode('ascii')
-    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': '62', 'model': model, 'high_res': 1})
+    response = client.post('/labeldesigner/api/webhook/print', json={'password': 'secret', 'images': [image], 'label_size': label_size, 'model': model, 'high_res': 1})
     assert response.status_code == 400
-    assert response.get_json()['message'] == f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+    assert response.get_json()['message'] == f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
 
-    # At 300 dpi they print
+    # At normal resolution they print
     data['high_res'] = '0'
     assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
 
@@ -2061,6 +2063,51 @@ def test_fast_printing(tmp_path, monkeypatch, route, fast):
     data = sent[0]
     flags = data[data.index(b'\x1biz') + 3]
     assert bool(flags & 0x40) == (fast != '1')
+
+
+@pytest.mark.parametrize('model, label_size, ptouch', [('PT-E550W', 'pt12', True), ('QL-700', '62', False)])
+def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkeypatch, model, label_size, ptouch):
+    # A PT-E550W hung after the half cut with uncompressed raster lines over
+    # Wi-Fi, and with media type 0x00 ("no tape") also over USB
+    from app.labeldesigner import printer
+    sent = []
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    client = make_client(tmp_path, model=model)
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size=label_size, orientation='rotated'))
+    assert response.get_json()['success'] is True
+    data = sent[0]
+    flags = data[data.index(b'\x1biz') + 3]
+    # Valid flag of the media type
+    assert bool(flags & 0x02) != ptouch
+    assert (b'M\x02' in data) == ptouch
+
+
+@pytest.mark.parametrize('cut_once', ['0', '1'])
+def test_copies_on_ptouch_printers_are_one_job_per_batch(tmp_path, monkeypatch, cut_once):
+    # As jobs of their own, a PT-E550W fed, half cut and cut the tape for
+    # every copy, also with cut_once
+    from app.labeldesigner import printer
+    sent = []
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    client = make_client(tmp_path, model='PT-E550W')
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='7', cut_once=cut_once))
+    assert response.get_json()['success'] is True
+    # Batches of 5 and 2 labels, one job each
+    assert len(sent) == 2
+    for data, labels in zip(sent, [5, 2]):
+        assert data.count(b'\x1b@') == 1
+        # The following labels of a job are not its first page
+        assert [data[i + 11] for i in range(len(data)) if data.startswith(b'\x1biz', i)] == [0] + [1] * (labels - 1)
+        # Half cut, no chain printing
+        assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biK', i)] == [0x0c] * labels
+        assert data.endswith(b'\x1a')
+    cut_every = [[data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)] for data in sent]
+    if cut_once == '1':
+        # Half cuts between the labels, the tape is cut after each batch
+        assert cut_every == [[5] * 5, [2] * 2]
+    else:
+        # Cut after every label
+        assert cut_every == [[1] * 5, [1] * 2]
 
 
 def test_ptouch_tape_is_endless(tmp_path):

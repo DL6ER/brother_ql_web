@@ -74,13 +74,16 @@ LABEL_OFFSET_CORRECTIONS = {
 # reference of these models lists no 600 dpi resolution, unlike that of the
 # QL-800, and a 600 dpi label came out twice as long on a QL-1100 (#103):
 # https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
-MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB')
+# The P-touch printers print at 180 dpi. For 600 dpi brother_ql sets bit 5
+# of ESC i K, which their reference marks as not used:
+# https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
+MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W')
 
 
 def resolution_problem(model: str, high_res: bool) -> str:
     """Why the model cannot print at the resolution, or an empty string."""
     if high_res and model in MODELS_WITHOUT_600_DPI:
-        return f'The {model} prints at 300 dpi only, turn off 600 dpi printing'
+        return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
     return ''
 
 
@@ -228,6 +231,34 @@ def _prune_simulated_labels():
             logger.debug('Failed to remove simulated label %s', entry.path, exc_info=True)
 
 
+class _Raster(BrotherQLRaster):
+    """brother_ql gives P-touch tapes the media type 0x00, which PT printers
+    read as "no tape": a PT-E550W half cut the tape and hung in the printing
+    state. Without it, the printer checks the width of the tape only."""
+
+    # Labels after which a PT printer cuts the tape, between them it only
+    # half cuts. brother_ql sends no "cut each * labels" (ESC i A) to PT
+    # printers, which then cut after every label.
+    cut_every = 1
+
+    def add_media_and_quality(self, rnumber):
+        if self.model.startswith('PT-') and getattr(self, '_mtype', None) == b'\x00':
+            self._mtype = None
+        super().add_media_and_quality(rnumber)
+
+    def add_cut_every(self, n=1):
+        if self.model.startswith('PT-'):
+            self.data += b'\x1biA' + bytes([self.cut_every])
+        else:
+            super().add_cut_every(n)
+
+    def add_print(self, last_page=True):
+        super().add_print(last_page)
+        # The print information of the following labels says that they are
+        # not the first page, brother_ql leaves it at 0
+        self.page_number += 1
+
+
 class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
         # A clear message instead of "Wrong pixel width" from brother_ql
@@ -251,13 +282,13 @@ class PrinterQueue:
     def _rasterize_entries(self, entries):
         """Rasterize a list of queue entries into a BrotherQLRaster and
         return ``(qlr, generated_images)``."""
-        qlr = BrotherQLRaster(self.model)
+        qlr = _Raster(self.model)
+        ptouch = self.model.startswith('PT-')
         generated_images = []
         simulation = is_simulation(self.device_specifier)
+        jobs = []
         for entry in entries:
             label = entry['label']
-            cut = entry['cut']
-            high_res = entry['high_res']
             if label.label_type == LabelType.ENDLESS_LABEL:
                 rotate = 0 if label.label_orientation == LabelOrientation.STANDARD else 90
             else:
@@ -266,19 +297,39 @@ class PrinterQueue:
             if simulation:
                 generated_images.append(img)
             dither = label.label_content != LabelContent.IMAGE_BW
+            # The labels of a PT printer are one job. As jobs of their own, a
+            # PT-E550W fed, half cut and cut the tape for each, also when it
+            # was to be cut after the last one only.
+            settings = (rotate, dither, entry['high_res'], entry['fast'])
+            if ptouch and jobs and jobs[-1]['settings'] == settings:
+                jobs[-1]['images'].append(img)
+                jobs[-1]['cuts'].append(entry['cut'])
+            else:
+                jobs.append({'settings': settings, 'images': [img], 'cuts': [entry['cut']]})
+        for job in jobs:
+            rotate, dither, high_res, fast = job['settings']
+            if ptouch:
+                # Cut after every label, or with cut_once after the last one
+                # of each batch, the printer half cuts between them
+                qlr.cut_every = 1 if all(job['cuts']) else len(job['images'])
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
             # 3.0 s instead of 1.8 s with it, a little sharper.
+            # PT printers get compressed raster lines, as from Brother's
+            # apps: a PT-E550W read uncompressed ones wrongly over Wi-Fi,
+            # half cut the tape and hung in the printing state.
+            qlr.page_number = 0
             create_label(
                 qlr,
-                img,
+                job['images'],
                 self.label_size,
                 red='red' in str(self.label_size),
                 dither=dither,
-                cut=cut,
+                cut=ptouch or any(job['cuts']),
                 dpi_600=high_res,
-                hq=not entry['fast'],
-                rotate=rotate
+                hq=not fast,
+                rotate=rotate,
+                compress=ptouch
             )
         return qlr, generated_images
 
