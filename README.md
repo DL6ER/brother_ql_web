@@ -22,23 +22,23 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels, optionally shrunk to fit the label
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
-- **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
+- **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 470 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name and price tags
 - **Printers:** several printers at once, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
-- **Interface:** dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
+- **Interface:** an editor with the preview of the label leaving the printer, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
 ## Screenshots
 
-| Saved and demo labels | Image with auto-fit |
+| Saved and ready-made labels | Image with text |
 |---|---|
-| ![Saved and demo labels](./screenshots/image2.png) | ![Image with auto-fit](./screenshots/image3.png) |
-| **Barcodes** | **Dark mode** |
-| ![Barcodes](./screenshots/image4.png) | ![Dark mode](./screenshots/image6.png) |
-| **Templates** | **Symbol picker** |
-| ![Templates](./screenshots/image7.png) | ![Symbol picker](./screenshots/image8.png) |
+| ![Saved and ready-made labels](./screenshots/image2.png) | ![Image with text](./screenshots/image3.png) |
+| **Barcodes** | **Wizard in dark mode** |
+| ![Barcodes](./screenshots/image4.png) | ![Wizard in dark mode](./screenshots/image6.png) |
+| **Blanks, filled in when printing** | **Printer settings** |
+| ![Blanks, filled in when printing](./screenshots/image7.png) | ![Printer settings](./screenshots/image8.png) |
 
 ## Installation
 
