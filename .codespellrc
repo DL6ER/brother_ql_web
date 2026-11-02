@@ -4,4 +4,4 @@
 builtin = clear,rare,en-GB_to_en-US
 check-hidden = true
 # Vendored libraries and fonts, and the German demo labels (tools/spelling_de.py)
-skip = ./.git,*.min.js,*-min.js,*.min.css,*.map,./app/static/css/dropzone.css,./app/static/webfonts,./app/labeldesigner/demos/*/*-de.json
+skip = ./.git,*.min.js,*-min.js,*.min.css,*.map,./app/labeldesigner/demos/*/*-de.json

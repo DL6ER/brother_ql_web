@@ -178,10 +178,20 @@ def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     html = client.get('/labeldesigner/', headers=headers).get_data(as_text=True)
     manifest_url = re.search(r'<link rel="manifest" href="([^"]+)"', html).group(1)
     assert manifest_url.startswith('/labels/')
-    # The API is called below the path too, in the previous designer as well
+    # The API is called below the path too
     assert '"base": "/labels/labeldesigner"' in html
-    html = client.get('/labeldesigner/classic', headers=headers).get_data(as_text=True)
-    assert "url_for_print = '/labels/labeldesigner/api/print'" in html
+    # Bookmarks of the previous designer open this one
+    assert client.get('/labeldesigner/classic', headers=headers).headers['Location'] == '/labels/labeldesigner/'
+
+
+def test_unknown_page_leads_to_the_label_designer():
+    client = create_app().test_client()
+    response = client.get('/labeldesigner/nothing-here')
+    assert response.status_code == 404
+    html = response.get_data(as_text=True)
+    assert '<h1>Not found</h1>' in html
+    assert 'href="/">' in html
+    assert 'designer/designer.css' in html
 
 
 def test_font_settings_from_environment(monkeypatch):

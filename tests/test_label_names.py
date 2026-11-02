@@ -54,13 +54,6 @@ def test_label_designer_shows_brother_codes_and_printers(tmp_path):
     assert sizes['103x164']['models'] == ['QL-1100', 'QL-1110NWB']
     assert sizes['103']['models'] == []
     assert sizes['pt36']['models'] == ['PT-P900W', 'PT-P950NW']
-    # The same in the previous designer
-    html = client.get('/labeldesigner/classic').get_data(as_text=True)
-    options = {match.group(1): match.group(0) for match in re.finditer(r'<option value="([^"]+)" data-x[^>]*>[^<]*</option>', html)}
-    assert '103 x 164 mm die-cut (DK-11247 / DK-1247)' in options['103x164']
-    assert 'data-models="QL-1100,QL-1110NWB"' in options['103x164']
-    assert 'data-models=""' in options['103']
-    assert 'data-models="PT-P900W,PT-P950NW"' in options['pt36']
 
 
 def test_check_label_size():

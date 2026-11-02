@@ -950,17 +950,14 @@ function lookDesign(i) {
     return d;
 }
 
-// The symbols of the picker of the previous designer, read from its script:
-// it needs jQuery and cannot be loaded here
+// The symbols of the symbol dialog
 const STATIC = ($('link[href*="designer/designer.css"]') || { getAttribute: () => '/static/designer/designer.css' }).getAttribute('href').replace(/designer\/designer\.css.*$/, '');
 let symbolList = null;
 async function loadSymbols() {
     if (symbolList) return symbolList;
     try {
-        const t = await (await fetch(STATIC + 'js/symbol-picker.js')).text();
-        const m = t.match(/const SYMBOL_LIST = \[([\s\S]*?)\];/);
-        symbolList = m ? [...m[1].matchAll(/'([^']*)'/g)].map(x => x[1]) : [];
-    } catch (e) { symbolList = []; }
+        symbolList = await (await fetch(STATIC + 'designer/symbols.json')).json();
+    } catch (e) { return []; }
     return symbolList;
 }
 // Material Design Icons for {{mdi:<name>}}: their names and characters
@@ -2057,8 +2054,7 @@ function printerPanelHTML() {
         <div class="plist">${list}</div>
         <button class="btn sm" type="button" id="ppRefresh" style="align-self:flex-start"><i class="fa-solid fa-magnifying-glass"></i>Look for printers</button>
         ${settingsCard()}
-        <a class="link" href="#wizard/printed"><i class="fa-solid fa-clock-rotate-left"></i> Printed labels</a>
-        <a class="link" href="${esc(BASE)}/classic"><i class="fa-solid fa-table-columns"></i> The previous label designer</a>`;
+        <a class="link" href="#wizard/printed"><i class="fa-solid fa-clock-rotate-left"></i> Printed labels</a>`;
 }
 
 function bindPrinterPanel() {

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#15171a">
+    <title>{{ title }} | Label Designer</title>
+    <script>
+        // The theme chosen in the label designer
+        (function () {
+            let mode = null;
+            try { mode = localStorage.getItem('designer_theme'); } catch (e) { }
+            if (mode === 'dark' || mode === 'light') document.documentElement.setAttribute('data-theme', mode);
+        })();
+    </script>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='images/favicon/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='images/favicon/favicon-16x16.png') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='fontawesome/css/all.min.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='designer/designer.css') }}">
+</head>
+<body>
+    <header class="top">
+        <a class="logo" href="{{ url_for('main.index') }}"><span class="mark"><i class="fa-solid fa-tag"></i></span><span>Labels</span></a>
+    </header>
+    <main class="error-page">
+        <h1>{{ title }}</h1>
+        <p class="muted">{{ message }}</p>
+        <a class="btn" href="{{ url_for('main.index') }}"><i class="fa-solid fa-pen-ruler"></i>Open the label designer</a>
+    </main>
+</body>
+</html>

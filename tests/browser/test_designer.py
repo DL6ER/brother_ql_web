@@ -1,6 +1,8 @@
 """The label designer in a browser: the editor, the wizard and what they
 share. The API itself is tested without a browser."""
 import io
+import json
+import os
 
 import pytest
 from PIL import Image
@@ -30,6 +32,33 @@ def png(width=200, height=100) -> bytes:
     out = io.BytesIO()
     Image.new('L', (width, height), 'black').save(out, format='PNG')
     return out.getvalue()
+
+
+def pdf(*sizes) -> bytes:
+    pages = [Image.new('L', size, 'black') for size in sizes]
+    out = io.BytesIO()
+    pages[0].save(out, format='PDF', save_all=True, append_images=pages[1:], resolution=100)
+    return out.getvalue()
+
+
+def fake_printer(page, **status):
+    """Answer the status queries with a QL-800 that reports the given
+    status, e.g. the loaded labels, and load the page again."""
+    printer = {'errors': [], 'model': 'QL-800', 'path': 'simulation', 'media_width': None, 'media_length': 0, **status}
+    body = json.dumps({**printer, 'printers': [printer], 'selected': 'simulation'})
+    page.route('**/api/printer_status*', lambda route: route.fulfill(content_type='application/json', body=body))
+    page.reload()
+    wait_for_preview(page)
+
+
+def edit_saved_label(page, title):
+    page.click('[data-tab="wizard"]')
+    page.click('.lib-nav [data-cat="saved"]')
+    page.click(f'#libGrid .thumb:has(.t:text-is("{title}"))')
+    wait_for_preview(page, '#libStage')
+    page.click('#libEdit')
+    page.wait_for_selector('#edStage')
+    wait_for_preview(page)
 
 
 def test_new_label_is_empty_and_cannot_be_printed(designer):
@@ -100,6 +129,63 @@ def test_ctrl_enter_prints(designer, monkeypatch, tmp_path):
     type_line(designer, 0, 'Hello')
     designer.keyboard.press('Control+Enter')
     assert printed(designer) == ['printed']
+
+
+def test_copies_buttons(designer, monkeypatch, tmp_path):
+    # Never fewer than one copy, each copy prints as a label of its own
+    monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
+    type_line(designer, 0, 'Hello')
+    for _ in range(2):
+        designer.click('.ed-top [data-step="1"]')
+    assert designer.input_value('#edCopies') == '3'
+    for _ in range(5):
+        designer.click('.ed-top [data-step="-1"]')
+    assert designer.input_value('#edCopies') == '1'
+    designer.click('.ed-top [data-step="1"]')
+    designer.click('#edPrint')
+    assert printed(designer) == ['printed']
+    assert len(list(tmp_path.glob('*.png'))) == 2
+
+
+def test_sizes_of_each_line_are_kept(designer):
+    # A saved label keeps the font and size of each line, also after reloading
+    edit_saved_label(designer, 'Template Example')
+    lines = "() => S.edit.design.text.map(l => l.font + ' ' + l.size)"
+    expected = ['DejaVu Sans,Book 40', 'DejaVu Sans,Book 40', 'DejaVu Sans,Book 25', 'DejaVu Sans,Book 40', 'DejaVu Sans,Book 40']
+    assert designer.evaluate(lines) == expected
+    # An emptied size keeps the last one. Stored empty, every preview failed.
+    designer.fill('[data-row="2"] input.mini', '')
+    wait_for_preview(designer)
+    designer.reload()
+    wait_for_preview(designer)
+    assert designer.evaluate(lines) == expected
+    assert designer.input_value('[data-row="2"] input.mini') == '25'
+    assert designer.get_attribute('#edStage .paper img', 'src').startswith('blob:')
+
+
+def test_label_with_a_font_that_is_not_installed(designer, app):
+    # The preview failed with "Unknown font family". The label keeps its font
+    # until another one is chosen.
+    repo = app.config['LABEL_REPOSITORY_DIR']
+    with open(os.path.join(repo, 'QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    for line in label['text']:
+        line['font'] = 'Not Installed,Regular'
+    path = os.path.join(repo, 'Other-Fonts.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(label, f)
+    try:
+        designer.reload()
+        wait_for_preview(designer)
+        edit_saved_label(designer, 'Other Fonts')
+        assert 'The font Not Installed (Regular) is not installed' in fits_note(designer)
+        assert designer.get_attribute('#edStage .paper img', 'src').startswith('blob:')
+        assert designer.evaluate('() => S.edit.design.text[0].font') == 'Not Installed,Regular'
+        designer.select_option('[data-row="0"] select.lf', designer.evaluate('() => DEFAULT_FAMILY'))
+        wait_for_preview(designer)
+        assert 'is not installed' not in fits_note(designer)
+    finally:
+        os.remove(path)
 
 
 def test_undo_and_redo(designer):
@@ -177,6 +263,68 @@ def test_tape_follows_the_printer(designer):
     assert designer.evaluate('() => [S.tape, S.tapeManual]') == ['pt24', True]
     designer.evaluate("() => { S.printer = { path: 'b', model: 'QL-800', media_width: 62, media_length: 0 }; detectTape(); }")
     assert designer.evaluate('() => [S.tape, S.tapeManual]') == ['62', False]
+
+
+def test_loaded_label_can_be_chosen(designer):
+    # The printer reports 29 x 90 mm labels, the new label is for 62 mm tape
+    fake_printer(designer, media_width=29, media_length=90)
+    type_line(designer, 0, 'Hello')
+    assert designer.inner_text('.tape-note') == 'The QL-800 has 29 x 90 mm loaded. Switch to it'
+    # Printing asks first
+    designer.click('#edPrint')
+    designer.wait_for_selector('.sheet h2:text-is("This label needs 62 mm endless")')
+    designer.click('.sheet [data-r="cancel"]')
+    assert designer.evaluate('() => S.history.length') == 0
+    designer.click('#edUseTape')
+    wait_for_preview(designer)
+    assert designer.input_value('#edSize') == '29x90'
+    assert 'Matches the tape in the printer' in designer.inner_text('.tape-note')
+
+
+def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, monkeypatch):
+    # Not the printers of the machine running the tests, the page would print
+    # on them. One that does not answer is offered with the reason.
+    assert designer.evaluate('() => S.printers.map(p => p.path)') == ['simulation']
+    other = 'file:///nonexistent/lp0'
+    monkeypatch.setitem(app.config, 'PRINTERS', [('QL-800', 'simulation'), ('QL-1100', other)])
+    designer.reload()
+    wait_for_preview(designer)
+    designer.click('#printerChip')
+    assert designer.eval_on_selector_all('.plist [data-printer]', 'rows => rows.map(r => r.dataset.printer)') == ['simulation', other]
+    assert 'does not answer' in designer.inner_text(f'[data-printer="{other}"]')
+    designer.click(f'[data-printer="{other}"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    # Kept after reloading, the label sizes follow its model
+    designer.reload()
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip b') == 'QL-1100'
+    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
+    assert '103x164' in offered and '62red' not in offered
+
+
+def test_no_600_dpi_on_the_ql1100(designer):
+    type_line(designer, 0, 'Hello')
+    width, _ = preview_size(designer)
+    designer.click('#printerChip')
+    designer.click('[data-q="high"]')
+    designer.keyboard.press('Escape')
+    designer.wait_for_function("() => document.querySelector('#edStage .paper img')")
+    wait_for_preview(designer)
+    assert preview_size(designer)[0] == 2 * width
+    # The choice is kept for other printers, this one previews and prints at 300 dpi
+    fake_printer(designer, model='QL-1100', media_width=62)
+    assert preview_size(designer)[0] == width
+    assert designer.evaluate("() => formFor(S.edit.design, 1, true).get('high_res')") == '0'
+    designer.click('#printerChip')
+    assert designer.is_disabled('[data-q="high"]') and 'on' in designer.get_attribute('[data-q="high"]', 'class')
+    assert 'The QL-1100 cannot print at 600 dpi.' in designer.inner_text('.settings')
+    # Nor can a P-touch printer
+    designer.keyboard.press('Escape')
+    fake_printer(designer, model='PT-P750W', media_width=24)
+    designer.click('#printerChip')
+    assert designer.is_disabled('[data-q="high"]')
+    assert 'The PT-P750W cannot print at 600 dpi.' in designer.inner_text('.settings')
 
 
 def test_settings_that_do_not_apply_are_disabled(designer):
@@ -354,6 +502,38 @@ def test_dropped_image_becomes_the_label(designer):
     designer.wait_for_selector('[data-lay="image"].on')
     wait_for_preview(designer)
     assert designer.evaluate('() => S.edit.design.image.name') == 'dropped.png'
+
+
+def test_pages_of_a_pdf_can_be_chosen(designer):
+    designer.click('[data-lay="image"]')
+    wait_for_preview(designer)
+    assert designer.is_disabled('#edPages')
+    designer.set_input_files('#edFile', files=[{'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))}])
+    designer.wait_for_selector('#edPages:enabled')
+    wait_for_preview(designer)
+    length, _ = preview_size(designer)
+    designer.fill('#edPages', '2')
+    wait_for_preview(designer)
+    # Page 2 is portrait, fitted across the tape it makes a shorter label
+    assert preview_size(designer)[0] < length
+    designer.fill('#edPages', '7')
+    wait_for_preview(designer)
+    assert 'The PDF has 3 pages, there is no page 7' in designer.inner_text('#edStage')
+
+
+def test_automatic_orientation_is_explained(designer):
+    # kinghat in #103: the direction of the text does nothing to an image
+    # fitted to the label
+    designer.select_option('#edSize', '62x29')
+    wait_for_preview(designer)
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[{'name': 'portrait.png', 'mimeType': 'image/png', 'buffer': png(100, 300)}])
+    designer.wait_for_function("() => document.getElementById('edFits').innerText.includes('Turned automatically to fit the label best.')")
+    # Scaled, the direction counts again. The hint follows the preview with a timeout.
+    designer.click('[data-fit="0"]')
+    wait_for_preview(designer)
+    designer.evaluate('() => new Promise(resolve => setTimeout(resolve))')
+    assert 'Turned automatically' not in fits_note(designer)
 
 
 def share(page, server, **form):
@@ -543,6 +723,44 @@ def test_wizard_counts_what_was_printed(designer, monkeypatch, tmp_path):
     assert designer.inner_text('.lib-nav [data-cat="printed"] .n') == '1'
 
 
+def test_demo_labels(designer):
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="signs"]')
+    assert designer.inner_text('#libTitle') == 'Safety signs'
+    # Those for the tape in the printer come first and are counted, the others dimmed
+    fits = designer.eval_on_selector_all('#libGrid .thumb', 'thumbs => thumbs.map(t => !t.classList.contains("other"))')
+    count = int(designer.inner_text('.lib-nav [data-cat="signs"] .n'))
+    assert 0 < count < len(fits) and fits == [True] * count + [False] * (len(fits) - count)
+    designer.wait_for_function("() => document.querySelector('#libGrid .thumb img').src.startsWith('blob:')")
+    designer.click('#libGrid .thumb:has(.t:text-is("Fire extinguisher"))')
+    wait_for_preview(designer, '#libStage')
+    designer.click('#libEdit')
+    designer.wait_for_selector('#edStage')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.label_size, S.edit.design.image.name]') == ['62', 'fire-extinguisher.png']
+    assert designer.evaluate('() => S.edit.design.text.map(l => l.text)') == ['Fire', 'extinguisher']
+
+
+def test_demo_labels_in_german(designer):
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="signs"]')
+    titles = "() => Array.from(document.querySelectorAll('#libGrid .thumb .t')).map(t => t.textContent)"
+    # In the language of the browser
+    assert designer.input_value('#libLang') == 'en'
+    assert 'Fire extinguisher' in designer.evaluate(titles)
+    count = designer.inner_text('.lib-nav [data-cat="signs"] .n')
+    designer.select_option('#libLang', 'de')
+    names = designer.evaluate(titles)
+    assert 'Feuerlöscher' in names and 'Fire extinguisher' not in names
+    # Every label is there in both languages
+    assert designer.inner_text('.lib-nav [data-cat="signs"] .n') == count
+    # Kept for the next visit
+    designer.reload()
+    designer.wait_for_selector('#libLang')
+    assert designer.input_value('#libLang') == 'de'
+    assert 'Feuerlöscher' in designer.evaluate(titles)
+
+
 def test_search_finds_labels_and_commands(designer):
     designer.keyboard.press('Control+k')
     designer.fill('#palQ', 'QR')
@@ -564,9 +782,3 @@ def test_phone_width_does_not_scroll_sideways(browser, server, view):
     page.wait_for_load_state('networkidle')
     assert page.evaluate('() => document.documentElement.scrollWidth') <= 390
     context.close()
-
-
-def test_previous_designer_links_to_this_one(page, server):
-    page.click('text=New designer')
-    page.wait_for_selector('#edStage')
-    assert page.url.startswith(server + '/labeldesigner/')

@@ -1906,10 +1906,6 @@ def test_default_font_is_selected(tmp_path):
     family, style = client.application.extensions['fonts'].get_default_font()
     html = client.get('/labeldesigner/').get_data(as_text=True)
     assert f'"default_font": "{family},{style}"' in html
-    html = client.get('/labeldesigner/classic').get_data(as_text=True)
-    selected = re.findall(r'<option value="([^"]+)" selected>', html)
-    assert f'{family},{style}' in selected
-    assert f'data-default="{family},{style}"' in html
 
 
 def test_text_line_without_font_uses_the_default_font(tmp_path):

@@ -6,7 +6,6 @@ import uuid
 import time
 import base64
 import secrets
-import logging
 import barcode
 import threading
 from collections import OrderedDict
@@ -31,7 +30,6 @@ from app.utils import (
     pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
 )
 
-LINE_SPACINGS = (100, 150, 200, 250, 300)
 DEFAULT_DPI = 300
 HIGH_RES_DPI = 600
 
@@ -180,36 +178,9 @@ def shared():
 
 @bp.route('/classic')
 def classic():
-    """The label designer before the redesign, kept for one release."""
-    debug = current_app.logger.isEnabledFor(logging.DEBUG)
-    fonts = get_fonts()
-    label_sizes = [
-        (label.identifier, label_name(label), label.form_factor == FormFactor.ROUND_DIE_CUT, label.tape_size, label.dots_printable,
-         ','.join(label_printers(label)))
-        for label in ALL_LABELS
-    ]
-    return render_template(
-        'labeldesigner.html',
-        fonts=fonts.fontlist(),
-        label_sizes=label_sizes,
-        debug=debug,
-        default_label_size=current_app.config['LABEL_DEFAULT_SIZE'],
-        default_font_size=current_app.config['LABEL_DEFAULT_FONT_SIZE'],
-        default_orientation=current_app.config['LABEL_DEFAULT_ORIENTATION'],
-        default_qr_size=current_app.config['LABEL_DEFAULT_QR_SIZE'],
-        default_image_mode=current_app.config['IMAGE_DEFAULT_MODE'],
-        default_bw_threshold=current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
-        default_font_family=fonts.get_default_font()[0],
-        default_font_style=fonts.get_default_font()[1],
-        line_spacings=LINE_SPACINGS,
-        default_line_spacing=current_app.config['LABEL_DEFAULT_LINE_SPACING'],
-        default_dpi=DEFAULT_DPI,
-        models_without_600_dpi=MODELS_WITHOUT_600_DPI,
-        default_margin_top=current_app.config['LABEL_DEFAULT_MARGIN_TOP'],
-        default_margin_bottom=current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
-        default_margin_left=current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
-        default_margin_right=current_app.config['LABEL_DEFAULT_MARGIN_RIGHT']
-    )
+    """The label designer before the redesign is gone, its bookmarks open
+    the current one."""
+    return redirect(url_for('.index'))
 
 
 def _asset_version() -> int:
