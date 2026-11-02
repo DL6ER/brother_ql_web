@@ -435,3 +435,14 @@ def test_repository_pdf_pages_are_printed(tmp_path):
     resp = client.post('/labeldesigner/api/repository/print', json={'name': 'pages.json', 'printer': 'simulation'})
     assert resp.status_code == 200, resp.get_json()
     assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2
+
+
+def test_list_has_the_title_the_label_was_saved_under(tmp_path):
+    # The file name lacks umlauts and spaces, the label designer shows the title
+    client = make_client(tmp_path, empty_repo=True)
+    text = [{'text': 'Soup', 'size': '40', 'font': 'DejaVu Sans,Book'}]
+    assert client.post('/labeldesigner/api/repository/save', json={'name': 'Kuche', 'title': 'Küche, Regal 2', 'text': text}).status_code == 200
+    assert client.post('/labeldesigner/api/repository/save', json={'name': 'Plain', 'text': text}).status_code == 200
+    files = {f['name']: f for f in client.get('/labeldesigner/api/repository/list').get_json()['files']}
+    assert files['Kuche.json']['title'] == 'Küche, Regal 2'
+    assert 'title' not in files['Plain.json']

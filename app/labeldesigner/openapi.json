@@ -1629,6 +1629,13 @@
               "EAN-Label.json"
             ]
           },
+          "title": {
+            "type": "string",
+            "description": "Name of the label as the label designer saved it, missing for labels saved without one.",
+            "examples": [
+              "Kitchen shelf"
+            ]
+          },
           "mtime": {
             "type": "integer",
             "description": "Time saved, Unix time."

@@ -293,6 +293,9 @@ def repo_list():
             current_app.logger.warning(f'Skipping repository file {name}: not a label')
             continue
         entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
+        # The name the label was saved under, the file name lacks e.g. umlauts
+        if isinstance(data.get('title'), str) and data['title'].strip():
+            entry['title'] = data['title'].strip()
         # Parse label size (support both snake_case and legacy camelCase)
         label_size = data.get('label_size') or data.get('labelSize')
         entry['label_size_id'] = label_size
