@@ -391,6 +391,8 @@
                             When you print several labels at once, each gets the next number.</li>
                         <li><code>{{'{{uuid'}}}}</code> - a random UUID.</li>
                         <li><code>{{'{{short-uuid'}}}}</code> - a shorter random UUID.</li>
+                        <li><code>{{'{{mdi:<name>}}'}}</code> - the <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icon</a> <code>&lt;name&gt;</code>,
+                            e.g. <code>{{'{{mdi:lightbulb}}'}}</code>. The symbol picker finds the names.</li>
                         <li><code>{{'{{env:<var>}}'}}</code> - the environment variable <code>&lt;var&gt;</code>, if it is listed in <code>LABEL_TEMPLATE_ENV_VARS</code>.</li>
                         <li><code>{{'{{random[:<len>][:shift]}}'}}</code> - a random string of <code>&lt;len&gt;</code> characters
                             (default 64, at most 10000). <code>shift</code> shifts it around to fill gaps.</li>
@@ -495,6 +497,7 @@
 const url_for_print = '{{ url_for('.print_label') }}';
 const url_for_preview = '{{ url_for('.preview_from_image') }}';
 const url_for_get_barcodes = '{{ url_for('.get_barcodes') }}';
+const url_for_mdi = '{{ url_for('static', filename='mdi/') }}';
 const url_for_get_printer_status = '{{ url_for('.get_printer_status') }}';
 const default_dpi = {{ default_dpi }};
 const models_without_600_dpi = {{ models_without_600_dpi|list|tojson }};

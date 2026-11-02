@@ -58,6 +58,15 @@ def _printer_list(value: str) -> list[tuple[str, str]]:
     return printers
 
 
+def _bool(value: str) -> bool:
+    word = value.strip().lower()
+    if word in ('1', 'true', 'yes', 'on'):
+        return True
+    if word in ('0', 'false', 'no', 'off'):
+        return False
+    raise ValueError(value)
+
+
 def _log_level(value: str) -> str:
     level = value.strip().upper()
     if level not in logging.getLevelNamesMapping():
@@ -83,6 +92,8 @@ ENV_OVERRIDES = {
     'MAX_CONTENT_LENGTH': _positive_int,
     'WEBHOOK_PASSWORD': str,
     'PROXY_COUNT': _non_negative_int,
+    'FONT_FOLDER': str,
+    'SYSTEM_FONTS': _bool,
 }
 
 
@@ -133,7 +144,8 @@ def init_fonts(app: Flask):
     FONTS = fonts.Fonts(app.logger,
                         app.config.get('LABEL_DEFAULT_FONT_FAMILY'),
                         app.config.get('LABEL_DEFAULT_FONT_STYLE'),
-                        app.config.get('FONT_FOLDER'))
+                        app.config.get('FONT_FOLDER'),
+                        app.config.get('SYSTEM_FONTS', True))
     if not FONTS.fonts_available():
         app.logger.error("No fonts found on your system. Please install some.")
         sys.exit(2)

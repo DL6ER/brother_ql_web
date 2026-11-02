@@ -54,6 +54,8 @@ LABEL_NAMES = {
     # P-touch TZe tapes, the codes depend on the color (e.g. TZe-231 is
     # black on white 12 mm). "18" was added to brother_ql for the PT-P950NW.
     '18': '18 mm (TZe tape, PT-P900 series)',
+    'pt6': '6 mm (TZe tape)',
+    'pt9': '9 mm (TZe tape)',
     'pt12': '12 mm (TZe tape)',
     'pt18': '18 mm (TZe tape)',
     'pt24': '24 mm (TZe tape)',
@@ -63,7 +65,7 @@ LABEL_NAMES = {
 # Label sizes for P-touch printers. brother_ql does not restrict them to
 # these printers, but QL printers cannot use TZe tapes (and P-touch printers
 # no DK rolls).
-PTOUCH_LABELS = {'18', 'pt12', 'pt18', 'pt24', 'pt36'}
+PTOUCH_LABELS = {'18', 'pt6', 'pt9', 'pt12', 'pt18', 'pt24', 'pt36'}
 
 # Label sizes only shown while selected, e.g. in saved settings. "103" is the
 # same roll as "104", but brother_ql places it 18 dots (1.5 mm) further from

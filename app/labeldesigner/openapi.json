@@ -1325,7 +1325,7 @@
       },
       "TextLine": {
         "type": "object",
-        "description": "One line of text. Templates like `{{datetime:%d.%m.%Y}}`, `{{counter}}`, `{{uuid}}`, `{{short-uuid}}`, `{{env:<var>}}` and `{{random}}` are filled in when the label is generated.",
+        "description": "One line of text. Templates like `{{datetime:%d.%m.%Y}}`, `{{counter}}`, `{{uuid}}`, `{{short-uuid}}`, `{{env:<var>}}`, `{{random}}` and `{{mdi:<name>}}` (a Material Design Icon, e.g. `{{mdi:printer}}`) are filled in when the label is generated.",
         "required": [
           "text",
           "size"
