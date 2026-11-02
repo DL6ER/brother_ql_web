@@ -182,6 +182,12 @@ def test_label_with_a_font_that_is_not_installed(designer, app):
         assert 'The font Not Installed (Regular) is not installed' in fits_note(designer)
         assert designer.get_attribute('#edStage .paper img', 'src').startswith('blob:')
         assert designer.evaluate('() => S.edit.design.text[0].font') == 'Not Installed,Regular'
+        assert designer.input_value('[data-row="0"] select.lf') == 'Not Installed'
+        assert designer.input_value('#edFamily') == 'Not Installed'
+        # Bold is kept as a wish, the font stays
+        designer.click('[data-row="0"] [data-act="bold"]')
+        wait_for_preview(designer)
+        assert designer.evaluate('() => S.edit.design.text[0].font') == 'Not Installed,Regular'
         designer.select_option('[data-row="0"] select.lf', designer.evaluate('() => DEFAULT_FAMILY'))
         wait_for_preview(designer)
         assert 'is not installed' not in fits_note(designer)
@@ -344,12 +350,14 @@ def test_settings_that_do_not_apply_are_disabled(designer):
     designer.click('[data-lay="image"]')
     designer.set_input_files('#edFile', files=[{'name': 'black.png', 'mimeType': 'image/png', 'buffer': png()}])
     wait_for_preview(designer)
-    assert designer.is_enabled('#edThr')
+    # The configured mode, grayscale, has no threshold
+    assert designer.evaluate('() => S.edit.design.image_mode') == 'grayscale'
+    assert designer.is_disabled('#edThr')
     # Red needs black and red tape
     assert designer.is_disabled('[data-imode="red_and_black"]')
-    designer.click('[data-imode="grayscale"]')
+    designer.click('[data-imode="black_and_white"]')
     wait_for_preview(designer)
-    assert designer.is_disabled('#edThr')
+    assert designer.is_enabled('#edThr')
 
 
 def test_code_alone_has_no_text_settings(designer):
@@ -524,6 +532,11 @@ def test_pages_of_a_pdf_can_be_chosen(designer):
     designer.fill('#edPages', '7')
     wait_for_preview(designer)
     assert 'The PDF has 3 pages, there is no page 7' in designer.inner_text('#edStage')
+    # It could not be printed either
+    assert designer.is_disabled('#edPrint')
+    designer.fill('#edPages', '1')
+    wait_for_preview(designer)
+    assert designer.is_enabled('#edPrint')
 
 
 def test_automatic_orientation_is_explained(designer):
@@ -806,7 +819,8 @@ def test_title_ending_in_json_keeps_the_other_label(designer):
 
 
 def test_new_labels_start_with_the_configured_defaults(browser, server, app, monkeypatch):
-    for key, value in (('LABEL_DEFAULT_MARGIN_LEFT', 0), ('LABEL_DEFAULT_FONT_SIZE', 55), ('LABEL_DEFAULT_QR_SIZE', 6)):
+    for key, value in (('LABEL_DEFAULT_MARGIN_LEFT', 0), ('LABEL_DEFAULT_FONT_SIZE', 55), ('LABEL_DEFAULT_QR_SIZE', 6),
+                       ('IMAGE_DEFAULT_MODE', 'black_and_white'), ('IMAGE_DEFAULT_BW_THRESHOLD', 90)):
         monkeypatch.setitem(app.config, key, value)
     context = browser.new_context(locale='en-US')
     page = context.new_page()
@@ -814,6 +828,7 @@ def test_new_labels_start_with_the_configured_defaults(browser, server, app, mon
     wait_for_preview(page)
     design = page.evaluate('() => S.edit.design')
     assert (design['margin_left'], design['text'][0]['size'], design['qrcode_size']) == ('0', '55', '6')
+    assert (design['image_mode'], design['image_bw_threshold']) == ('black_and_white', '90')
     context.close()
 
 
@@ -895,3 +910,60 @@ def test_number_blanks_are_asked_for(designer):
     designer.wait_for_function("() => document.querySelectorAll('#fzLooks .tile').length === 6")
     designer.click('#fzLooks [data-plook="0"]')
     designer.wait_for_selector('#libFields input[data-blank="Number"]:focus', timeout=5000)
+
+
+def test_printer_that_is_not_connected_is_reported(designer):
+    # The chosen printer was unplugged: the labels print on another one, not
+    # without a word
+    designer.evaluate("() => localStorage.setItem('designer_printer', JSON.stringify('file:///dev/usb/lp7'))")
+    designer.reload()
+    designer.wait_for_selector('#toast:has-text("/dev/usb/lp7 is not connected, labels print on the QL-800")')
+
+
+def test_black_and_red_roll_is_not_a_mismatch(designer):
+    # A QL-800 reports a black and red roll as 62 mm endless, without a color
+    fake_printer(designer, media_width=62, media_length=0, media_type='Continuous length tape')
+    designer.select_option('#edSize', '62red')
+    wait_for_preview(designer)
+    assert designer.locator('.tape-note.warn').count() == 0
+    assert designer.evaluate("() => fitsTape('62red')")
+
+
+def test_loaded_label_that_is_not_offered(designer):
+    # The simulator reports no tape, the assumed one matches nothing
+    assert designer.locator('.tape-note').count() == 0
+    assert not designer.evaluate("() => [...document.querySelectorAll('#edSize option')].some(o => o.textContent.includes('in the printer'))")
+    fake_printer(designer, media_width=40, media_length=0)
+    assert designer.inner_text('.tape-note') == 'The QL-800 reports 40 mm tape, which is not offered here.'
+    designer.click('#printerChip')
+    assert 'The printer reports 40 mm tape, which is not offered here.' in designer.inner_text('.pp')
+
+
+def test_saved_label_without_a_size_fits(designer, app):
+    # Like an older label or one saved through the API: it opens with the
+    # default size, so it is not shown as made for another tape
+    repo = app.config['LABEL_REPOSITORY_DIR']
+    with open(os.path.join(repo, 'QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    label.pop('label_size', None)
+    path = os.path.join(repo, 'No-Size.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(label, f)
+    try:
+        designer.reload()
+        designer.click('[data-tab="wizard"]')
+        designer.wait_for_selector('#libGrid .thumb:has(.t:text-is("No Size"))')
+        assert 'Needs' not in designer.inner_text('#libGrid .thumb:has(.t:text-is("No Size"))')
+    finally:
+        os.remove(path)
+
+
+def test_dropped_preview_is_released_without_another_one(designer):
+    # Released once no image shows it, also when no other preview follows
+    released = designer.evaluate("""async () => {
+        const url = URL.createObjectURL(new Blob(['label']));
+        release(url);
+        await new Promise(done => setTimeout(done, 11500));
+        try { await fetch(url); return false; } catch (e) { return true; }
+    }""")
+    assert released

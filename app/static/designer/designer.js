@@ -82,6 +82,8 @@ const isBold = font => /bold/i.test(String(font || '').split(',')[1] || '');
 const wantsBold = l => l.bold !== undefined ? !!l.bold : isBold(l.font);
 const hasBold = family => (FONTS[family] || []).some(st => /bold/i.test(st));
 const familyOf = font => String(font || C.default_font).split(',')[0];
+// A font of a label that is not installed stays chosen until another one is
+const missingFont = family => FONTS[family] ? '' : `<option value="${esc(family)}" selected>${esc(family)}, not installed</option>`;
 
 function L(text, size, bold = false, align = 'center', extra = {}) {
     return Object.assign({
@@ -98,7 +100,7 @@ function baseDesign(size) {
         code_text: '', barcode_type: 'QR', qrcode_size: String(def.qrcode_size), qrcode_correction: 'M',
         margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
-        image_mode: 'black_and_white', image_bw_threshold: '128', image_fit: '1', image_crop: '0',
+        image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0',
         image_scaling_factor: '100', image_rotation: '0', shrink_text: '1', print_color: 'black', high_res: '0', pdf_pages: '',
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: ''
@@ -307,9 +309,12 @@ function fingerprint(s) {
 // way onto the page.
 const dropped = new Map();
 function release(url) {
-    dropped.set(url, Date.now());
+    if (url) dropped.set(url, Date.now());
     const shown = new Set($$('img').map(i => i.src));
     for (const [u, t] of dropped) if (Date.now() - t > 10000 && !shown.has(u)) { URL.revokeObjectURL(u); dropped.delete(u); }
+    // Those still waiting are looked at again, also when nothing else drops out
+    clearTimeout(release.timer);
+    if (dropped.size) release.timer = setTimeout(release, 11000);
 }
 
 function preview(design, values, stale) {
@@ -469,7 +474,7 @@ function setSize(d, id) {
 function fitsTape(sizeId) {
     if (sizeId === S.tape) return true;
     const a = SIZES[sizeId], b = SIZES[S.tape];
-    return !!(a && b && a.form === b.form && a.tape[0] === b.tape[0] && a.tape[1] === b.tape[1] && !a.red);
+    return !!(a && b && a.form === b.form && a.tape[0] === b.tape[0] && a.tape[1] === b.tape[1] && (!a.red || S.tapeRedUnknown));
 }
 
 // --- Printer status ----------------------------------------------------------
@@ -480,7 +485,14 @@ async function refreshPrinters() {
         const data = await r.json();
         S.printers = Array.isArray(data.printers) ? data.printers : [data];
         const chosen = load('designer_printer', null);
-        S.printer = S.printers.find(p => p.path === chosen) || S.printers.find(p => p.path === data.selected) || S.printers[0] || null;
+        const kept = S.printers.find(p => p.path === chosen);
+        S.printer = kept || S.printers.find(p => p.path === data.selected) || S.printers[0] || null;
+        // The chosen one comes back by itself when it is there again
+        if (chosen && !kept && S.printer && S.printerGone !== chosen) {
+            S.printerGone = chosen;
+            toast(`The printer ${chosen.replace('file://', '')} is not connected, labels print on the ${S.printer.model} (${S.printer.path.replace('file://', '')})`);
+        }
+        if (kept) S.printerGone = null;
     } catch (e) {
         // A single failed poll keeps what is known, the next one corrects it
         if (!S.printers.length) S.printer = null;
@@ -509,10 +521,15 @@ function detectTape() {
     }
     S.tapeManual = false;
     let found = null;
+    S.tapeUnknown = '';
+    S.tapeRedUnknown = false;
     if (p && p.media_width) {
         // The width and length of DK and TZe tape can be the same
         const red = /red/i.test(p.text_color || '') || /red/i.test(p.media_type || '');
         found = C.label_sizes.find(s => printerTakes(s) && s.tape[0] === p.media_width && s.tape[1] === (p.media_length || 0) && !!s.red === red);
+        // QL printers do not tell whether a roll is black and red
+        S.tapeRedUnknown = !!found && !red && !p.text_color;
+        if (!found) S.tapeUnknown = p.media_length ? `${p.media_width} x ${p.media_length} mm` : `${p.media_width} mm`;
     }
     S.tape = found ? found.id : C.default_label_size;
     S.tapeAssumed = !found;
@@ -666,7 +683,7 @@ async function loadSaved() {
     try {
         const r = await fetch(API + '/repository/list');
         const data = await r.json();
-        S.saved = (data.files || []).map(f => ({ name: f.name, title: f.title || f.name.replace(/\.json$/i, '').replace(/[-_]/g, ' '), size: f.label_size_id, mtime: f.mtime }));
+        S.saved = (data.files || []).map(f => ({ name: f.name, title: f.title || f.name.replace(/\.json$/i, '').replace(/[-_]/g, ' '), size: f.label_size_id || C.default_label_size, mtime: f.mtime }));
     } catch (e) { S.saved = []; }
     updateCounts();
 }
@@ -1531,7 +1548,7 @@ function renderEditor() {
                 </div>${qr ? '' : '<span class="muted small">Size and error correction exist for QR codes only.</span>'}`)(d.barcode_type === 'QR', d.barcode_type === 'QR' && d.image_fit !== '1')}
                 ${lay === 'codetext' ? gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' ? imageBlock(d) : ''}
-            ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? '' : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+            ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
                 <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d))).join('')}</div>
                 <div class="addl">
                     <button class="pill" type="button" id="edAdd"><i class="fa-solid fa-plus"></i>Line</button>
@@ -1545,7 +1562,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>` : ''}
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape ? ' (in the printer)' : ''}`)}</select></div>
+                    <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
                     <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text that does not fit</span><div class="seg">${[['1', 'Shrink it'], ['0', 'Keep the size']].map(([v, n]) => `<button type="button" data-shrink="${v}" class="${(d.shrink_text === '1') === (v === '1') ? 'on' : ''}"${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
@@ -1595,9 +1612,13 @@ function sizeOptions(chosen, name) {
 }
 
 function tapeNote(d) {
-    if (d.label_size === S.tape) return '<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer</span>';
+    const model = esc(S.printer ? S.printer.model : 'printer');
+    if (S.tapeUnknown) return `<span class="tape-note warn">The ${model} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
+    // An assumed tape matches nothing in the printer
+    if (d.label_size === S.tape) return S.tapeAssumed ? '' : '<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer</span>';
     if (fitsTape(d.label_size)) return '';
-    return `<span class="tape-note warn">The ${esc(S.printer ? S.printer.model : 'printer')} has ${esc(sizeName(S.tape))} loaded. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
+    const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
+    return `<span class="tape-note warn">The ${model} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
 }
 
 function imageBlock(d) {
@@ -1698,7 +1719,7 @@ function lineRow(l, i, main, families, red) {
         <span class="txw">${l.checkbox ? '<i class="fa-regular fa-square" title="To-do box"></i>' : ''}<input class="tx" value="${esc(toDisplay(l.text))}" placeholder="${i === 0 ? 'Type the label text' : 'Line ' + (i + 1)}" aria-label="Line ${i + 1}">
             <button class="mini quiet" type="button" data-act="del" title="Remove the line"><i class="fa-solid fa-xmark"></i></button></span>
         <div class="st">
-            <select class="mini lf${fam !== main ? ' on' : ''}" title="Font of line ${i + 1}" aria-label="Font of line ${i + 1}">${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select>
+            <select class="mini lf${fam !== main ? ' on' : ''}" title="Font of line ${i + 1}" aria-label="Font of line ${i + 1}">${missingFont(fam)}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select>
             <input class="mini" type="number" min="1" value="${esc(l.size)}" title="Size" aria-label="Size of line ${i + 1}">
             <button class="mini${wantsBold(l) ? ' on' : ''}${noBold ? ' nobold' : ''}" type="button" data-act="bold" title="${noBold ? esc(fam) + ' has no bold style. The line prints regular and becomes bold again with a font that has one.' : 'Bold'}">B</button>
             <button class="mini" type="button" data-act="align" title="Alignment: ${esc(l.align || 'center')}"><i class="fa-solid fa-${al}"></i></button>
@@ -1815,6 +1836,8 @@ const drawEditor = debounce(() => {
         if (gap && p && hasTextLines(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
+        // What the server cannot draw it cannot print either
+        $('#edPrint').disabled = empty || !!err;
     }, empty);
 }, 250);
 const redrawEditor = busyThen(() => $('#edStage'), drawEditor);
@@ -1882,7 +1905,7 @@ function bindEditor() {
             const act = b.dataset.act;
             if (act === 'todo') l.checkbox = !l.checkbox;
             if (act === 'red') l.color = l.color === 'red' ? 'black' : 'red';
-            if (act === 'bold') { l.bold = !wantsBold(l); l.font = fontOf(familyOf(l.font), l.bold); }
+            if (act === 'bold') { l.bold = !wantsBold(l); if (FONTS[familyOf(l.font)]) l.font = fontOf(familyOf(l.font), l.bold); }
             if (act === 'align') l.align = { left: 'center', center: 'right', right: 'left' }[l.align] || 'left';
             if (act === 'invert') l.inverted = !l.inverted;
             if (act === 'del') d.text.splice(i, 1);
@@ -2113,7 +2136,8 @@ function settingsCard() {
     const p = S.printer;
     const noHigh = p && C.models_without_600_dpi.includes(p.model);
     const q = S.settings.quality, c = S.settings.cut;
-    const note = S.tapeManual ? 'Set by hand.' : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
+    const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
+        : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
     return `<div class="settings">
         <div><label class="label-s" for="setTape">Tape in the printer</label>
             <select class="field" id="setTape"><option value="">Automatic${S.tapeManual ? '' : ': ' + esc(sizeName(S.tape))}</option>

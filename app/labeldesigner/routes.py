@@ -225,6 +225,8 @@ def index():
                 'margin_bottom': current_app.config['LABEL_DEFAULT_MARGIN_BOTTOM'],
                 'margin_left': current_app.config['LABEL_DEFAULT_MARGIN_LEFT'],
                 'margin_right': current_app.config['LABEL_DEFAULT_MARGIN_RIGHT'],
+                'image_mode': current_app.config['IMAGE_DEFAULT_MODE'],
+                'image_bw_threshold': current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
             },
             'models_without_600_dpi': sorted(MODELS_WITHOUT_600_DPI),
             'preview_parallel': max(1, min(16, cpus - 1)),
