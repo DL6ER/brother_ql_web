@@ -72,6 +72,29 @@ def test_blanks_are_filled_in_and_printed(designer, monkeypatch, tmp_path):
     assert len(list(tmp_path.glob('*.png'))) == 1
 
 
+def test_filled_in_blanks_stay_when_the_design_changes(designer):
+    type_line(designer, 0, 'Shelf [Room]')
+    field = '#edFields input[data-blank="Room"]'
+    designer.wait_for_selector(field)
+    designer.fill(field, 'Garage')
+    wait_for_preview(designer)
+    designer.click('[data-row="0"] [data-act="bold"]')
+    wait_for_preview(designer)
+    assert designer.input_value(field) == 'Garage'
+    assert designer.evaluate('() => S.edit.values.Room') == 'Garage'
+
+
+@pytest.mark.parametrize('zone', ['Pacific/Kiritimati', 'Pacific/Pago_Pago'])
+def test_date_blanks_start_at_the_local_date(browser, server, zone):
+    # 25 hours apart, one of them is always on another date than UTC
+    context = browser.new_context(locale='en-US', timezone_id=zone)
+    page = context.new_page()
+    page.goto(server + '/labeldesigner/#edit')
+    page.wait_for_load_state('networkidle')
+    assert page.evaluate("() => today() === new Date().toLocaleDateString('sv-SE')")
+    context.close()
+
+
 def test_ctrl_enter_prints(designer, monkeypatch, tmp_path):
     monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
     type_line(designer, 0, 'Hello')
@@ -120,6 +143,21 @@ def test_bold_comes_back_with_a_font_that_has_it(designer):
     assert designer.evaluate('() => S.edit.design.text[0].font') == family + ',Bold'
 
 
+def test_new_lines_use_the_configured_font(browser, server, app, monkeypatch):
+    fonts = app.extensions['fonts']
+    family = next((f for f in fonts.fontlist() if f['family'] != fonts.get_default_font()[0]), None)
+    if not family:
+        pytest.skip('Needs two font families')
+    monkeypatch.setattr(fonts, 'default_family', family['family'])
+    monkeypatch.setattr(fonts, 'default_style', family['styles'][0])
+    context = browser.new_context(locale='en-US')
+    page = context.new_page()
+    page.goto(server + '/labeldesigner/#edit')
+    wait_for_preview(page)
+    assert page.evaluate('() => familyOf(S.edit.design.text[0].font)') == family['family']
+    context.close()
+
+
 def test_label_sizes_follow_the_printer_model(designer):
     # The simulator is a QL-800
     offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
@@ -128,6 +166,17 @@ def test_label_sizes_follow_the_printer_model(designer):
     # A label made for another printer keeps its size
     designer.evaluate("() => { S.edit.design.label_size = 'pt36'; renderEditor(); }")
     assert designer.input_value('#edSize') == 'pt36'
+
+
+def test_tape_follows_the_printer(designer):
+    # DK and TZe tape of 12 mm have the same size, the model tells them apart
+    designer.evaluate("() => { S.printer = { path: 'a', model: 'PT-P750W', media_width: 12, media_length: 0 }; detectTape(); }")
+    assert designer.evaluate('() => S.tape') == 'pt12'
+    # A tape set by hand belongs to its printer
+    designer.evaluate("() => { S.settings.tapes = { a: 'pt24' }; detectTape(); }")
+    assert designer.evaluate('() => [S.tape, S.tapeManual]') == ['pt24', True]
+    designer.evaluate("() => { S.printer = { path: 'b', model: 'QL-800', media_width: 62, media_length: 0 }; detectTape(); }")
+    assert designer.evaluate('() => [S.tape, S.tapeManual]') == ['62', False]
 
 
 def test_settings_that_do_not_apply_are_disabled(designer):
@@ -166,6 +215,39 @@ def test_distance_between_code_and_text(designer):
     wait_for_preview(designer)
     assert sum(preview_size(designer)) - without == round(10 * 300 / 25.4)
     assert designer.evaluate('() => S.edit.design.image_text_gap') == '118'
+
+
+def test_preview_has_the_resolution_of_the_print(designer):
+    type_line(designer, 0, 'Hello')
+    width, _ = preview_size(designer)
+    designer.click('#printerChip')
+    designer.click('[data-q="high"]')
+    designer.keyboard.press('Escape')
+    designer.wait_for_function("() => document.querySelector('#edStage .paper img')")
+    wait_for_preview(designer)
+    # Twice the dots across the tape, still 62 mm wide
+    assert preview_size(designer)[0] == 2 * width
+    assert designer.inner_text('#edStage .dim-x') == '62 mm'
+
+
+def test_images_of_the_same_size_have_their_own_preview(designer):
+    # Same name and length, other content: the preview shows what prints
+    same_length, differ = designer.evaluate("""async () => {
+        const png = color => {
+            const c = document.createElement('canvas');
+            c.width = c.height = 40;
+            const g = c.getContext('2d');
+            g.fillStyle = color;
+            g.fillRect(0, 0, 40, 40);
+            return c.toDataURL('image/png').split(',')[1];
+        };
+        const [a, b] = [png('#111'), png('#eee')];
+        const design = data => Object.assign(baseDesign('62'), { print_type: 'image', image: { data, mime: 'image/png', name: 'photo.png' } });
+        const [pa, pb] = [await preview(design(a), {}), await preview(design(b), {})];
+        return [a.length === b.length, pa.url !== pb.url];
+    }""")
+    assert same_length
+    assert differ
 
 
 def test_pasted_image_becomes_the_label(designer):
@@ -326,6 +408,48 @@ def test_text_in_the_wizard_shows_looks_and_templates(designer):
     designer.click('#libEdit')
     designer.wait_for_selector('#edStage')
     assert designer.input_value('[data-row="0"] .tx') == 'Kitchen shelf'
+
+
+def test_choosing_another_look_drops_the_pending_refresh(designer):
+    # A field changed just before another look was chosen must not draw the
+    # previous look into the stage of the new one
+    designer.click('[data-tab="wizard"]')
+    designer.fill('#wzText', 'Shelf [Room]')
+    designer.wait_for_function("() => document.querySelectorAll('#fzLooks .tile').length === 6")
+    designer.click('#fzLooks [data-look="0"]')
+    designer.wait_for_selector('#libFields input[data-blank="Room"]')
+    wait_for_preview(designer, '#libStage')
+    designer.evaluate("""async () => {
+        window.drawn = [];
+        const draw = showOnStage;
+        window.showOnStage = function (el, design, values) {
+            drawn.push({ connected: el.isConnected, room: values && values.Room });
+            return draw.apply(this, arguments);
+        };
+        const field = document.querySelector('#libFields input[data-blank="Room"]');
+        field.value = 'Garage';
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        await chooseLook(1);
+    }""")
+    designer.wait_for_timeout(600)
+    wait_for_preview(designer, '#libStage')
+    # The new look was drawn, the previous one not
+    assert designer.evaluate("() => drawn.some(d => d.connected)")
+    assert not designer.evaluate("() => drawn.some(d => d.connected && d.room === 'Garage')")
+
+
+def test_look_with_blanks_asks_for_them_before_printing(designer):
+    designer.click('[data-tab="wizard"]')
+    designer.fill('#wzText', 'Shelf [Room]')
+    designer.wait_for_function("() => document.querySelectorAll('#fzLooks .tile').length === 6")
+    designer.click('#fzLooks [data-plook="0"]')
+    designer.wait_for_selector('#libFields input[data-blank="Room"]:focus')
+    assert designer.evaluate('() => S.history.length') == 0
+    # The tiles open with the keyboard as well
+    designer.focus('#fzLooks [data-look="5"]')
+    designer.keyboard.press('Enter')
+    designer.wait_for_function("() => S.libSel && S.libSel.id === 'look5'")
+    wait_for_preview(designer, '#libStage')
 
 
 def test_search_finds_labels_and_commands(designer):

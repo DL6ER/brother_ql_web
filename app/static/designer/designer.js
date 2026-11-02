@@ -16,7 +16,8 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
-const today = () => new Date().toISOString().slice(0, 10);
+// The date of the browser, not of UTC
+const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
 function load(key, fallback) {
     try {
@@ -65,13 +66,13 @@ function sizeName(id) {
 
 // --- Fonts and lines -------------------------------------------------------
 
+// New lines use the configured default font
 const DEFAULT_FAMILY = C.default_font.split(',')[0];
 function styleFor(family, bold) {
     const styles = FONTS[family] || [];
     if (bold) return styles.find(s => s.toLowerCase() === 'bold') || styles.find(s => /bold/i.test(s)) || styles[0];
     return styles.find(s => /^(book|regular)$/i.test(s)) || styles[0];
 }
-const FAMILY = FONTS['DejaVu Sans'] ? 'DejaVu Sans' : DEFAULT_FAMILY;
 const fontOf = (family, bold) => `${family},${styleFor(family, bold)}`;
 const isBold = font => /bold/i.test(String(font || '').split(',')[1] || '');
 // Bold is kept with the line as a wish, so that it comes back after a font
@@ -82,7 +83,7 @@ const familyOf = font => String(font || C.default_font).split(',')[0];
 
 function L(text, size, bold = false, align = 'center', extra = {}) {
     return Object.assign({
-        text, size: String(size), font: fontOf(FAMILY, bold), align,
+        text, size: String(size), font: fontOf(DEFAULT_FAMILY, bold), align,
         inverted: false, checkbox: false, color: 'black', line_spacing: '100'
     }, extra);
 }
@@ -207,6 +208,9 @@ function b64ToBlob(b64, mime) {
     return new Blob([bytes], { type: mime });
 }
 
+// 600 dpi, if chosen and the printer can print it
+const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_without_600_dpi.includes(S.printer.model));
+
 function formFor(design, copies = 1, forPrint = false) {
     const fd = new FormData();
     for (const [k, v] of Object.entries(design)) {
@@ -222,9 +226,10 @@ function formFor(design, copies = 1, forPrint = false) {
         for (const im of [design.image].concat(forPrint ? design.more_images || [] : [])) fd.append('image', b64ToBlob(im.data, im.mime), im.name);
     }
     fd.append('print_count', String(copies));
+    // The quality is a setting of the printer, previews are made with its
+    // resolution as well
+    fd.set('high_res', highRes() ? '1' : '0');
     if (forPrint) {
-        const hi = S.settings.quality === 'high' && !(S.printer && C.models_without_600_dpi.includes(S.printer.model));
-        fd.set('high_res', hi ? '1' : '0');
         fd.set('fast_printing', S.settings.quality === 'fast' ? '1' : '0');
         fd.set('cut_once', S.settings.cut === 'last' ? '1' : '0');
     }
@@ -274,10 +279,35 @@ function fetchImage(url, stale) {
     return p;
 }
 
+// A short fingerprint of an image for the cache key (FNV-1a)
+function fingerprint(s) {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
+    return (h >>> 0).toString(36) + s.length.toString(36);
+}
+
+// Previews that dropped out of the cache are released once no image on the
+// page shows them any more. Those dropped just now may still be on their
+// way onto the page.
+const dropped = new Map();
+function release(url) {
+    dropped.set(url, Date.now());
+    const shown = new Set($$('img').map(i => i.src));
+    for (const [u, t] of dropped) if (Date.now() - t > 10000 && !shown.has(u)) { URL.revokeObjectURL(u); dropped.delete(u); }
+}
+
 function preview(design, values, stale) {
-    const d = fillBlanks(design, values, true);
-    const key = JSON.stringify(Object.assign({}, d, { image: d.image ? d.image.name + d.image.data.length : null, more_images: undefined }));
-    if (previewCache.has(key)) return shared(previewCache.get(key), stale, () => preview(design, values, stale));
+    // In the resolution it is printed with: for 600 dpi the server makes the
+    // label twice as large
+    const d = Object.assign(fillBlanks(design, values, true), { high_res: highRes() ? '1' : '0' });
+    const key = JSON.stringify(Object.assign({}, d, { image: d.image ? d.image.mime + fingerprint(d.image.data) : null, more_images: undefined }));
+    if (previewCache.has(key)) {
+        // The most recently used stay longest
+        const p = previewCache.get(key);
+        previewCache.delete(key);
+        previewCache.set(key, p);
+        return shared(p, stale, () => preview(design, values, stale));
+    }
     const p = limit(async () => {
         const r = await post('/preview', formFor(d));
         if (!r.ok) {
@@ -287,13 +317,17 @@ function preview(design, values, stale) {
         }
         const blob = await r.blob();
         return {
-            url: URL.createObjectURL(blob), warning: r.headers.get('X-Label-Warning') || '',
+            url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0)
         };
     }, stale);
     previewCache.set(key, p);
-    p.catch(() => previewCache.delete(key));
-    if (previewCache.size > 150) previewCache.delete(previewCache.keys().next().value);
+    p.catch(() => { if (previewCache.get(key) === p) previewCache.delete(key); });
+    if (previewCache.size > 150) {
+        const [oldKey, old] = previewCache.entries().next().value;
+        previewCache.delete(oldKey);
+        old.then(r => release(r.url), () => { });
+    }
     return p;
 }
 
@@ -369,7 +403,8 @@ const S = {
     lang: load('designer_lang', (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en'),
     fitsOnly: true,
     libCatChosen: false, typedGen: 0,
-    settings: Object.assign({ quality: 'quality', cut: 'each', tape: '', dateFmt: '' }, load('designer_settings', {})),
+    // tapes: the tape set by hand for each printer
+    settings: Object.assign({ quality: 'quality', cut: 'each', tapes: {}, dateFmt: '' }, load('designer_settings', {})),
     wizardText: '',
     libCat: 'saved', libSel: null,
     fillValues: {},
@@ -420,10 +455,20 @@ async function refreshPrinters() {
     renderPrinterChip();
 }
 
+const printerKey = () => (S.printer && S.printer.path) || '';
+const manualTape = () => (S.settings.tapes || {})[printerKey()] || '';
+
+// Whether the printer takes a label size, any size if its model is unknown
+function printerTakes(s) {
+    const model = S.printer && S.printer.model;
+    const known = model && C.label_sizes.some(x => x.models.includes(model));
+    return known ? s.models.includes(model) : s.models.length > 0;
+}
+
 function detectTape() {
     const p = S.printer;
-    if (S.settings.tape && SIZES[S.settings.tape]) {
-        S.tape = S.settings.tape;
+    if (SIZES[manualTape()]) {
+        S.tape = manualTape();
         S.tapeAssumed = false;
         S.tapeManual = true;
         return;
@@ -431,8 +476,9 @@ function detectTape() {
     S.tapeManual = false;
     let found = null;
     if (p && p.media_width) {
+        // The width and length of DK and TZe tape can be the same
         const red = /red/i.test(p.text_color || '') || /red/i.test(p.media_type || '');
-        found = C.label_sizes.find(s => s.tape[0] === p.media_width && s.tape[1] === (p.media_length || 0) && !!s.red === red);
+        found = C.label_sizes.find(s => printerTakes(s) && s.tape[0] === p.media_width && s.tape[1] === (p.media_length || 0) && !!s.red === red);
     }
     S.tape = found ? found.id : C.default_label_size;
     S.tapeAssumed = !found;
@@ -735,9 +781,14 @@ const SPIN = '<span class="spin" aria-hidden="true"><i class="fa-solid fa-circle
 function stageHTML(id) {
     return `<div class="stage busy" id="${id}">${SPIN}<div class="wait">Making the preview...</div></div>`;
 }
-// Shows the spinner at once, while a debounced update still waits
+// Shows the spinner at once, while a debounced update still waits. A preview
+// still on its way is not shown any more, it is out of date.
 function busyThen(getEl, fn) {
-    return (...args) => { const el = getEl(); if (el) el.classList.add('busy'); fn(...args); };
+    return (...args) => {
+        const el = getEl();
+        if (el) { el._seq = (el._seq || 0) + 1; el.classList.add('busy'); }
+        fn(...args);
+    };
 }
 
 async function showOnStage(el, design, values, onWarning, blank = false) {
@@ -761,9 +812,10 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     try { await img.decode(); } catch (e) { }
     if (seq !== el._seq) return;
     const size = SIZES[design.label_size] || { tape: [62, 0], dots: [696, 0], form: 'endless' };
-    const dpi = design.high_res === '1' ? 600 : 300;
-    const w = img.naturalWidth, h = img.naturalHeight;
-    const side = Math.abs(w - size.dots[0]) > 4 && Math.abs(h - size.dots[0]) <= 4;
+    // At 600 dpi the label has twice as many dots each way
+    const scale = p.highRes ? 2 : 1, dpi = 300 * scale;
+    const w = img.naturalWidth, h = img.naturalHeight, span = size.dots[0] * scale;
+    const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
     const lengthMm = isEndless(size) ? along : size.tape[1];
     // Fit the label into the stage
@@ -839,7 +891,9 @@ const LOOKS = [
     },
     {
         name: 'With QR code', make: (lines, d) => {
-            Object.assign(d, { print_type: 'qrcode_text', code_text: lines.join(' '), qrcode_size: '14', margin_left: '30', margin_right: '30' });
+            // Without content of its own the code holds the printed text,
+            // with the same date, counter and ID
+            Object.assign(d, { print_type: 'qrcode_text', code_text: '', qrcode_size: '14', margin_left: '30', margin_right: '30' });
             setAlong(d, true);
             d.text = lines.map((t, i) => L(t, i ? 60 : 100, i === 0, 'left'));
         }
@@ -917,7 +971,7 @@ function bindWizardChips(ta) {
     $$('[data-ins]').forEach(b => b.onclick = () => insertAt(ta, b.dataset.ins));
     $('#wzSym').onclick = () => openSymbols(ta);
     $('#wzVars').onclick = () => toggleVars($('#wzVars'), $('#wzVarsBox'));
-    $('#wzCode').onclick = () => openEditor({ title: 'New label', design: Object.assign(lookDesign(5), { text: wizardLines().length ? lookDesign(5).text : [L('Text', 100, true, 'left')], code_text: wizardLines().join(' ') || 'https://example.com' }) });
+    $('#wzCode').onclick = () => openEditor({ title: 'New label', design: Object.assign(lookDesign(5), { text: wizardLines().length ? lookDesign(5).text : [L('Text', 100, true, 'left')], code_text: wizardLines().length ? '' : 'https://example.com' }) });
     $('#wzImage').onclick = () => openEditor({ title: 'New label', design: setAlong(Object.assign(baseDesign(S.tape), { print_type: 'image', text: wizardLines().map((t, i) => L(t, i ? 60 : 90, i === 0, 'left')) }), true) });
 }
 
@@ -949,18 +1003,30 @@ function renderLooks() {
         preview(lookDesign(i), {}, () => gen !== S.typedGen).then(p => { bed.innerHTML = `<img alt="" src="${p.url}">`; }).catch(() => { });
     });
     $$('[data-plook]', box).forEach(b => b.onclick = () => printLook(+b.dataset.plook));
-    $$('[data-look]', box).forEach(t => t.onclick = e => {
-        if (e.target.closest('button')) return;
-        $$('[data-look]', box).forEach(x => x.classList.toggle('sel', x === t));
-        $$('#libGrid .thumb').forEach(x => x.classList.remove('sel'));
-        const i = +t.dataset.look;
-        showDetail({ kind: 'look', id: 'look' + i, title: LOOKS[i].name, design: lookDesign(i), size: S.tape });
+    $$('[data-look]', box).forEach(t => {
+        t.onclick = e => { if (!e.target.closest('button')) chooseLook(+t.dataset.look); };
+        t.onkeydown = e => {
+            if (e.target === t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); chooseLook(+t.dataset.look); }
+        };
     });
+}
+
+// A look is shown next to the list, with fields for its blanks
+function chooseLook(i) {
+    $$('#fzLooks [data-look]').forEach(x => x.classList.toggle('sel', +x.dataset.look === i));
+    $$('#libGrid .thumb').forEach(x => x.classList.remove('sel'));
+    return showDetail({ kind: 'look', id: 'look' + i, title: LOOKS[i].name, design: lookDesign(i), size: S.tape });
 }
 
 function printLook(i) {
     const lines = wizardLines();
-    printJob({ title: toDisplay(lines[0] || 'Label'), design: lookDesign(i), values: {}, copies: 1, source: { kind: 'wizard', look: LOOKS[i].name } });
+    const design = lookDesign(i);
+    // Blanks are filled in first
+    if (blanksOf(design).length) {
+        chooseLook(i).then(() => { const f = $('#libFields input.need'); if (f) f.focus(); });
+        return;
+    }
+    printJob({ title: toDisplay(lines[0] || 'Label'), design, values: {}, copies: 1, source: { kind: 'wizard', look: LOOKS[i].name } });
 }
 
 function againCard(n) {
@@ -1147,7 +1213,11 @@ async function showDetail(item) {
         </div>
         ${item.kind === 'saved' ? '<div class="hist-mini" id="libHist"></div>' : ''}`;
     $('.close', box).onclick = () => { S.libSel = null; emptyDetail(); $$('#libGrid .thumb').forEach(x => x.classList.remove('sel')); };
-    const refresh = busyThen(() => $('#libStage'), debounce(() => showOnStage($('#libStage'), work.design, work.values, (w, err) => fitsNote($('#libFitsNote'), w, err, work.design, () => refresh())), 250));
+    // The stage of this label: a delayed refresh after another label was
+    // chosen finds it gone and does nothing
+    const stage = $('#libStage', box), note = $('#libFitsNote', box);
+    const draw = () => { if (stage.isConnected) showOnStage(stage, work.design, work.values, (w, err) => fitsNote(note, w, err, work.design, () => refresh())); };
+    const refresh = busyThen(() => stage, debounce(draw, 250));
     const drawHist = () => {
         const hb = $('#libHist');
         if (!hb) return;
@@ -1170,7 +1240,7 @@ async function showDetail(item) {
     renderFields($('#libFields'), item, work, refresh, doPrint);
     markBlanks(box);
     bindCopies(box);
-    showOnStage($('#libStage'), work.design, work.values, (w, err) => fitsNote($('#libFitsNote'), w, err, work.design, () => refresh()));
+    draw();
     $('#libPrint').onclick = doPrint;
     $('#libMore').onclick = () => { const m = $('#libMenu'); m.hidden = !m.hidden; $('#libMore').setAttribute('aria-expanded', String(!m.hidden)); };
     $('#libEdit').onclick = () => openEditor({ title: item.title, design: work.design, origin: item.kind === 'saved' ? { kind: 'saved', id: item.id } : null });
@@ -1201,7 +1271,7 @@ function renderFields(box, item, work, refresh, onEnter) {
     } else {
         html = work.design.text.map((l, i) => `<div><label class="label-s" for="ln${i}">Line ${i + 1}</label><input class="field" id="ln${i}" data-line="${i}" value="${esc(toDisplay(l.text))}"></div>`).join('');
         if (work.design.print_type === 'qrcode_text' || work.design.print_type === 'qrcode') {
-            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"></div>`;
+            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"${work.design.print_type === 'qrcode_text' ? ' placeholder="Empty: the text of the label"' : ''}></div>`;
         }
         if (!work.design.text.length && work.design.print_type === 'image') html += '<p class="muted small">An image label without text. Change the design to replace the image.</p>';
     }
@@ -1355,7 +1425,7 @@ function renderEditor() {
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
-                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="Link or text in the code" aria-label="Content of the code">
+                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'codetext' ? 'Link or text, empty for the text of the label' : 'Link or text in the code'}" aria-label="Content of the code">
                 ${(qr => `<div class="pair"${qr ? '' : ' title="Only for QR codes"'}>
                     <label><span class="label-s${qr ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${qr ? '' : ' disabled'}></label>
                     <label><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -1416,9 +1486,7 @@ function renderEditor() {
 // The label sizes the printer can use, grouped by their form. The chosen
 // one is always offered, e.g. that of a label made for another printer.
 function sizeOptions(chosen, name) {
-    const model = S.printer && S.printer.model;
-    const known = model && C.label_sizes.some(s => s.models.includes(model));
-    const offered = s => s.id === chosen || (known ? s.models.includes(model) : s.models.length > 0);
+    const offered = s => s.id === chosen || printerTakes(s);
     return [['Endless', 'endless'], ['Die-cut', 'die_cut'], ['Round', 'round_die_cut'], ['P-touch tape', 'ptouch_endless']].map(([group, form]) => {
         const sizes = C.label_sizes.filter(s => s.form === form && offered(s));
         return sizes.length ? `<optgroup label="${group}">${sizes.map(s => `<option value="${esc(s.id)}"${s.id === chosen ? ' selected' : ''}>${name(s)}</option>`).join('')}</optgroup>` : '';
@@ -1487,7 +1555,7 @@ function frameDetails(d) {
 function mainFamily(d) {
     const count = {};
     d.text.forEach(l => { const f = familyOf(l.font); count[f] = (count[f] || 0) + 1; });
-    return Object.keys(count).sort((a, b) => count[b] - count[a])[0] || FAMILY;
+    return Object.keys(count).sort((a, b) => count[b] - count[a])[0] || DEFAULT_FAMILY;
 }
 
 // Margins are kept in dots of 300 dpi, the editor shows millimeters
@@ -1579,16 +1647,17 @@ const drawEditor = debounce(() => {
         box.dataset.sig = sig;
         const vals = defaults(item);
         // Typed values stay, unless the kind of the blank changed or its new
-        // default replaces the old one that was still in the field
-        const oldTypes = box._types || {}, oldDefs = box._defs || {};
+        // default replaces the old one that was still in the field. Kept
+        // with the label, the fields are made anew with the editor.
+        const oldTypes = E.blankTypes || {}, oldDefs = E.blankDefs || {};
         for (const b of blanks) {
             const v = E.values[b], def = (blankFields(item)[b] || {}).default || '';
-            if (v === undefined || fieldType(item, b) !== oldTypes[b]) continue;
+            if (v === undefined || (oldTypes[b] && fieldType(item, b) !== oldTypes[b])) continue;
             if ((v === '' || v === (oldDefs[b] || '')) && def !== (oldDefs[b] || '')) continue;
             vals[b] = v;
         }
-        box._types = Object.fromEntries(blanks.map(b => [b, fieldType(item, b)]));
-        box._defs = Object.fromEntries(blanks.map(b => [b, (blankFields(item)[b] || {}).default || '']));
+        E.blankTypes = Object.fromEntries(blanks.map(b => [b, fieldType(item, b)]));
+        E.blankDefs = Object.fromEntries(blanks.map(b => [b, (blankFields(item)[b] || {}).default || '']));
         E.values = vals;
         const head = `<h3>Fill in the blanks <span class="badge warn open-count" hidden></span>
             <button class="btn sm quiet ml-auto${S.blankSettings ? ' on' : ''}" type="button" id="blankSet" aria-pressed="${!!S.blankSettings}"><i class="fa-solid fa-sliders"></i>Blank settings</button></h3>`;
@@ -1662,7 +1731,9 @@ function bindEditor() {
     $$('[data-lay]').forEach(b => b.onclick = () => {
         const lay = b.dataset.lay;
         d.print_type = { text: 'text', codetext: 'qrcode_text', image: 'image', code: 'qrcode' }[lay];
-        if ((lay === 'codetext' || lay === 'code') && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
+        // Next to text, a code without content of its own holds the text
+        if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
+        if (lay === 'codetext' && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
         if (lay === 'codetext' || lay === 'image') { setAlong(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
         if (lay === 'codetext' && d.qrcode_size === '10') d.qrcode_size = '14';
         if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
@@ -1917,7 +1988,11 @@ function bindPrinterPanel() {
         redraw();
     });
     $('#ppRefresh', box).onclick = async () => { await refreshPrinters(); redraw(); };
-    $('#setTape', box).onchange = e => { S.settings.tape = e.target.value; saveSettings(); };
+    $('#setTape', box).onchange = e => {
+        S.settings.tapes = Object.assign({}, S.settings.tapes, { [printerKey()]: e.target.value });
+        if (!e.target.value) delete S.settings.tapes[printerKey()];
+        saveSettings();
+    };
     $('#setDate', box).onchange = e => { S.settings.dateFmt = e.target.value; saveSettings(); };
     $('#qInfoBtn', box).onclick = () => {
         S.qualityInfo = !S.qualityInfo;
@@ -1939,7 +2014,7 @@ function settingsCard() {
     return `<div class="settings">
         <div><label class="label-s" for="setTape">Tape in the printer</label>
             <select class="field" id="setTape"><option value="">Automatic${S.tapeManual ? '' : ': ' + esc(sizeName(S.tape))}</option>
-            ${sizeOptions(S.settings.tape, x => esc(sizeName(x.id)))}
+            ${sizeOptions(manualTape(), x => esc(sizeName(x.id)))}
             </select><span class="muted small">${note}</span></div>
         <div><div class="row" style="gap:.35rem;margin-bottom:.3rem"><span class="label-s" style="margin:0">Quality</span>
             <button type="button" class="info-btn" id="qInfoBtn" aria-expanded="${!!S.qualityInfo}" aria-controls="qInfo" title="About the quality settings"><i class="fa-solid fa-circle-info"></i><span class="sr-only">About the quality settings</span></button></div>
