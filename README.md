@@ -22,6 +22,7 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** counters, date and time, UUIDs, random strings and selected environment variables, filled in when printing
+- **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 470 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name and price tags
 - **Printers:** several printers at once, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
@@ -176,4 +177,5 @@ It is published under the terms of the GPLv3, see [LICENSE](./LICENSE). It inclu
 - [Bootstrap](https://github.com/twbs/bootstrap), MIT License
 - [Font Awesome](https://github.com/FortAwesome/Font-Awesome), CC BY 4.0 License
 - [jQuery](https://github.com/jquery/jquery), MIT License
+- [Material Design Icons](https://github.com/Templarian/MaterialDesign-Webfont) 7.4.47 by Pictogrammers, the font under the Apache 2.0 License, see [LICENSE](app/static/mdi/LICENSE)
 - The pictograms of the demo labels from [Wikimedia Commons](app/labeldesigner/demos/images/SOURCES.md), public domain and CC0

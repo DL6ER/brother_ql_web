@@ -1192,6 +1192,34 @@ def test_env_template_only_inserts_allowed_variables(tmp_path, monkeypatch):
     assert label.text[0]['text'] == 'Lab 1|'
 
 
+def test_mdi_template_inserts_the_icon(tmp_path):
+    # Unknown names stay, so that a typo shows
+    client = make_client(tmp_path)
+    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{mdi:lightbulb}} Light {{mdi:no-such-icon}}', 'size': '40'}])
+    with client.application.test_request_context():
+        label = create_label_from_request({'text': text})
+    label.process_templates()
+    assert label.text[0]['text'] == '\U000F0335 Light {{mdi:no-such-icon}}'
+
+
+@pytest.mark.parametrize('align', ['left', 'center', 'right'])
+def test_icon_and_text_in_one_line(tmp_path, align):
+    # The icon comes from the icon font, the text from the font of the line,
+    # side by side and as high as the text alone
+    client = make_client(tmp_path)
+
+    def ink(text):
+        data = dict(EXAMPLE_FORMDATA, border_thickness='0', text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': text, 'size': '60', 'align': align}]))
+        response = client.post('/labeldesigner/api/preview?return_format=png', data=data)
+        assert response.status_code == 200 and 'X-Label-Warning' not in response.headers
+        image = Image.open(io.BytesIO(response.data)).convert('L')
+        return ImageOps.invert(image).point(lambda p: 255 if p > 127 else 0).getbbox()
+
+    text_only, with_icon = ink('230 V'), ink('{{mdi:flash}} 230 V')
+    assert with_icon[2] - with_icon[0] > text_only[2] - text_only[0] + 30
+    assert abs(with_icon[3] - with_icon[1] - (text_only[3] - text_only[1])) < 10
+
+
 def test_random_template_length_is_limited(tmp_path):
     client = make_client(tmp_path)
     data = EXAMPLE_FORMDATA.copy()

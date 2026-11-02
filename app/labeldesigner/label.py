@@ -1,4 +1,5 @@
 from .enums import LabelContent, LabelOrientation, LabelType
+from . import icons
 import os
 import uuid
 from qrcode import QRCode, constants
@@ -8,6 +9,7 @@ import barcode
 from barcode.writer import ImageWriter
 import datetime
 import functools
+import itertools
 import math
 import re
 import random
@@ -248,6 +250,11 @@ class SimpleLabel:
             if "{{short-uuid}}" in text_val:
                 ui = uuid.UUID(int=random.getrandbits(128))
                 text_val = text_val.replace("{{short-uuid}}", str(ui)[:8])
+
+            # Replace {{mdi:<name>}} with the Material Design Icon of the name,
+            # e.g. {{mdi:lightbulb}}. Unknown names stay as they
+            # are, so that a typo shows on the label.
+            text_val = re.sub(r"\{\{mdi:([a-z0-9-]+)\}\}", lambda match: icons.icon(match.group(1)) or match.group(0), text_val)
 
             # Replace {{env:<var>}} with the value of the environment variable
             # var. Only explicitly allowed variables are inserted, others could
@@ -596,7 +603,7 @@ class SimpleLabel:
             # Either calculate bbox or actually draw
             if not do_draw:
                 # Get bbox of the text
-                bbox = draw.textbbox((0, y), line['text'], font=font, align=align, anchor="lt")
+                bbox = self._draw_line(draw, (0, y), line['text'], font, "lt", align=align)
 
                 # Ensure consistent line heights for each line except the last
                 # one (where it is not needed). We still need this when
@@ -631,11 +638,11 @@ class SimpleLabel:
                 # Draw checkbox if needed
                 if checkbox:
                     checkbox_box_dimensions = 8 * self._line_size(line) // 10
-                    bbox = draw.textbbox((x - 1.2 * checkbox_box_dimensions, y), line['text'], font=font, align=align, anchor=anchor)
+                    bbox = self._draw_line(draw, (x - 1.2 * checkbox_box_dimensions, y), line['text'], font, anchor, align=align)
                     box_dimensions = bbox[0], y, bbox[0] + checkbox_box_dimensions, y + checkbox_box_dimensions
                     draw.rounded_rectangle(box_dimensions, radius=5, outline=color, width=max(1, checkbox_box_dimensions//10), fill=(255,255,255))
 
-                draw.text((x, y), line['text'], color, font=font, anchor=anchor, align=align, spacing=spacing)
+                self._draw_line(draw, (x, y), line['text'], font, anchor, fill=color, align=align, spacing=spacing)
 
                 # Shift text around if requested
                 if "shift" in line:
@@ -649,6 +656,32 @@ class SimpleLabel:
         # Return total bbox
         # each in form (x0, y0, x1, y1)
         return bboxes
+
+    def _draw_line(self, draw, xy, text, font, anchor, fill=None, **kwargs):
+        """The bounding box of a line of text at xy, also drawn in fill if
+        given. Icons ({{mdi:<name>}}) are drawn with the icon font, on the
+        same baseline as the text around them."""
+        if not any(icons.is_icon(char) for char in text):
+            if fill is not None:
+                draw.text(xy, text, fill, font=font, anchor=anchor, **kwargs)
+            return draw.textbbox(xy, text, font=font, anchor=anchor, align=kwargs.get('align', 'left'))
+        icon_font = self._get_font(icons.FONT_PATH, font.size)
+        runs = [(''.join(chars), icon_font if is_icon else font)
+                for is_icon, chars in itertools.groupby(text, icons.is_icon)]
+        width = sum(run_font.getlength(run) for run, run_font in runs)
+        # Anchors are "lt", "mt" or "rt": left, middle or right, top of the text font
+        x = xy[0] - {'l': 0, 'm': width / 2, 'r': width}[anchor[0]]
+        # The top anchor of Pillow is the ascender of the font, the runs share
+        # the baseline below it
+        ascender = draw.textbbox((0, 0), 'H', font=font, anchor='lt')[1] - draw.textbbox((0, 0), 'H', font=font, anchor='ls')[1]
+        baseline = xy[1] + ascender
+        boxes = []
+        for run, run_font in runs:
+            if fill is not None:
+                draw.text((x, baseline), run, fill, font=run_font, anchor='ls')
+            boxes.append(draw.textbbox((x, baseline), run, font=run_font, anchor='ls'))
+            x += run_font.getlength(run)
+        return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
 
     def _line_size(self, line) -> int:
         """Font size of a line, made smaller when the text is shrunk to fit."""
