@@ -264,7 +264,6 @@ def test_no_600_dpi_on_the_ql1100(page):
     assert 'The QL-1100, QL-1110NWB and QL-1115NWB cannot print at 600 dpi.' in page.inner_text('#printModeInfo')
 
 
-
 def test_sizes_on_ptouch_printers_are_at_180_dpi(page):
     assert page.inner_text('#margin_left_mm') == '3.0 mm'
     fake_printer(page, model='PT-E550W', media_width=12)
@@ -275,6 +274,7 @@ def test_sizes_on_ptouch_printers_are_at_180_dpi(page):
     type_text(page, 'Hello')
     # 70 dots of a 12 mm tape, the width of its printable area
     page.wait_for_function("document.getElementById('labelWidth').innerText === '10'")
+
 
 def fake_printer(page, **media):
     """Answer the status queries with a QL-800 that reports the given media."""
