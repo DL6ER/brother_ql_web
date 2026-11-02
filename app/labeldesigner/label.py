@@ -602,8 +602,14 @@ class SimpleLabel:
 
             # Either calculate bbox or actually draw
             if not do_draw:
-                # Get bbox of the text
-                bbox = self._draw_line(draw, (0, y), line['text'], font, "lt", align=align)
+                # Get bbox of the text. A checkbox is drawn in front of the
+                # text, its room counts to the line, so that the label is
+                # large enough for it (labels along the tape are only as long
+                # as their text).
+                checkbox_space = self._checkbox_space(line) if checkbox else 0
+                bbox = self._draw_line(draw, (checkbox_space, y), line['text'], font, "lt", align=align)
+                if checkbox:
+                    bbox = (0, bbox[1], bbox[2], bbox[3])
 
                 # Ensure consistent line heights for each line except the last
                 # one (where it is not needed). We still need this when
@@ -635,8 +641,13 @@ class SimpleLabel:
                     max_bbox_x = max(bbox[0][2] for bbox in bboxes) if len(bboxes) > 0 else 0
                     x = max_bbox_x + text_offset[0]
 
-                # Draw checkbox if needed
+                # Draw checkbox if needed, in the room left for it in front of
+                # the text
                 if checkbox:
+                    if align == "left":
+                        x += self._checkbox_space(line)
+                    elif align == "center":
+                        x += self._checkbox_space(line) / 2
                     checkbox_box_dimensions = 8 * self._line_size(line) // 10
                     bbox = self._draw_line(draw, (x - 1.2 * checkbox_box_dimensions, y), line['text'], font, anchor, align=align)
                     box_dimensions = bbox[0], y, bbox[0] + checkbox_box_dimensions, y + checkbox_box_dimensions
@@ -686,6 +697,10 @@ class SimpleLabel:
     def _line_size(self, line) -> int:
         """Font size of a line, made smaller when the text is shrunk to fit."""
         return max(1, int(int(line['size']) * self._text_scale))
+
+    def _checkbox_space(self, line) -> int:
+        """Room for the checkbox in front of a line: the box and a gap."""
+        return math.ceil(1.2 * (8 * self._line_size(line) // 10))
 
     def _text_space(self, width, height, img_width, img_height):
         """Width and height the text may take within the margins, beside or
