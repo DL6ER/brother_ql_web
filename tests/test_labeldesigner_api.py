@@ -2054,22 +2054,29 @@ def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkey
     assert (b'M\x02' in data) == ptouch
 
 
-def test_copies_on_ptouch_printers_are_half_cut_and_the_tape_cut_after_the_last(tmp_path, monkeypatch):
+@pytest.mark.parametrize('cut_once', ['0', '1'])
+def test_copies_on_ptouch_printers_are_one_job_per_batch(tmp_path, monkeypatch, cut_once):
     # As jobs of their own, a PT-E550W fed, half cut and cut the tape for
-    # every copy
+    # every copy, also with cut_once
     from app.labeldesigner import printer
     sent = []
     monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
     client = make_client(tmp_path, model='PT-E550W')
-    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='7'))
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='7', cut_once=cut_once))
     assert response.get_json()['success'] is True
-    # One job, not batches of 5
-    assert len(sent) == 1
-    data = sent[0]
-    assert data.count(b'\x1b@') == 1
-    # Cut after the 7 labels, the following labels are not the first page
-    assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)] == [7] * 7
-    assert [data[i + 11] for i in range(len(data)) if data.startswith(b'\x1biz', i)] == [0] + [1] * 6
-    # Half cut, no chain printing
-    assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biK', i)] == [0x0c] * 7
-    assert data.endswith(b'\x1a')
+    # Batches of 5 and 2 labels, one job each
+    assert len(sent) == 2
+    for data, labels in zip(sent, [5, 2]):
+        assert data.count(b'\x1b@') == 1
+        # The following labels of a job are not its first page
+        assert [data[i + 11] for i in range(len(data)) if data.startswith(b'\x1biz', i)] == [0] + [1] * (labels - 1)
+        # Half cut, no chain printing
+        assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biK', i)] == [0x0c] * labels
+        assert data.endswith(b'\x1a')
+    cut_every = [[data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)] for data in sent]
+    if cut_once == '1':
+        # Cut after the last label only, the first batch is not cut
+        assert cut_every == [[], [2, 2]]
+    else:
+        # Cut after every label
+        assert cut_every == [[1] * 5, [1] * 2]
