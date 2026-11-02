@@ -80,3 +80,10 @@ def test_missing_default_font_is_replaced():
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_only_the_font_folder_without_system_fonts(monkeypatch):
+    scanned = []
+    monkeypatch.setattr(os.path, 'isdir', lambda path: scanned.append(path) or False)
+    Fonts(logging.getLogger('TestFonts'), additional_path='/opt/myfonts', system_fonts=False)
+    assert scanned == ['/opt/myfonts']

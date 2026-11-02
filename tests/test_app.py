@@ -180,3 +180,15 @@ def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     assert manifest_url.startswith('/labels/')
     # The API is called below the path too
     assert "url_for_print = '/labels/labeldesigner/api/print'" in html
+
+
+def test_font_settings_from_environment(monkeypatch):
+    monkeypatch.setenv('FONT_FOLDER', '/opt/fonts')
+    monkeypatch.setenv('SYSTEM_FONTS', 'false')
+    monkeypatch.setattr('app.fonts.Fonts.fonts_available', lambda self: True)
+    config = create_app().config
+    assert config['FONT_FOLDER'] == '/opt/fonts'
+    assert config['SYSTEM_FONTS'] is False
+    monkeypatch.setenv('SYSTEM_FONTS', 'maybe')
+    with pytest.raises(ValueError, match='SYSTEM_FONTS'):
+        create_app()

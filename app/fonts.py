@@ -13,7 +13,8 @@ class Fonts:
                  logger: logging.Logger,
                  default_family: str = 'DejaVu Serif',
                  default_style: str = 'Book',
-                 additional_path: str | list[str] = ''):
+                 additional_path: str | list[str] = '',
+                 system_fonts: bool = True):
         self.fonts = defaultdict(dict)
         self.default_family = default_family
         self.default_style = default_style
@@ -22,11 +23,12 @@ class Fonts:
         # Scan for TTF/OTF fonts using pure Python (fontTools).
         # :param additional_path: Directory (or list of directories) to search
         #     in addition to common system font paths.
+        # :param system_fonts: Whether to search the system font paths at all.
         search_paths = [
             '/usr/share/fonts', '/usr/local/share/fonts', os.path.expanduser('~/.fonts'),
             os.path.expanduser('~/.local/share/fonts'), '/Library/Fonts', '/System/Library/Fonts',
             'C:\\Windows\\Fonts'
-        ]
+        ] if system_fonts else []
         # FONT_FOLDER may be a single folder or a list of folders
         if isinstance(additional_path, str):
             additional_path = [additional_path] if additional_path else []

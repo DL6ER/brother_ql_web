@@ -68,7 +68,11 @@ class Config(object):
     # Maximum size of a request (uploaded images, JSON payloads) in bytes
     MAX_CONTENT_LENGTH = 32 * 1024 * 1024
 
+    # Folder with fonts to offer in addition to the system fonts. Without the
+    # system fonts (SYSTEM_FONTS = False) only those of this folder are
+    # offered, e.g. a few chosen ones linked into it.
     FONT_FOLDER = ''
+    SYSTEM_FONTS = True
 
     # Webhook print endpoint password. The webhook is disabled when empty.
     # Generate a secure password with:
