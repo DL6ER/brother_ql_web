@@ -223,9 +223,16 @@ function formFor(design, copies = 1, forPrint = false) {
         if (k === 'text' || k === 'image' || k === 'more_images' || k === 'fields') continue;
         fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
     }
+    // Without red on the tape red parts print black, the preview shows that
+    const red = redTape(design);
+    if (!red) {
+        fd.set('border_color', 'black');
+        fd.set('print_color', 'black');
+        if (['red_and_black', 'colored'].includes(design.image_mode)) fd.set('image_mode', 'black_and_white');
+    }
     fd.append('text', JSON.stringify(design.text.map(l => ({
         text: l.text, size: String(l.size), font: l.font, align: l.align, inverted: !!l.inverted,
-        checkbox: !!l.checkbox, color: l.color || 'black', line_spacing: String(l.line_spacing || '100')
+        checkbox: !!l.checkbox, color: red ? l.color || 'black' : 'black', line_spacing: String(l.line_spacing || '100')
     }))));
     if (design.image && design.print_type === 'image') {
         // The preview shows the first image, all of them are printed
@@ -429,13 +436,28 @@ const saveHistory = () => {
     store('designer_history', S.history);
 };
 
-// Endless labels run along the tape when rotated, die-cut labels are
-// landscape (along the tape) in the standard orientation
+// Wide labels, e.g. for a code next to text: endless tape rotated, die-cut
+// labels in the standard orientation, which the server makes landscape
 const isDieCut = id => !!SIZES[id] && !isEndless(SIZES[id]);
-const isAlong = d => d.orientation === (isDieCut(d.label_size) ? 'standard' : 'rotated');
-function setAlong(d, along) {
-    d.orientation = along === isDieCut(d.label_size) ? 'standard' : 'rotated';
+function setWide(d, wide) {
+    d.orientation = wide === isDieCut(d.label_size) ? 'standard' : 'rotated';
     return d;
+}
+// Whether the text runs along the tape, as the editor shows it: standard
+// puts it along the longer side of the label, which is across the tape on
+// endless tape and e.g. on 62 x 29 mm labels
+const longAlongTape = id => !!SIZES[id] && SIZES[id].tape[1] > SIZES[id].tape[0];
+const runsAlong = d => (d.orientation === 'standard') === longAlongTape(d.label_size);
+function setRunsAlong(d, along) {
+    d.orientation = along === longAlongTape(d.label_size) ? 'standard' : 'rotated';
+    return d;
+}
+// Another label size: die-cut labels start wide, on endless tape the text
+// keeps its direction
+function setSize(d, id) {
+    const along = runsAlong(d);
+    d.label_size = id;
+    return isDieCut(id) ? setWide(d, true) : setRunsAlong(d, along);
 }
 
 function fitsTape(sizeId) {
@@ -512,9 +534,7 @@ async function printJob(job) {
         const choice = await tapeGuard(job);
         if (choice === 'cancel') return false;
         if (choice === 'adapt') {
-            // Die-cut labels are landscape by default
-            const along = isDieCut(S.tape) || isAlong(job.design);
-            job = Object.assign({}, job, { design: setAlong(Object.assign(clone(job.design), { label_size: S.tape }), along) });
+            job = Object.assign({}, job, { design: setSize(clone(job.design), S.tape) });
         }
     }
     const entry = {
@@ -524,6 +544,7 @@ async function printJob(job) {
     };
     S.history.unshift(entry);
     saveHistory();
+    updateCounts();
     toast(`Printing ${entry.copies} ${entry.copies === 1 ? 'label' : 'labels'}...`);
     try {
         const r = await post('/print', formFor(fillBlanks(job.design, job.values, false), entry.copies, true));
@@ -636,6 +657,14 @@ async function loadSaved() {
         const data = await r.json();
         S.saved = (data.files || []).map(f => ({ name: f.name, title: f.title || f.name.replace(/\.json$/i, '').replace(/[-_]/g, ' '), size: f.label_size_id, mtime: f.mtime }));
     } catch (e) { S.saved = []; }
+    updateCounts();
+}
+// The numbers next to "Saved labels" and "Printed" in the wizard
+function updateCounts() {
+    for (const [cat, n] of [['saved', S.saved.length], ['printed', S.history.length]]) {
+        const el = $(`.lib-nav [data-cat="${cat}"] .n`);
+        if (el) el.textContent = n;
+    }
 }
 // The file name the server gives a label (like werkzeug's secure_filename)
 function serverName(title) {
@@ -830,7 +859,10 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const maxW = Math.max(140, box.width - 110 - (side ? 70 : 0)), maxH = Math.max(110, Math.min(440, window.innerHeight * .5) - (side ? 0 : 60));
     const k = Math.min(0.85, maxW / w, maxH / h);
     const dw = Math.round(w * k), dh = Math.round(h * k);
-    el.className = 'stage' + (side ? ' side' : '') + (isEndless(size) ? '' : ' diecut');
+    // Short labels keep the arrow clear of the scissors at the cut
+    const short = side ? dw : dh;
+    el.className = 'stage' + (side ? ' side' : '') + (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : '')
+        + (short < 30 ? ' tiny' : short < 50 ? ' short' : '');
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
     const led = `<span class="led ${st.cls}" title="${esc(st.text)}"></span>`;
@@ -853,6 +885,9 @@ function layoutProblem(d) {
     if (d && size && !isEndless(size) && d.print_type === 'qrcode_text' && Math.min(size.dots[0], size.dots[1]) < 600) {
         return 'On this die-cut label the text gets no room next to the code. Use endless tape or a larger label.';
     }
+    const redParts = (d.print_type !== 'qrcode' && d.text.some(l => l.color === 'red')) || (d.border_color === 'red' && frameOf(d) !== 'none')
+        || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
+    if (redParts && !redTape(d)) return 'This tape has no red, the red parts print black.';
     return '';
 }
 
@@ -900,7 +935,7 @@ const LOOKS = [
             // Without content of its own the code holds the printed text,
             // with the same date, counter and ID
             Object.assign(d, { print_type: 'qrcode_text', code_text: '', qrcode_size: '14', margin_left: '30', margin_right: '30' });
-            setAlong(d, true);
+            setWide(d, true);
             d.text = lines.map((t, i) => L(t, i ? 60 : 100, i === 0, 'left'));
         }
     }
@@ -1021,7 +1056,7 @@ function bindWizardChips(ta) {
     $('#wzSym').onclick = () => openSymbols(ta);
     $('#wzVars').onclick = () => toggleVars($('#wzVars'), $('#wzVarsBox'));
     $('#wzCode').onclick = () => openEditor({ title: 'New label', design: Object.assign(lookDesign(5), { text: wizardLines().length ? lookDesign(5).text : [L('Text', 100, true, 'left')], code_text: wizardLines().length ? '' : 'https://example.com' }) });
-    $('#wzImage').onclick = () => openEditor({ title: 'New label', design: setAlong(Object.assign(baseDesign(S.tape), { print_type: 'image', text: wizardLines().map((t, i) => L(t, i ? 60 : 90, i === 0, 'left')) }), true) });
+    $('#wzImage').onclick = () => openEditor({ title: 'New label', design: setWide(Object.assign(baseDesign(S.tape), { print_type: 'image', text: wizardLines().map((t, i) => L(t, i ? 60 : 90, i === 0, 'left')) }), true) });
 }
 
 function insertAt(input, text, padded = true) {
@@ -1398,7 +1433,7 @@ function linksDialog(m) {
     const blanks = blanksOf(m.design);
     const url = `${location.origin}${location.pathname}#fill/${encodeURIComponent(m.id)}`;
     const example = blanks.length ? `${url}?${encodeURIComponent(blanks[0])}=${encodeURIComponent(blanks[0] === 'What' ? 'Chili' : 'Example')}` : url;
-    const sticker = setAlong(Object.assign(baseDesign(S.tape), {
+    const sticker = setWide(Object.assign(baseDesign(S.tape), {
         print_type: 'qrcode_text', code_text: url, qrcode_size: '12', margin_left: '30', margin_right: '30',
         text: [L('Scan to print a', 56, false, 'left'), L(m.title + ' label', 84, true, 'left')]
     }), true);
@@ -1496,8 +1531,8 @@ function renderEditor() {
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape ? ' (in the printer)' : ''}`)}</select></div>
-                    <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${isAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${isAlong(d) ? 'on' : ''}">Along</button></div></div>
-                    <div><span class="label-s">Text that does not fit</span><div class="seg"><button type="button" data-shrink="1" class="${d.shrink_text === '1' ? 'on' : ''}">Shrink it</button><button type="button" data-shrink="0" class="${d.shrink_text === '1' ? '' : 'on'}">Keep the size</button></div></div>
+                    <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
+                    <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text that does not fit</span><div class="seg">${[['1', 'Shrink it'], ['0', 'Keep the size']].map(([v, n]) => `<button type="button" data-shrink="${v}" class="${(d.shrink_text === '1') === (v === '1') ? 'on' : ''}"${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -1654,7 +1689,7 @@ function lineRow(l, i, main, families, red) {
             <button class="mini" type="button" data-act="align" title="Alignment: ${esc(l.align || 'center')}"><i class="fa-solid fa-${al}"></i></button>
             <button class="mini${l.inverted ? ' on' : ''}" type="button" data-act="invert" title="White on black"><i class="fa-solid fa-circle-half-stroke"></i></button>
             <button class="mini${l.checkbox ? ' on' : ''}" type="button" data-act="todo" title="To-do box in front"><i class="fa-regular fa-square-check"></i></button>
-            <button class="mini red-sw${l.color === 'red' ? ' on' : ''}" type="button" data-act="red" title="${red || l.color === 'red' ? 'Red text' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>
+            <button class="mini red-sw${l.color === 'red' ? ' on' : ''}${l.color === 'red' && !red ? ' nored' : ''}" type="button" data-act="red" title="${red ? 'Red text' : l.color === 'red' ? 'This tape has no red, the line prints black' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>
             <label class="mini-wrap${spacing !== 100 ? ' on' : ''}" title="Line spacing"><i class="fa-solid fa-text-height"></i><select class="mini lsp" aria-label="Line spacing of line ${i + 1}">${SPACINGS.concat(SPACINGS.includes(spacing) ? [] : [spacing]).map(v => `<option value="${v}"${v === spacing ? ' selected' : ''}>${v} %</option>`).join('')}</select></label>
         </div></div>`;
 }
@@ -1786,7 +1821,7 @@ function bindEditor() {
         // Next to text, a code without content of its own holds the text
         if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
         if (lay === 'codetext' && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
-        if (lay === 'codetext' || lay === 'image') { setAlong(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
+        if (lay === 'codetext' || lay === 'image') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
         if (lay === 'codetext' && d.qrcode_size === '10') d.qrcode_size = '14';
         if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
@@ -1840,9 +1875,9 @@ function bindEditor() {
             renderEditor();
         });
     });
-    if ($('#edUseTape')) $('#edUseTape').onclick = () => { const along = isDieCut(S.tape) || isAlong(d); d.label_size = S.tape; setAlong(d, along); renderEditor(); };
-    $('#edSize').onchange = e => { const along = isDieCut(e.target.value) || isAlong(d); d.label_size = e.target.value; setAlong(d, along); renderEditor(); };
-    $$('[data-along]').forEach(b => b.onclick = () => { setAlong(d, b.dataset.along === '1'); renderEditor(); });
+    if ($('#edUseTape')) $('#edUseTape').onclick = () => { setSize(d, S.tape); renderEditor(); };
+    $('#edSize').onchange = e => { setSize(d, e.target.value); renderEditor(); };
+    $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-shrink]').forEach(b => b.onclick = () => { d.shrink_text = b.dataset.shrink; renderEditor(); });
     // Code
@@ -1897,7 +1932,7 @@ function bindEditor() {
             storeQuiet('designer_edit', S.edit);
             $('#edSave').innerHTML = '<i class="fa-regular fa-bookmark"></i><span class="lbl">Save</span>';
             $('#edSave').title = 'Save';
-            toast(over ? `Saved "${E.title}"` : `"${E.title}" is now one of your saved labels`, { label: 'Fill in and print', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
+            toast(over ? `Saved "${E.title}"` : `"${E.title}" is now one of your saved labels`, { label: blanksOf(E.design).length ? 'Fill in and print' : 'Open in the wizard', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
         } catch (e) { toast(e.message); }
     };
 }

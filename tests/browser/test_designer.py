@@ -199,6 +199,14 @@ def test_settings_that_do_not_apply_are_disabled(designer):
     assert designer.is_disabled('#edThr')
 
 
+def test_code_alone_has_no_text_settings(designer):
+    type_line(designer, 0, 'Spices')
+    designer.click('[data-lay="code"]')
+    wait_for_preview(designer)
+    assert designer.is_disabled('[data-shrink="1"]')
+    assert designer.locator('.label-s:text-is("Code runs")').count() == 1
+
+
 def test_ptouch_tape_is_shown_at_180_dpi(designer):
     designer.evaluate("""() => {
         S.printer = { path: 'a', model: 'PT-E550W', media_width: 12, media_length: 0 };
@@ -214,6 +222,42 @@ def test_ptouch_tape_is_shown_at_180_dpi(designer):
     _, height = preview_size(designer)
     assert designer.inner_text('#edStage .dim-x') == '12 mm'
     assert designer.inner_text('#edStage .dim-y') == f'{round(height / 180 * 25.4)} mm'
+
+
+def test_switch_shows_how_the_text_runs_on_the_tape(designer):
+    def runs():
+        wait_for_preview(designer)
+        return designer.inner_text('[data-along].on')
+    type_line(designer, 0, 'Spices')
+    assert runs() == 'Across the tape'
+    # 62 x 29 mm labels are wider than long, standard is across the tape
+    designer.select_option('#edSize', '62x29')
+    assert runs() == 'Across the tape'
+    designer.click('[data-along="1"]')
+    assert runs() == 'Along'
+    assert designer.evaluate('() => S.edit.design.orientation') == 'rotated'
+    designer.select_option('#edSize', '29x90')
+    assert runs() == 'Along'
+    # Round labels are shown round, endless tape keeps the direction of the text
+    designer.select_option('#edSize', 'd24')
+    assert runs() == 'Across the tape'
+    assert 'round' in designer.get_attribute('#edStage', 'class')
+    designer.select_option('#edSize', '62')
+    assert runs() == 'Across the tape'
+
+
+def test_red_prints_black_on_tape_without_red(designer):
+    type_line(designer, 0, 'Danger')
+    designer.select_option('#edSize', '62red')
+    wait_for_preview(designer)
+    designer.click('[data-row="0"] [data-act="red"]')
+    wait_for_preview(designer)
+    designer.select_option('#edSize', '62')
+    wait_for_preview(designer)
+    assert 'red parts print black' in fits_note(designer)
+    assert 'nored' in designer.get_attribute('[data-row="0"] [data-act="red"]', 'class')
+    assert designer.evaluate("() => JSON.parse(formFor(S.edit.design).get('text'))[0].color") == 'black'
+    assert designer.evaluate('() => S.edit.design.text[0].color') == 'red'
 
 
 def test_distance_between_code_and_text(designer):
@@ -484,6 +528,19 @@ def test_look_with_blanks_asks_for_them_before_printing(designer):
     designer.keyboard.press('Enter')
     designer.wait_for_function("() => S.libSel && S.libSel.id === 'look5'")
     wait_for_preview(designer, '#libStage')
+
+
+def test_wizard_counts_what_was_printed(designer, monkeypatch, tmp_path):
+    monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="all"]')
+    designer.fill('#wzText', 'Shelf\nTools')
+    designer.wait_for_function("() => document.querySelectorAll('#fzLooks .tile').length === 6")
+    # Two lines stay visible above the long list
+    assert designer.evaluate("() => { const t = document.getElementById('wzText'); return t.scrollHeight <= t.clientHeight; }")
+    designer.click('#fzLooks [data-plook="0"]')
+    assert printed(designer) == ['printed']
+    assert designer.inner_text('.lib-nav [data-cat="printed"] .n') == '1'
 
 
 def test_search_finds_labels_and_commands(designer):

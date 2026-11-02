@@ -188,10 +188,14 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .flow { position: absolute; color: var(--muted); font-size: .9rem; opacity: .8; }
 .stage:not(.side) .flow { left: -1.6rem; top: 14px; }
 .stage.side .flow { top: -1.6rem; left: 14px; }
+.stage.short:not(.side) .flow { top: 0; }
+.stage.short.side .flow { left: 0; }
+.stage.tiny .flow { display: none; }
 .stage .paper { background: #fff; line-height: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 24px rgba(0, 0, 0, .1); }
 .stage .paper img { display: block; width: 100%; height: auto; }
 .stage .paper .blank-paper { width: 100%; background: #fff; }
 .stage.diecut .paper { border-radius: 6px; overflow: hidden; }
+.stage.round .paper { border-radius: 50%; }
 .stage .cut { position: absolute; left: -18px; right: -18px; bottom: -1px; border-bottom: 2px dashed #9aa3ac; }
 .stage .cut i { position: absolute; left: -4px; top: -.55rem; font-size: .8rem; color: #8a939d; transform: rotate(-90deg); }
 .stage.side .cut { left: auto; top: -18px; bottom: -18px; right: -1px; border-bottom: 0; border-right: 2px dashed #9aa3ac; }
@@ -236,6 +240,8 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .lib-nav button.on { background: var(--select-soft); color: var(--select); font-weight: 650; }
 .lib-nav button.on i, .lib-nav button.on .n { color: var(--select); }
 .lib-list { padding: 1.2rem 1.4rem 2rem; display: flex; flex-direction: column; gap: 1rem; min-width: 0; overflow: auto; }
+/* It scrolls, its parts keep their height */
+.lib-list > * { flex-shrink: 0; }
 .lib-bar { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; }
 .lib-bar select { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); padding: .28rem .7rem; font-size: .85rem; }
 .typer { font-size: 1.3rem; padding: .85rem 1.1rem; border-radius: 12px; min-height: 3.4rem; overflow: hidden; margin-top: -.3rem; }
@@ -339,6 +345,8 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .mini.on { background: var(--ink); color: var(--on-ink); border-color: var(--ink); }
 /* Bold is wished, but the font has no bold style */
 .mini.on.nobold { background: transparent; color: var(--ink); border: 1px dashed var(--muted); text-decoration: line-through; }
+.mini.red-sw.on.nored { box-shadow: none; border: 1px dashed var(--muted); }
+.mini.red-sw.nored span { opacity: .45; }
 .mini.quiet { border-color: transparent; background: transparent; color: var(--muted); }
 .mini.quiet:hover { color: var(--bad); }
 input.mini { width: 2.8rem; cursor: text; -moz-appearance: textfield; }
@@ -418,6 +426,7 @@ select.mini.lsp { max-width: 4rem; }
 .sheet h2 { font-size: 1.3rem; text-align: center; }
 .sheet p { text-align: center; color: var(--muted); margin-top: -.5rem; }
 .sheet .btn-print, .sheet .btn { width: 100%; padding: .75rem; }
+.sheet .btn.icon { width: auto; }
 .toast { position: fixed; left: 50%; bottom: 1.2rem; transform: translateX(-50%); background: var(--ink); color: var(--on-ink); border-radius: 10px; padding: .6rem 1rem; font-size: .92rem; z-index: 60; box-shadow: var(--shadow); max-width: calc(100% - 2rem); }
 .pop { width: min(400px, 100%); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 1rem 1.1rem 1.1rem; }
 .pp { display: flex; flex-direction: column; gap: .9rem; text-align: left; }
