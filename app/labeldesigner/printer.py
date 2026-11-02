@@ -310,7 +310,7 @@ class PrinterQueue:
             rotate, dither, high_res, fast = job['settings']
             if ptouch:
                 # Cut after every label, or with cut_once after the last one
-                # only, the printer half cuts between them
+                # of each batch, the printer half cuts between them
                 qlr.cut_every = 1 if all(job['cuts']) else len(job['images'])
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
@@ -325,7 +325,7 @@ class PrinterQueue:
                 self.label_size,
                 red='red' in str(self.label_size),
                 dither=dither,
-                cut=any(job['cuts']),
+                cut=ptouch or any(job['cuts']),
                 dpi_600=high_res,
                 hq=not fast,
                 rotate=rotate,

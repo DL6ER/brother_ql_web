@@ -2103,8 +2103,8 @@ def test_copies_on_ptouch_printers_are_one_job_per_batch(tmp_path, monkeypatch, 
         assert data.endswith(b'\x1a')
     cut_every = [[data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)] for data in sent]
     if cut_once == '1':
-        # Cut after the last label only, the first batch is not cut
-        assert cut_every == [[], [2, 2]]
+        # Half cuts between the labels, the tape is cut after each batch
+        assert cut_every == [[5] * 5, [2] * 2]
     else:
         # Cut after every label
         assert cut_every == [[1] * 5, [1] * 2]
