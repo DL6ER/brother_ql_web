@@ -248,7 +248,7 @@ def test_network_printer_error_after_the_job_is_reported(network_job):
     answer, sent, print_label = network_job
     answer['bodies'] = [READY, PRINTING, fixture('ql810w-stopped-other-error.bin')]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: See the lights or display of the printer'
 
 
@@ -256,7 +256,7 @@ def test_job_is_not_sent_to_a_network_printer_with_an_error(network_job):
     answer, sent, print_label = network_job
     answer['bodies'] = [COVER_OPEN]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: The cover is open'
     assert sent == []
 

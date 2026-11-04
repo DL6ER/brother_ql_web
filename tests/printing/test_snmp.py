@@ -213,7 +213,7 @@ def test_job_with_labels_that_cannot_be_fed(network_job, agent):
     agent['answers'] = [printer_state(ENDLESS_62), printer_state(ENDLESS_62, PRINTING),
                         printer_state(endless_62(CANNOT_FEED), OTHER)]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     # The printer prints the label once the labels are fed
     assert response.get_json()['message'] == 'The printer reports: ' + printer.FEED_ERROR
     assert 'Do not print it again' in response.get_json()['message']
@@ -223,7 +223,7 @@ def test_job_is_not_sent_with_the_cover_open(network_job, agent):
     answer, sent, print_label = network_job
     agent['answers'] = [printer_state(endless_62(COVER_OPEN), OTHER)]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: The cover is open'
     assert sent == []
 

@@ -35,7 +35,8 @@ class TestLabelDesignerAPI:
         data = EXAMPLE_FORMDATA.copy()
         data['printer'] = '/dev/usb/lp99'
         response = client.post('/labeldesigner/api/print', data=data)
-        assert response.status_code == 400
+        # The printer, not the request: it may work later
+        assert response.status_code == 503
         assert response.is_json
         json_response = response.get_json()
         assert 'message' in json_response
@@ -266,3 +267,37 @@ def test_ptouch_tape_is_endless(tmp_path):
     image = Image.open(io.BytesIO(response.data))
     # Across the tape the printable 70 dots, along it as long as the text
     assert image.height == 70 and image.width > 100
+
+
+@pytest.mark.parametrize('path, body', [
+    ('/labeldesigner/api/print', None),
+    ('/labeldesigner/api/repository/print', {'name': 'Shelf.json'}),
+    ('/labeldesigner/api/demos/print', {'id': 'signs/001-fire-extinguisher-62.json'}),
+    ('/labeldesigner/api/webhook/print', 'webhook'),
+])
+def test_printer_failures_are_told_from_refused_requests(tmp_path, monkeypatch, path, body):
+    # Both were 400, a client could not tell whether to fix its request or
+    # to try again later
+    from app.labeldesigner import printer
+    failure = 'The printer reports: Replace media error'
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: failure)
+    client = make_client(tmp_path, empty_repo=True)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    text = json.dumps([{'text': 'Shelf', 'font': 'DejaVu Sans,Book', 'size': '40'}])
+    assert client.post('/labeldesigner/api/repository/save', json={'name': 'Shelf.json', 'label_size': '62', 'text': text}).status_code == 200
+    if body is None:
+        def post(**values):
+            return client.post(path, data=dict(EXAMPLE_FORMDATA, **values))
+    elif body == 'webhook':
+        image = base64.b64encode(_upload(_red_square(), 'image.png').stream.read()).decode('ascii')
+
+        def post(**values):
+            return client.post(path, json=dict({'password': 'secret', 'images': [image]}, **values))
+    else:
+        def post(**values):
+            return client.post(path, json=dict(body, **values))
+    response = post()
+    assert (response.status_code, response.get_json()['message']) == (503, failure)
+    # A request that is refused stays 400
+    refused = {'label_size': '99x99'} if body in (None, 'webhook') else {'print_count': 0}
+    assert post(**refused).status_code == 400
