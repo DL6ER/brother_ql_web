@@ -25,7 +25,7 @@ from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr
 from brother_ql.labels import ALL_LABELS, FormFactor
 from brother_ql.models import ALL_MODELS
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
-from .label_names import label_name, label_printers, label_size_problem
+from .label_names import DEFAULT_DPI, MAX_LABEL_LENGTH, PTOUCH_DPI, PTOUCH_LABELS, feed_margin_mm, label_length_problem, label_name, label_printers, label_size_problem, shortest_length
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -34,7 +34,6 @@ from app.utils import (
     pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
 )
 
-DEFAULT_DPI = 300
 # The label size of a request or a saved label that names none, the same for
 # the label and the printer
 DEFAULT_LABEL_SIZE = '62'
@@ -543,6 +542,7 @@ def repo_save():
                     del data[key]
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
+        _check_label_length(data)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
@@ -1226,6 +1226,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'high_res': _whole_or(d.get('high_res'), 0) != 0,
         'code_text': d.get('code_text', '').strip(),
         'text_fit': _text_fit(d),
+        # Empty: an endless label grows with its content
+        'label_length': _label_length(d.get('label_length')),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
@@ -1261,6 +1263,15 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         width, height = height, width
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
+    # A length given for an endless label is its size along the tape, die-cut
+    # labels have their own
+    fixed_length = label_type == LabelType.ENDLESS_LABEL and context['label_length'] is not None
+    if fixed_length:
+        length = _printed_length(context['label_length'], label_size, context['high_res'])
+        if label_orientation == LabelOrientation.STANDARD:
+            height = length
+        else:
+            width = length
 
     # For each line in text, we determine and add the font path
     fonts = get_fonts()
@@ -1338,6 +1349,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
+        fixed_length=fixed_length,
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
             and context['image_fit'] and not label.has_lines()):
@@ -1360,6 +1372,44 @@ def _text_fit(d: dict) -> str:
     if value not in ('none', 'shrink', 'fill'):
         raise ValueError("text_fit must be none, shrink or fill")
     return value
+
+
+def _label_length(value) -> float | None:
+    """The length of an endless label of a request in millimeters, as it is
+    cut. None (left out, empty or null) lets the label grow with its
+    content."""
+    if value is None or str(value).strip() == '':
+        return None
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        length = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("label_length must be a length in millimeters or empty") from None
+    if not math.isfinite(length) or length <= 0:
+        raise ValueError("label_length must be a length in millimeters or empty")
+    if length > MAX_LABEL_LENGTH:
+        raise ValueError(f"label_length must not be longer than {MAX_LABEL_LENGTH} mm")
+    return length
+
+
+def _printed_length(length: float, label_size: str, high_res: bool = False) -> int:
+    """Dots of the label printed for an endless label of length millimeters
+    as cut: the printer feeds the margin of the label size before and after
+    the print."""
+    label = next(label for label in ALL_LABELS if label.identifier == label_size)
+    if length < shortest_length(label):
+        raise ValueError(label_length_problem(label))
+    dpi = PTOUCH_DPI if label_size in PTOUCH_LABELS else DEFAULT_DPI
+    return round((length - 2 * feed_margin_mm(label)) / 25.4 * dpi * (2 if high_res else 1))
+
+
+def _check_label_length(data: dict) -> None:
+    """Refuse the length of a label to save as printing it would."""
+    length = _label_length(data.get('label_length'))
+    label = next((label for label in ALL_LABELS if label.identifier == str(data.get('label_size'))), None)
+    if length is not None and label is not None and _label_type(label.form_factor) == LabelType.ENDLESS_LABEL:
+        _printed_length(length, label.identifier)
 
 
 def _image_text_gap(value) -> int | None:

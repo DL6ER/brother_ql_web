@@ -230,6 +230,7 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        fixed_length: bool = False,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -238,7 +239,8 @@ class SimpleLabel:
         "default": "1"}} or {"Frozen on": {"type": "date", "format":
         "%d.%m.%Y"}}. With mark_blanks the text shows blanks without a value
         as their name and a question mark, as the label designer previews
-        them."""
+        them. With fixed_length an endless label has the size given, it
+        does not grow with its content."""
         # Input validation
         if width < 0 or height < 0:
             raise ValueError("Width and height must be non-negative.")
@@ -291,6 +293,8 @@ class SimpleLabel:
         # The text measured at each set of line sizes, see _measure(), shared
         # by the copies of a print job where given
         self._shared_layouts = layouts
+        # An endless label of a given length is laid out like a die-cut one
+        self._fixed_length = fixed_length
         self._layouts: dict = {}
         self._text_key = ''
         self._text_scale = 1.0
@@ -672,22 +676,16 @@ class SimpleLabel:
                 logger.debug(f"Maximal allowed dimensions: {max_width}x{max_height} mm")
                 logger.debug(f"Original image size: {img_width}x{img_height} px")
 
-                # Resize the image to fit within the maximum dimensions
-                scale = 1.0
-                if self._label_orientation == LabelOrientation.STANDARD:
-                    if self._label_type in (LabelType.ENDLESS_LABEL,):
-                        # Only width is considered for endless label without rotation
-                        scale = max_width / img_width
-                    else:
-                        # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height)
+                # Resize the image to fit within the maximum dimensions. A
+                # label that grows with its content, endless tape, has only
+                # the size across the tape to fit into.
+                grows_wide, grows_high = self._grows()
+                if grows_high:
+                    scale = max_width / img_width
+                elif grows_wide:
+                    scale = max_height / img_height
                 else:
-                    if self._label_type in (LabelType.ENDLESS_LABEL,):
-                        # Only height is considered for endless label without rotation
-                        scale = max_height / img_height
-                    else:
-                        # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height)
+                    scale = min(max_width / img_width, max_height / img_height)
                 logger.debug(f"Scaling image by factor: {scale}")
                 self._image_scale = scale
                 new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
@@ -1148,8 +1146,8 @@ class SimpleLabel:
 
     def _grows(self) -> tuple[bool, bool]:
         """Whether the label grows with its content in width and in height:
-        endless labels do along the tape."""
-        endless = self._label_type == LabelType.ENDLESS_LABEL
+        endless labels do along the tape, unless they have a fixed length."""
+        endless = self._label_type == LabelType.ENDLESS_LABEL and not self._fixed_length
         return endless and self._label_orientation == LabelOrientation.ROTATED, endless and self._label_orientation == LabelOrientation.STANDARD
 
     def _text_space(self, width, height, img_width, img_height, gap, largest=False):

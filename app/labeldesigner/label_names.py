@@ -14,8 +14,21 @@ brother_ql (tape width x label length) with Brother's official values where
 brother_ql rounds differently.
 """
 
-from brother_ql.labels import ALL_LABELS, Color, Label
+import math
+
+from brother_ql.labels import ALL_LABELS, Color, FormFactor, Label
 from brother_ql.models import ALL_MODELS, Model
+
+DEFAULT_DPI = 300
+# TZe tape is printed at 180 dpi
+PTOUCH_DPI = 180
+
+# Brother's raster command references: a print of 12.7 mm (150 dots) on QL
+# printers, 4.4 mm (31 dots) on TZe tape, at most 1000 mm. A label as cut
+# adds the feed margin of its size before and after the print.
+MAX_LABEL_LENGTH = 1000
+MIN_PRINT_LENGTH = 12.7
+MIN_PTOUCH_PRINT_LENGTH = 4.4
 
 LABEL_NAMES = {
     # Endless DK rolls
@@ -121,3 +134,26 @@ def check_label_size(label_size: str, model: str):
     problem = label_size_problem(label_size, model)
     if problem:
         raise ValueError(problem)
+
+
+def feed_margin_mm(label: Label) -> float:
+    """The margin the printer feeds before and after the print of a label
+    of the size, in millimeters."""
+    return label.feed_margin / (PTOUCH_DPI if label.identifier in PTOUCH_LABELS else DEFAULT_DPI) * 25.4
+
+
+def shortest_length(label: Label) -> float:
+    """The shortest an endless label of the size is as cut, in millimeters,
+    rounded up to a tenth."""
+    shortest_print = MIN_PTOUCH_PRINT_LENGTH if label.identifier in PTOUCH_LABELS else MIN_PRINT_LENGTH
+    return math.ceil((shortest_print + 2 * feed_margin_mm(label)) * 10) / 10
+
+
+def label_length_problem(label: Label) -> str:
+    return f"label_length must be at least {shortest_length(label):g} mm on this tape"
+
+
+def label_length_problems() -> list[str]:
+    """Every message a length too short for an endless label is refused with."""
+    return list(dict.fromkeys(label_length_problem(label) for label in ALL_LABELS
+                              if label.form_factor in (FormFactor.ENDLESS, FormFactor.PTOUCH_ENDLESS)))
