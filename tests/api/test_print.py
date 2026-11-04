@@ -40,8 +40,8 @@ class TestLabelDesignerAPI:
         assert response.is_json
         json_response = response.get_json()
         assert 'message' in json_response
-        assert "Could not send the label to the printer" in json_response['message']
-        assert "/dev/usb/lp99" in json_response['message']
+        # The path is in the log only
+        assert json_response['message'] == 'Could not send the label to the printer: The printer is switched off or not connected'
         assert 'success' in json_response
         assert json_response['success'] is False
 
@@ -86,7 +86,8 @@ def test_print_rejects_unsupported_printer_devices(tmp_path, device):
     data['printer'] = device.format(target=target)
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'] == f"Unsupported printer: {data['printer']}"
+    # Without the path, which is in the log only
+    assert response.get_json()['message'] == 'Unsupported printer'
     assert target.read_text() == '{"keep": true}'
 
 
@@ -96,7 +97,7 @@ def test_printer_device_with_trailing_newline_is_refused(tmp_path):
     data['printer'] = '/dev/usb/lp0\n'
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'].startswith('Unsupported printer')
+    assert response.get_json()['message'] == 'Unsupported printer'
 
 
 def test_simulator_keeps_only_the_newest_labels(tmp_path, monkeypatch):
@@ -183,7 +184,7 @@ def test_several_files_count_against_the_print_limit(tmp_path):
                       (io.BytesIO(_pdf((300, 200))), 'one.pdf', 'application/pdf')]}
     response = client.post('/labeldesigner/api/print', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'] == 'A print job must not have more than 100 labels, 2 files with 3 labels and 40 copies would be 120'
+    assert response.get_json()['message'] == 'A print job must not have more than 100 labels'
 
 
 @pytest.mark.parametrize('route', ['print', 'webhook', 'repository'])

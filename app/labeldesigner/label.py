@@ -136,13 +136,36 @@ def check_check_digit(barcode_type: str, value: str) -> None:
     name, length, check_digit, hyphens = CHECK_DIGIT_CODES[barcode_type.lower()]
     number = value.replace('-', '') if hyphens else value
     digits, given = number[:length], number[length:].upper()
-    may_be_x = check_digit in (_isbn10_check_digit, _issn_check_digit)
+    may_be_x = _may_be_x(check_digit)
     if not (len(digits) == length and _is_digits(digits)
             and (given == '' or len(given) == 1 and (_is_digits(given) or may_be_x and given == 'X'))):
-        raise ValueError(f"{name} takes {length} digits, or {length + 1} with the check digit{', which may be an X' if may_be_x else ''}")
+        raise ValueError(_length_problem(name, length, may_be_x))
     expected = check_digit(digits)
     if given and given != expected and expected != '10':
-        raise ValueError(f"The check digit of {name} {value} must be {expected}")
+        raise ValueError(_check_digit_problem(name, expected))
+
+
+def check_digit_problems() -> list[str]:
+    """Every message check_check_digit can refuse a value with."""
+    problems = []
+    for name, length, check_digit, _ in CHECK_DIGIT_CODES.values():
+        may_be_x = _may_be_x(check_digit)
+        problems.append(_length_problem(name, length, may_be_x))
+        problems += [_check_digit_problem(name, digit) for digit in '0123456789X' if digit != 'X' or may_be_x]
+    return list(dict.fromkeys(problems))
+
+
+def _may_be_x(check_digit) -> bool:
+    return check_digit in (_isbn10_check_digit, _issn_check_digit)
+
+
+def _length_problem(name: str, length: int, may_be_x: bool) -> str:
+    return f"{name} takes {length} digits, or {length + 1} with the check digit{', which may be an X' if may_be_x else ''}"
+
+
+def _check_digit_problem(name: str, expected: str) -> str:
+    # Without the value, which the designer shows next to it anyway
+    return f"The check digit of {name} must be {expected}"
 
 
 def _is_digits(text: str) -> bool:

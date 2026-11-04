@@ -400,7 +400,10 @@ class PrinterQueue:
             return message
         except Exception as e:
             logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
-            return f"Could not send the label to the printer{batch}: {e}"
+            reason = _unanswered_reason(e)
+            if reason:
+                return f"Could not send the label to the printer{batch}: {reason}"
+            return f"Could not send the label to the printer{batch}, the log of the server names the reason"
 
     def process_queue(self, batch_size: int = 0) -> str:
         if not self._print_queue:
@@ -671,15 +674,22 @@ _UNANSWERED = (
 )
 
 
-def unanswered(error: Exception) -> str:
-    """Why a printer did not answer the status query, e.g. 'The printer is
-    switched off or not connected' for a device file that is gone."""
+def _unanswered_reason(error: Exception) -> str:
+    """Why a printer did not answer, one of _UNANSWERED, or an empty string.
+    Never the text of the error, which may show paths and other details of
+    the server."""
     if isinstance(error, TimeoutError):
         return 'The printer does not answer'
     for numbers, text in _UNANSWERED:
         if getattr(error, 'errno', None) in numbers:
             return text
-    return f'The printer does not answer the status query ({error})'
+    return ''
+
+
+def unanswered(error: Exception) -> str:
+    """Why a printer did not answer the status query, e.g. 'The printer is
+    switched off or not connected' for a device file that is gone."""
+    return _unanswered_reason(error) or 'The printer does not answer the status query, the log of the server names the reason'
 
 
 def _failed_printer_state(device_specifier: str, error: Exception, model: str = 'Unknown') -> dict:
@@ -1116,5 +1126,5 @@ def get_ptr_status(config: Config):
         }
     except Exception as e:
         logger.exception("Printer status error: %s", e)
-        status['errors'] = [str(e)]
+        status['errors'] = ['The status of the printer could not be read, the log of the server names the reason']
         return status

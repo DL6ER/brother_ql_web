@@ -110,6 +110,12 @@ def label_size_problem(label_size: str, model: str) -> str:
     return ''
 
 
+def label_size_problems() -> list[str]:
+    """Every problem of a known label size on a known printer model."""
+    return [problem for label in ALL_LABELS for model in ALL_MODELS
+            if (problem := label_size_problem(label.identifier, model.identifier))]
+
+
 def check_label_size(label_size: str, model: str):
     """Raise ValueError if the printer model cannot print the label size."""
     problem = label_size_problem(label_size, model)

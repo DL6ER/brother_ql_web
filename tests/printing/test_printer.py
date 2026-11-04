@@ -257,7 +257,8 @@ def test_printer_without_status_answer_stays_listed(client, monkeypatch):
     (TimeoutError('timed out'), 'The printer does not answer'),
     (ConnectionRefusedError(errno.ECONNREFUSED, 'Connection refused'), 'The printer refuses the connection'),
     (OSError(errno.EHOSTUNREACH, 'No route to host'), 'The printer cannot be reached'),
-    (ValueError('Unexpected status'), 'The printer does not answer the status query (Unexpected status)'),
+    # Other errors only in the log, they may show paths of the server
+    (ValueError('Unexpected status in /app/instance'), 'The printer does not answer the status query, the log of the server names the reason'),
 ])
 def test_why_a_printer_does_not_answer_is_told_in_plain_words(error, reason):
     assert printer.unanswered(error) == reason
@@ -330,7 +331,7 @@ def test_unknown_model_is_refused_with_a_message(client):
     # brother_ql refused it without a message, the label designer showed an
     # empty error
     for model, message in [('Unknown', 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'),
-                           ('QL-9000', 'Unknown printer model: QL-9000')]:
+                           ('QL-9000', 'Unknown printer model')]:
         response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, printer='simulation', model=model))
         assert (response.status_code, response.get_json()['message']) == (400, message)
 
@@ -355,3 +356,27 @@ def test_configured_printers(client, monkeypatch):
         assert routes._printer(LP1, None) == (LP1, 'QL-1100')
         assert routes._printer(None, None) == (DEVICE, 'QL-700')
         assert routes._printer(LP1, 'QL-800') == (LP1, 'QL-800')
+
+
+def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):
+    # The text of an error may show paths of the server, only the log has it
+    for error, message in ((FileNotFoundError(errno.ENOENT, 'No such file or directory', '/dev/usb/lp0'),
+                            'Could not send the label to the printer: The printer is switched off or not connected'),
+                           (RuntimeError('/app/instance/secret.json is gone'),
+                            'Could not send the label to the printer, the log of the server names the reason')):
+        def fail(*args, **kwargs):
+            raise error
+        monkeypatch.setattr(printer, 'send_job', fail)
+        caplog.clear()
+        response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
+        assert (response.status_code, response.get_json()['message']) == (503, message)
+        assert any(str(error) in record.getMessage() for record in caplog.records)
+
+
+def test_status_errors_are_told_without_their_text(client, monkeypatch, caplog):
+    def fail(*args, **kwargs):
+        raise RuntimeError('/app/instance/secret.json is gone')
+    monkeypatch.setattr(printer, 'query_status', fail)
+    status = printer.get_ptr_status(client.application.config)
+    assert status['errors'] == ['The status of the printer could not be read, the log of the server names the reason']
+    assert any('/app/instance/secret.json is gone' in record.getMessage() for record in caplog.records)
