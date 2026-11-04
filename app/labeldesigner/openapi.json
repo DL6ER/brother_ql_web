@@ -287,7 +287,17 @@
             }
           },
           "400": {
-            "description": "Not printed, `message` says why, e.g. \"The printer reports: Replace media error\".",
+            "description": "The request was refused, `message` says why, e.g. an unknown label size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
             "content": {
               "application/json": {
                 "schema": {
@@ -972,6 +982,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later. Also when another label was being saved or deleted for longer than 10 seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -1340,6 +1360,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -1456,6 +1486,16 @@
           },
           "403": {
             "description": "The webhook is disabled, `WEBHOOK_PASSWORD` is not set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
             "content": {
               "application/json": {
                 "schema": {

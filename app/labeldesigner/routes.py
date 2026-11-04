@@ -298,6 +298,12 @@ _SAVING = threading.Lock()
 SAVE_LOCK_TIMEOUT = 10
 
 
+# The status of a print the printer did not do, e.g. it reports an error,
+# does not answer or is busy with another job: the same request may succeed
+# later. A request that is refused, e.g. for an unknown label size, gets 400.
+PRINTER_FAILED = 503
+
+
 class LabelsBusy(Exception):
     """Labels were put in place by another request for longer than
     SAVE_LOCK_TIMEOUT."""
@@ -901,7 +907,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     result = {'success': len(status) == 0}
     if len(status) > 0:
         result['message'] = status
-        return make_response(jsonify(result), 400)
+        return make_response(jsonify(result), PRINTER_FAILED)
     return result
 
 
@@ -1093,7 +1099,7 @@ def print_label():
     return_dict['success'] = len(status) == 0
     if len(status) > 0:
         return_dict['message'] = status
-        return make_response(jsonify(return_dict), 400)
+        return make_response(jsonify(return_dict), PRINTER_FAILED)
     return return_dict
 
 
@@ -1735,5 +1741,5 @@ def webhook_print():
     }
     if status:
         result['message'] = status
-        return make_response(jsonify(result), 400)
+        return make_response(jsonify(result), PRINTER_FAILED)
     return jsonify(result)

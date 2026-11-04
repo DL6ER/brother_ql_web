@@ -130,7 +130,7 @@ def test_print_gives_up_when_printer_stays_busy(client, monkeypatch):
     monkeypatch.setattr(printer, 'DEVICE_LOCK_TIMEOUT', 0.2)
     with printer.device_lock(DEVICE):
         response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'Printer is busy with another print job, please try again'
 
 
@@ -253,7 +253,7 @@ def test_print_error_of_the_printer_is_reported(client, monkeypatch):
         self.responses.append(bytes(packet))
     monkeypatch.setattr(ExclusiveUsbPrinter, 'write', replace_media)
     response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: Replace media error'
 
 
