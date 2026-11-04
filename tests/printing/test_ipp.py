@@ -207,7 +207,7 @@ def test_network_printer_that_does_not_answer_keeps_its_last_status(fake_printer
     app = create_app()
     app.config['PRINTER_PRINTER'] = 'tcp://127.0.0.1'
     status = app.test_client().get('/labeldesigner/api/printer_status').get_json()
-    assert status['errors'] == ['The printer does not answer the status query (timed out)']
+    assert status['errors'] == ['The printer does not answer']
     assert (status['model'], status['media_width'], status['media_length']) == ('QL-810W', 62, 29)
 
 

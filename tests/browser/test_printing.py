@@ -138,7 +138,7 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     wait_for_preview(designer)
     designer.click('#printerChip')
     assert designer.eval_on_selector_all('.plist [data-printer]', 'rows => rows.map(r => r.dataset.printer)') == ['simulation', other]
-    assert 'does not answer' in designer.inner_text(f'[data-printer="{other}"]')
+    assert 'switched off or not connected' in designer.inner_text(f'[data-printer="{other}"]')
     designer.click(f'[data-printer="{other}"]')
     designer.keyboard.press('Escape')
     wait_for_preview(designer)
