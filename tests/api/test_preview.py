@@ -15,54 +15,23 @@ class TestLabelDesignerAPI:
     def client(self, tmp_path):
         yield make_client(tmp_path)
 
-    def test_generate_preview(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
+    @pytest.mark.parametrize('settings, reference', [
+        pytest.param({}, 'simple.png', id='preview'),
+        pytest.param({'high_res': 1}, 'simple_high_res.png', id='high_res'),
+        pytest.param({'orientation': 'rotated'}, 'rotated.png', id='rotated'),
+    ])
+    def test_generate_preview(self, client: FlaskClient, settings, reference):
+        data = dict(EXAMPLE_FORMDATA, **settings)
         data['text'] = json.dumps([
-            {
-                'font': 'DejaVu Sans,Book',
-                'text': 'Left',
-                'size': '60',
-                'align': 'left'
-            },
-            {
-                'font': 'Droid Sans,Mono',
-                'text': '-- LONG MONO TEXT --',
-                'size': '50',
-                'align': 'center'
-            }
+            {'font': 'DejaVu Sans,Book', 'text': 'Left', 'size': '60', 'align': 'left'},
+            {'font': 'Droid Sans,Mono', 'text': '-- LONG MONO TEXT --', 'size': '50', 'align': 'center'},
         ])
-
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
         assert response.content_type in ['image/png']
 
         # Check image
-        verify_image(response.data, 'simple.png')
-
-    def test_generate_preview_high_res(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['high_res'] = 1
-        data['text'] = json.dumps([
-            {
-                'font': 'DejaVu Sans,Book',
-                'text': 'Left',
-                'size': '60',
-                'align': 'left'
-            },
-            {
-                'font': 'Droid Sans,Mono',
-                'text': '-- LONG MONO TEXT --',
-                'size': '50',
-                'align': 'center'
-            }
-        ])
-
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'simple_high_res.png')
+        verify_image(response.data, reference)
 
     def test_generate_preview_inverted(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -102,30 +71,6 @@ class TestLabelDesignerAPI:
 
         # Check image
         verify_image(response.data, 'inverted_text.png')
-
-    def test_generate_preview_rotated(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['orientation'] = 'rotated'
-        data['text'] = json.dumps([
-            {
-                'font': 'DejaVu Sans,Book',
-                'text': 'Left',
-                'size': '60',
-                'align': 'left'
-            },
-            {
-                'font': 'Droid Sans,Mono',
-                'text': '-- LONG MONO TEXT --',
-                'size': '50',
-                'align': 'center'
-            }
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'rotated.png')
 
     def test_concurrent_preview_requests(self, client: FlaskClient):
         """

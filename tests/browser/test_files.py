@@ -3,6 +3,7 @@ and shared."""
 
 import io
 
+import pytest
 from PIL import Image
 
 from tests.browser.helpers import png, preview_size, printed, wait_for_preview
@@ -15,20 +16,22 @@ def pdf(*sizes) -> bytes:
     return out.getvalue()
 
 
-def test_pasted_image_becomes_the_label(designer):
-    designer.evaluate("""async () => {
+@pytest.mark.parametrize('way, name', [('paste', 'image.png'), ('drop', 'dropped.png')])
+def test_pasted_or_dropped_image_becomes_the_label(designer, way, name):
+    designer.evaluate("""async ([way, name]) => {
         const canvas = document.createElement('canvas');
         canvas.width = 200;
         canvas.height = 100;
         canvas.getContext('2d').fillRect(20, 20, 160, 60);
         const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
         const data = new DataTransfer();
-        data.items.add(new File([blob], 'image.png', { type: 'image/png' }));
-        document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
-    }""")
+        data.items.add(new File([blob], name, { type: 'image/png' }));
+        if (way === 'paste') document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true }));
+        else document.querySelector('#edStage').dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
+    }""", [way, name])
     designer.wait_for_selector('[data-lay="image"].on')
     wait_for_preview(designer)
-    assert designer.evaluate('() => S.edit.design.image.name') == 'image.png'
+    assert designer.evaluate('() => S.edit.design.image.name') == name
 
 
 def test_several_images_are_printed(designer, monkeypatch, tmp_path):
@@ -43,21 +46,6 @@ def test_several_images_are_printed(designer, monkeypatch, tmp_path):
     designer.click('#edPrint')
     assert printed(designer) == ['printed']
     assert len(list(tmp_path.glob('*.png'))) == 2
-
-
-def test_dropped_image_becomes_the_label(designer):
-    designer.evaluate("""async () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = 200;
-        canvas.height = 100;
-        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-        const data = new DataTransfer();
-        data.items.add(new File([blob], 'dropped.png', { type: 'image/png' }));
-        document.querySelector('#edStage').dispatchEvent(new DragEvent('drop', { dataTransfer: data, bubbles: true, cancelable: true }));
-    }""")
-    designer.wait_for_selector('[data-lay="image"].on')
-    wait_for_preview(designer)
-    assert designer.evaluate('() => S.edit.design.image.name') == 'dropped.png'
 
 
 def test_pages_of_a_pdf_can_be_chosen(designer):

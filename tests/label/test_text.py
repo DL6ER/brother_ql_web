@@ -111,142 +111,58 @@ class TestLabelDesignerAPI:
         assert 'X-Label-Warning' not in expected.headers
         assert response.data == expected.data
 
-    def test_template_edge_cases(self, client: FlaskClient):
-        # Incomplete template
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': '{{datetime:}}', 'size': '32', 'align': 'center'}
-        ])
+    @pytest.mark.parametrize('settings, lines, reference', [
+        pytest.param({}, [], 'empty_label.png', id='empty_label'),
+        # The smallest font size
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Min', 'size': '1', 'align': 'center'}], 'minimal_label.png', id='minimal_label'),
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Emoji: \U0001f603', 'size': '32', 'align': 'center'},
+                          {'font': 'DejaVu Sans,Book', 'text': 'RTL: \u05e9\u05dc\u05d5\u05dd', 'size': '32', 'align': 'center'}],
+                     'unicode.png', id='unicode_and_special_characters'),
+        # Markup is drawn as plain text
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}],
+                     'security_xss.png', id='security_xss'),
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
+                          {'font': 'DejaVu Sans,Book', 'text': 'Red Text INVERTED', 'size': '24', 'align': 'center', 'inverted': True, 'color': 'red'}],
+                     'red_text.png', id='print_red_text'),
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': f'--- {i} ---', 'size': str(i + 1), 'align': ['center', 'left', 'right'][i % 3],
+                           'inverted': bool(i % 2), 'color': 'red' if i % 5 == 0 else 'black'} for i in range(100)],
+                     'large_label.png', id='large_number_of_text_blocks'),
+        # Composed and decomposed
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Caf\u00e9', 'size': '24', 'align': 'center'},
+                          {'font': 'DejaVu Sans,Book', 'text': unicodedata.normalize('NFD', 'Caf\u00e9'), 'size': '24', 'align': 'center'}],
+                     'unicode_normalization.png', id='unicode_normalization'),
+        pytest.param({}, [{'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'checkbox': True},
+                          {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'checkbox': True},
+                          {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'checkbox': False, 'color': 'red'},
+                          {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'checkbox': True}],
+                     'todo_list.png', id='todo_list'),
+        pytest.param({'border_thickness': 1, 'border_color': 'red'},
+                     [{'font': 'DejaVu Math TeX Gyre,Regular', 'text': 'Mehrwegbecher', 'size': '70', 'align': 'left'}],
+                     'large_text.png', id='large_font_not_cropped'),
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': '{{datetime:}}', 'size': '32', 'align': 'center'}],
+                     'template_incomplete.png', id='incomplete_template'),
+        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': '{{unknownvar}}', 'size': '32', 'align': 'center'}],
+                     'template_unknown.png', id='unknown_template'),
+    ])
+    def test_text_as_its_reference_image(self, client: FlaskClient, settings, lines, reference):
+        data = dict(EXAMPLE_FORMDATA, **settings)
+        data['text'] = json.dumps(lines)
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
         assert response.content_type in ['image/png']
 
         # Check image
-        verify_image(response.data, 'template_incomplete.png')
+        verify_image(response.data, reference)
 
-        # Unknown template variable
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': '{{unknownvar}}', 'size': '32', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'template_unknown.png')
-
-    def test_empty_label(self, client: FlaskClient):
+    @pytest.mark.parametrize('line', [
+        pytest.param({'text': 'Bad align', 'align': 'diagonal'}, id='invalid_alignment'),
+        pytest.param({'text': 12345, 'align': 'center'}, id='non_string_text_value'),
+    ])
+    def test_a_line_that_is_refused(self, client: FlaskClient, line):
         data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'empty_label.png')
-
-    def test_minimal_label(self, client: FlaskClient):
-        # Minimum label_size
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Min', 'size': '1', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'minimal_label.png')
-
-    def test_unicode_and_special_characters(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Emoji: 😃', 'size': '32', 'align': 'center'},
-            {'font': 'DejaVu Sans,Book', 'text': 'RTL: שלום', 'size': '32', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'unicode.png')
-
-    def test_security_xss(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        # Should return image with plain text
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'security_xss.png')
-
-    def test_print_red_text(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
-            {'font': 'DejaVu Sans,Book', 'text': 'Red Text INVERTED', 'size': '24', 'align': 'center', 'inverted': True, 'color': 'red'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'red_text.png')
-
-    def test_large_number_of_text_blocks(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        ALIGNS = ['center', 'left', 'right']
-        data['text'] = json.dumps([
-            {
-                'font': 'DejaVu Sans,Book',
-                'text': f'--- {i} ---',
-                'size': str(i + 1),
-                'align': ALIGNS[i % 3],
-                'inverted': bool(i % 2),
-                'color': 'red' if i % 5 == 0 else 'black'
-                } for i in range(100)
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'large_label.png')
-
-    def test_invalid_alignment(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Bad align', 'size': '12', 'align': 'diagonal'}
-        ])
+        data['text'] = json.dumps([dict({'font': 'DejaVu Sans,Book', 'size': '12'}, **line)])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
-
-    def test_non_string_text_value(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 12345, 'size': '12', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-
-    def test_unicode_normalization(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        s1 = 'Café'
-        s2 = unicodedata.normalize('NFD', s1)
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': s1, 'size': '24', 'align': 'center'},
-            {'font': 'DejaVu Sans,Book', 'text': s2, 'size': '24', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'unicode_normalization.png')
 
     def test_unknown_font(self, client: FlaskClient):
         # Unknown families and styles are both replaced, each named once
@@ -262,41 +178,6 @@ class TestLabelDesignerAPI:
         assert response.headers['X-Label-Warning'] == (
             f'The font Droid Sand (Book) is not installed, {family} ({style}) is used instead. '
             f'The font Droid Sans (Non-exist) is not installed, {family} ({style}) is used instead.')
-
-    def test_todo_list(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'checkbox': True},
-            {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'checkbox': True},
-            {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'checkbox': False, 'color': 'red'},
-            {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'checkbox': True}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'todo_list.png')
-
-    def test_large_font_not_cropped(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['border_thickness'] = 1
-        data['border_color'] = 'red'
-        data['text'] = json.dumps([
-            {
-                'font': 'DejaVu Math TeX Gyre,Regular',
-                'text': 'Mehrwegbecher',
-                'size': '70',
-                'align': 'left'
-            }
-        ])
-
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'large_text.png')
 
 
 def test_env_template_only_inserts_allowed_variables(tmp_path, monkeypatch):

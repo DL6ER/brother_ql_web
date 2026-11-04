@@ -19,60 +19,22 @@ class TestLabelDesignerAPI:
     def client(self, tmp_path):
         yield make_client(tmp_path)
 
-    def test_generate_preview_no_margins(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['margin_top'] = 0
-        data['margin_bottom'] = 0
+    @pytest.mark.parametrize('settings, reference', [
+        pytest.param({'margin_top': 0, 'margin_bottom': 0}, 'simple_no_margins.png', id='standard'),
+        pytest.param({'orientation': 'rotated', 'margin_left': 0, 'margin_right': 0}, 'simple_no_margins_rotated.png', id='rotated'),
+    ])
+    def test_generate_preview_no_margins(self, client: FlaskClient, settings, reference):
+        data = dict(EXAMPLE_FORMDATA, **settings)
         data['text'] = json.dumps([
-            {
-                'font': 'Droid Serif,Regular',
-                'text': '!!! URGENT !!!',
-                'size': '60',
-                'align': 'center',
-                'inverted': True
-            },
-            {
-                'font': 'Droid Serif,Regular',
-                'text': 'Ship as soon as possible',
-                'size': '60',
-                'align': 'center'
-            }
+            {'font': 'Droid Serif,Regular', 'text': '!!! URGENT !!!', 'size': '60', 'align': 'center', 'inverted': True},
+            {'font': 'Droid Serif,Regular', 'text': 'Ship as soon as possible', 'size': '60', 'align': 'center'},
         ])
-
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 200
         assert response.content_type in ['image/png']
 
         # Check image
-        verify_image(response.data, 'simple_no_margins.png')
-
-    def test_generate_preview_no_margins_rotated(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['orientation'] = 'rotated'
-        data['margin_left'] = 0
-        data['margin_right'] = 0
-        data['text'] = json.dumps([
-            {
-                'font': 'Droid Serif,Regular',
-                'text': '!!! URGENT !!!',
-                'size': '60',
-                'align': 'center',
-                'inverted': True
-            },
-            {
-                'font': 'Droid Serif,Regular',
-                'text': 'Ship as soon as possible',
-                'size': '60',
-                'align': 'center'
-            }
-        ])
-
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'simple_no_margins_rotated.png')
+        verify_image(response.data, reference)
 
     def test_image_text_gap(self, client: FlaskClient):
         # Code and text along the tape: the label grows by the distance. The

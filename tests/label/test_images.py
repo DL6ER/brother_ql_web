@@ -75,44 +75,24 @@ class TestLabelDesignerAPI:
     def image_updating_is_disabled(self):
         assert not UPDATE_IMAGES
 
-    def test_image(self, client: FlaskClient):
-        self.run_image_test(client)
-
-    def test_image_fit(self, client: FlaskClient):
-        self.run_image_test(client, fit=True)
-
-    def test_image_rotated(self, client: FlaskClient):
-        self.run_image_test(client, rotated=True)
-
-    def test_image_rotated_fit(self, client: FlaskClient):
-        self.run_image_test(client, rotated=True, fit=True)
-
-    def test_image_with_text(self, client: FlaskClient):
-        self.run_image_test(client, text=True)
-
-    def test_image_with_text_fit(self, client: FlaskClient):
-        self.run_image_test(client, text=True, fit=True)
-
-    def test_image_with_text_rotated(self, client: FlaskClient):
-        self.run_image_test(client, text=True, rotated=True)
-
-    def test_image_with_text_fit_rotated(self, client: FlaskClient):
-        self.run_image_test(client, text=True, rotated=True, fit=True)
-
-    def test_image_color_fit(self, client: FlaskClient):
-        self.run_image_test(client, image_mode="colored", fit=True)
-
-    def test_image_red_and_black_fit(self, client: FlaskClient):
-        self.run_image_test(client, image_mode="red_and_black", fit=True)
-
-    def test_image_black_fit(self, client: FlaskClient):
-        self.run_image_test(client, image_mode="black_and_white", fit=True)
-
-    def test_image_highres(self, client: FlaskClient):
-        self.run_image_test(client, high_res=True)
-
-    def test_image_highres_fit(self, client: FlaskClient):
-        self.run_image_test(client, high_res=True, fit=True)
+    @pytest.mark.parametrize('settings', [
+        pytest.param({}, id='image'),
+        pytest.param({'fit': True}, id='fit'),
+        pytest.param({'rotated': True}, id='rotated'),
+        pytest.param({'rotated': True, 'fit': True}, id='rotated_fit'),
+        pytest.param({'text': True}, id='with_text'),
+        pytest.param({'text': True, 'fit': True}, id='with_text_fit'),
+        pytest.param({'text': True, 'rotated': True}, id='with_text_rotated'),
+        pytest.param({'text': True, 'rotated': True, 'fit': True}, id='with_text_fit_rotated'),
+        pytest.param({'image_mode': 'colored', 'fit': True}, id='color_fit'),
+        pytest.param({'image_mode': 'red_and_black', 'fit': True}, id='red_and_black_fit'),
+        pytest.param({'image_mode': 'black_and_white', 'fit': True}, id='black_fit'),
+        pytest.param({'high_res': True}, id='highres'),
+        pytest.param({'high_res': True, 'fit': True}, id='highres_fit'),
+    ])
+    def test_image(self, client: FlaskClient, settings):
+        # Compared with the reference image of the settings
+        self.run_image_test(client, **settings)
 
     @pytest.mark.parametrize('fit', [True, False])
     @pytest.mark.parametrize('rotation', [0, 90])
