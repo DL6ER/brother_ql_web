@@ -448,4 +448,4 @@ def test_text_line_without_font_uses_the_default_font(tmp_path):
     data = {'text': json.dumps([{'text': 'Hello', 'size': '70', 'font': 'DejaVu Sans'}])}
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 400
-    assert response.get_json()['message'] == 'Font must be given as "<family>,<style>": DejaVu Sans'
+    assert response.get_json()['message'] == 'Font must be given as "<family>,<style>"'

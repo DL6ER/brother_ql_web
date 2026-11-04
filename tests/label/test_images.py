@@ -151,7 +151,7 @@ class TestLabelDesignerAPI:
         assert response.is_json
         data = response.get_json()
         assert 'message' in data
-        assert data['message'] == 'Truncated File Read'
+        assert data['message'] == 'The image cannot be read'
 
     def test_image_mode_edge_case(self, client: FlaskClient):
         # An unknown mode was printed in black and white. bw, as the webhook
@@ -363,7 +363,7 @@ def test_large_images_are_refused(tmp_path, size, extra):
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 400
     message = response.get_json()['message']
-    assert 'exceeds limit' in message or message.startswith('Label is too large')
+    assert message in ('The image is too large', 'Label is too large')
 
 
 def test_pdf_with_huge_page_is_refused_before_rendering(tmp_path, monkeypatch):
@@ -442,14 +442,14 @@ def test_pdf_pages_count_against_the_print_limit(tmp_path):
     client = make_client(tmp_path)
     response = client.post('/labeldesigner/api/print', data=_pdf_label(pdf_pages='all', print_count='40', printer='simulation'))
     assert response.status_code == 400
-    assert response.get_json()['message'] == 'A print job must not have more than 100 labels, 3 pages and 40 copies would be 120'
+    assert response.get_json()['message'] == 'A print job must not have more than 100 labels'
 
 
 def test_pdf_page_selection_errors_are_reported(tmp_path):
     client = make_client(tmp_path)
     response = client.post('/labeldesigner/api/preview', data=_pdf_label(pdf_pages='4'))
     assert response.status_code == 400
-    assert response.get_json()['message'] == 'The PDF has 3 pages, there is no page 4'
+    assert response.get_json()['message'] == 'The PDF has no such page'
 
 
 def test_pdf_pages_make_several_labels_of_image_labels_only(tmp_path):

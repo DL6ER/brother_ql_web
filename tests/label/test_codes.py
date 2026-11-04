@@ -137,17 +137,17 @@ def test_a_code_takes_its_number_with_or_without_the_check_digit(tmp_path, barco
 @pytest.mark.parametrize('barcode_type, code, message', [
     # The right check digit was printed instead of a wrong one, and what
     # followed the digits was left out: a typo made another valid code
-    ('EAN13', '4006381333932', 'The check digit of EAN-13 4006381333932 must be 1'),
+    ('EAN13', '4006381333932', 'The check digit of EAN-13 must be 1'),
     ('EAN13', '400638133393x', 'EAN-13 takes 12 digits, or 13 with the check digit'),
     ('EAN13', '40063813339310', 'EAN-13 takes 12 digits, or 13 with the check digit'),
-    ('EAN8', '96385075', 'The check digit of EAN-8 96385075 must be 4'),
-    ('EAN14', '10012345678903', 'The check digit of EAN-14 10012345678903 must be 2'),
-    ('UPCA', '036000291453', 'The check digit of UPC-A 036000291453 must be 2'),
-    ('ISBN13', '978-3-16-148410-9', 'The check digit of ISBN-13 978-3-16-148410-9 must be 0'),
-    ('ISBN10', '0-8044-2957-1', 'The check digit of ISBN-10 0-8044-2957-1 must be X'),
+    ('EAN8', '96385075', 'The check digit of EAN-8 must be 4'),
+    ('EAN14', '10012345678903', 'The check digit of EAN-14 must be 2'),
+    ('UPCA', '036000291453', 'The check digit of UPC-A must be 2'),
+    ('ISBN13', '978-3-16-148410-9', 'The check digit of ISBN-13 must be 0'),
+    ('ISBN10', '0-8044-2957-1', 'The check digit of ISBN-10 must be X'),
     ('ISBN10', '08044295Y', 'ISBN-10 takes 9 digits, or 10 with the check digit, which may be an X'),
-    ('ISSN', '0317-8479', 'The check digit of ISSN 0317-8479 must be 1'),
-    ('PZN', '4908809', 'The check digit of PZN 4908809 must be 2'),
+    ('ISSN', '0317-8479', 'The check digit of ISSN must be 1'),
+    ('PZN', '4908809', 'The check digit of PZN must be 2'),
     # Digits of other scripts are none of the code
     ('EAN13', '٤٠٠638133393', 'EAN-13 takes 12 digits, or 13 with the check digit'),
 ])
@@ -163,7 +163,7 @@ def test_a_code_with_a_wrong_check_digit_is_not_printed(tmp_path):
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='EAN13', code_text='4006381333932')
     response = client.post('/labeldesigner/api/print', data=data)
-    assert response.status_code == 400 and response.get_json()['message'] == 'The check digit of EAN-13 4006381333932 must be 1'
+    assert response.status_code == 400 and response.get_json()['message'] == 'The check digit of EAN-13 must be 1'
     assert not os.path.isdir(printer.SIMULATED_LABELS_DIR) or not os.listdir(printer.SIMULATED_LABELS_DIR)
 
 

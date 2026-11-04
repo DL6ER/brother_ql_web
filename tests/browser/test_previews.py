@@ -444,7 +444,7 @@ def test_a_wrong_check_digit_is_told(designer):
     designer.select_option('#edBarcode', 'EAN13')
     designer.fill('#edCode', '4006381333932')
     wait_for_preview(designer)
-    assert 'The check digit of EAN-13 4006381333932 must be 1' in designer.inner_text('#edStage')
+    assert 'The check digit of EAN-13 must be 1' in designer.inner_text('#edStage')
     assert designer.is_disabled('#edPrint')
     designer.fill('#edCode', '4006381333931')
     wait_for_preview(designer)

@@ -14,7 +14,8 @@ from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
 from urllib.parse import urlparse
-from . import bp, demos
+from . import bp, demos, refusals
+from .refusals import IMAGE_MODE_REFUSED, UNKNOWN_MODEL
 from app import get_fonts
 from app.fonts import FontNotFound
 from PIL import Image
@@ -65,7 +66,9 @@ PRINTER_DEVICE_PATTERNS = (
 
 @bp.errorhandler(ValueError)
 def handle_value_error(e):
-    return jsonify({"error": str(e)}), 400
+    _log_refused_request('Request', e)
+    # A fixed message, the details are in the log
+    return jsonify({"error": refusals.message(e, refusals.INVALID_INPUT)}), 400
 
 
 @bp.before_request
@@ -547,7 +550,8 @@ def repo_save():
             if not any(label.identifier == data['label_size'] for label in ALL_LABELS):
                 raise ValueError('Unknown label_size')
     except ValueError as e:
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Saving the label', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
     filename = secure_filename(name)
     if not filename:
         return make_response(jsonify({'success': False, 'message': 'Invalid name'}), 400)
@@ -778,7 +782,6 @@ def _whole_or(value, default) -> int:
 
 
 IMAGE_MODES = ('grayscale', 'black_and_white', 'red_and_black', 'colored')
-IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
 
 
 def check_image_mode(value, default: str = 'grayscale') -> str:
@@ -860,8 +863,8 @@ def _preview_response(data: dict, image_dir: str, image_bytes: bytes | None = No
         label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir, image_bytes))
         im = label.generate()
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'message': str(e)}), 413 if isinstance(e, TextTooLong) else 400)
+        _log_refused_request('Preview', e)
+        return make_response(jsonify({'message': refusals.message(e, refusals.PREVIEW_FAILED)}), 413 if isinstance(e, TextTooLong) else 400)
 
     return _preview_of(label, im, _requested('return_format') or 'png')
 
@@ -909,8 +912,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # it is printed with
         data['high_res'] = high_res
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Print job', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.PRINT_FAILED)}), 400)
 
     status = ""
     try:
@@ -925,8 +928,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
             printer.add_label_to_queue(label, cut, high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Print job', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.PRINT_FAILED)}), 400)
 
     result = {'success': len(status) == 0}
     if len(status) > 0:
@@ -1018,7 +1021,8 @@ def preview_from_image():
     except Exception as e:
         _log_refused_request('Preview', e)
         error = 413 if isinstance(e, TextTooLong) else 400
-        return make_response(jsonify({'message': str(e)}), error)
+        # A fixed message, the details are in the log
+        return make_response(jsonify({'message': refusals.message(e, refusals.PREVIEW_FAILED)}), error)
 
     response = _preview_of(label, im, request.values.get('return_format', 'png'))
     # The label designer offers to choose pages of a PDF with several
@@ -1092,8 +1096,8 @@ def print_label():
     except HTTPException:
         raise
     except Exception as e:
-        return_dict['message'] = str(e)
-        current_app.logger.exception(e)
+        return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
+        _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
     status = ""
@@ -1116,7 +1120,7 @@ def print_label():
             printer.add_label_to_queue(label, cut, high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
-        return_dict['message'] = str(e)
+        return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
         _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
@@ -1130,9 +1134,9 @@ def print_label():
 def _log_refused_request(what: str, error: Exception):
     """Log why a request was refused. Invalid input like a missing font size
     or an unknown font raises ValueError or LookupError, it is logged without
-    a traceback, which would look like a crash in the log. Everything else
-    is logged with its traceback."""
-    if isinstance(error, (ValueError, LookupError)):
+    a traceback, which would look like a crash in the log. Everything else,
+    also KeyError and IndexError, is logged with its traceback."""
+    if refusals.is_invalid_input(error):
         current_app.logger.warning('%s refused: %s', what, error)
         current_app.logger.debug('%s refused', what, exc_info=True)
     else:
@@ -1140,8 +1144,6 @@ def _log_refused_request(what: str, error: Exception):
 
 
 PRINTER_MODELS = [model.identifier for model in ALL_MODELS]
-# A detected printer whose status names no model brother_ql knows
-UNKNOWN_MODEL = 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'
 
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
@@ -1399,7 +1401,7 @@ def _blank_values(value) -> dict[str, str]:
     """The values for the blanks ({{blank:<name>}}) of a label by name: an
     object of texts or numbers."""
     values = _json_object(value, lambda v: isinstance(v, (str, int, float)) and not isinstance(v, bool),
-                          'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}')
+                          refusals.BLANKS_MESSAGE)
     return {name: str(v) for name, v in values.items()}
 
 
@@ -1420,9 +1422,7 @@ def _blank_setting(field) -> bool:
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
     "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting,
-                        'fields must be a JSON object with the settings of each blank: a type of text, number or date, '
-                        'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}')
+    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:
