@@ -283,6 +283,40 @@ def test_detected_printer_busy_before_first_answer_has_unknown_model(client, mon
     assert lp0['model'] == 'Unknown'
 
 
+def test_detected_pt_e550w_prints(client, monkeypatch):
+    # It reported the model code brother_ql gave the PT-P750W to no printer,
+    # the label designer sent "Unknown" and printing failed without a message
+    def ptouch(status, phase=0):
+        packet = bytearray(_status_packet(status, phase))
+        packet[3], packet[4] = 0x30, 0x66
+        packet[10], packet[11], packet[24], packet[25] = 12, 0x01, 0x01, 0x08  # 12 mm laminated, white, black text
+        return bytes(packet)
+
+    def answer(self, data):
+        self.responses += [ptouch(0x00)] if data == b'\x1b\x69\x53' else [ptouch(0x01), ptouch(0x06)]
+    monkeypatch.setattr(ExclusiveUsbPrinter, 'write', answer)
+    real_exists = os.path.exists
+    monkeypatch.setattr(os.path, 'exists', lambda path: path == '/dev/usb/lp0' or real_exists(path))
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    client.application.config['PRINTER_PRINTER'] = '?'
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
+    assert (lp0['model'], lp0['media_width']) == ('PT-E550W', 12)
+    data = dict(EXAMPLE_FORMDATA, printer=DEVICE, model=lp0['model'], label_size='pt12')
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.get_json() == {'success': True}
+
+
+def test_unknown_model_is_refused_with_a_message(client):
+    # brother_ql refused it without a message, the label designer showed an
+    # empty error
+    for model, message in [('Unknown', 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'),
+                           ('QL-9000', 'Unknown printer model: QL-9000')]:
+        response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, printer='simulation', model=model))
+        assert (response.status_code, response.get_json()['message']) == (400, message)
+
+
 def test_configured_printers(client, monkeypatch):
     from app.labeldesigner import ipp, routes
     LP1 = 'file:///dev/usb/lp1'

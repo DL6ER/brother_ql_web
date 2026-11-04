@@ -66,3 +66,14 @@ class TestPrinterStatus:
         printer = FakeSlowPrinter(empty_reads=10**6, response=b'')
         with pytest.raises(TimeoutError):
             get_status(printer, timeout=0.1)
+
+
+@pytest.mark.parametrize('code, model', [(0x66, 'PT-E550W'), (0x67, 'PT-P700'), (0x68, 'PT-P750W')])
+def test_ptouch_models_are_told_apart(code, model):
+    # brother_ql gave the PT-E550W the code of the PT-P750W, a PT-E550W was
+    # an unknown printer and a PT-P750W was taken for a PT-E550W
+    from app.labeldesigner.printer import get_status
+    packet = bytearray(make_status_packet())
+    packet[3], packet[4] = 0x30, code
+    packet[10], packet[11], packet[24], packet[25] = 12, 0x01, 0x01, 0x08  # 12 mm laminated, white, black text
+    assert get_status(FakeSlowPrinter(empty_reads=0, response=bytes(packet)))['model'] == model
