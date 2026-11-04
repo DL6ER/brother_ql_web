@@ -33,6 +33,26 @@
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/Label"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "blanks": {
+                        "$ref": "#/components/schemas/BlankValues"
+                      },
+                      "fields": {
+                        "$ref": "#/components/schemas/BlankSettings"
+                      },
+                      "mark_blanks": {
+                        "type": "string",
+                        "enum": [
+                          "0",
+                          "1"
+                        ],
+                        "default": "0",
+                        "description": "1 shows blanks without a value in the text as their name and a question mark, e.g. `Room?`, as the label designer previews them. A code that takes the text gets it without them."
+                      }
+                    }
                   }
                 ]
               },
@@ -47,6 +67,26 @@
                 "allOf": [
                   {
                     "$ref": "#/components/schemas/Label"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "blanks": {
+                        "$ref": "#/components/schemas/BlankValues"
+                      },
+                      "fields": {
+                        "$ref": "#/components/schemas/BlankSettings"
+                      },
+                      "mark_blanks": {
+                        "type": "string",
+                        "enum": [
+                          "0",
+                          "1"
+                        ],
+                        "default": "0",
+                        "description": "1 shows blanks without a value in the text as their name and a question mark, e.g. `Room?`, as the label designer previews them. A code that takes the text gets it without them."
+                      }
+                    }
                   }
                 ]
               }
@@ -75,6 +115,24 @@
                   "type": "string",
                   "enum": [
                     "auto"
+                  ]
+                }
+              },
+              "X-Label-Image-Text-Gap": {
+                "description": "Distance between the image or code and the text in dots, for labels with both. The given `image_text_gap` or the one chosen without it.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-Label-Image-Position": {
+                "description": "Where the image or code is next to the text, for labels with both: `above`, `below`, `left` or `right`, as given in `image_position` or chosen without it.",
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "above",
+                    "below",
+                    "left",
+                    "right"
                   ]
                 }
               }
@@ -155,6 +213,12 @@
                         ],
                         "default": 0,
                         "description": "1 cuts only after the last label."
+                      },
+                      "blanks": {
+                        "$ref": "#/components/schemas/BlankValues"
+                      },
+                      "fields": {
+                        "$ref": "#/components/schemas/BlankSettings"
                       }
                     }
                   }
@@ -197,6 +261,12 @@
                         ],
                         "default": 0,
                         "description": "1 cuts only after the last label."
+                      },
+                      "blanks": {
+                        "$ref": "#/components/schemas/BlankValues"
+                      },
+                      "fields": {
+                        "$ref": "#/components/schemas/BlankSettings"
                       }
                     }
                   }
@@ -310,14 +380,28 @@
     "/labeldesigner/api/repository/save": {
       "post": {
         "summary": "Save a label",
-        "description": "Saves the label parameters under `name`. An image is sent as base64 in `image_data`.",
+        "description": "Saves the label parameters under `name`, replacing a label saved under it unless `replace` is false. An image is sent as base64 in `image_data`.",
         "operationId": "repositorySave",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SavedLabel"
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/SavedLabel"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "replace": {
+                        "type": "boolean",
+                        "default": true,
+                        "description": "Whether a label saved under `name` is replaced, also as 1 or 0 or as text, e.g. in the address. If false, such a label is kept and the answer is 409."
+                      }
+                    }
+                  }
+                ]
               }
             }
           }
@@ -352,8 +436,28 @@
               }
             }
           },
+          "409": {
+            "description": "A label is saved under `name` already and `replace` is false.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
           "500": {
             "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Another label was being saved or deleted for longer than 10 seconds, e.g. on a slow network share. Try again.",
             "content": {
               "application/json": {
                 "schema": {
@@ -382,7 +486,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The saved label, its image as base64 in `image_data`.",
+            "description": "The saved label, its image as base64 in `image_data`. `image_fit` and `image_crop` come as `1` or `0` and `text_fit` also for a label saved with `shrink_text` only, as the label is printed. A value that is refused stays as it is.",
             "content": {
               "application/json": {
                 "schema": {
@@ -412,7 +516,7 @@
             }
           },
           "500": {
-            "description": "The request was refused, `message` says why.",
+            "description": "The label or its image could not be read. A label is not loaded without an image it names that is there.",
             "content": {
               "application/json": {
                 "schema": {
@@ -420,6 +524,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            },
+            "description": "Another label was being saved or deleted for longer than 10 seconds, e.g. on a slow network share. Try again."
           }
         }
       }
@@ -493,6 +607,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Another label was being saved or deleted for longer than 10 seconds, e.g. on a slow network share. Try again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -531,6 +655,14 @@
               "type": "string"
             },
             "description": "Printer the label is generated for."
+          },
+          {
+            "name": "blanks",
+            "in": "query",
+            "description": "Values for the blanks of the label, see the schema.",
+            "schema": {
+              "$ref": "#/components/schemas/SavedLabelBlanks"
+            }
           }
         ],
         "responses": {
@@ -617,8 +749,48 @@
               ],
               "default": "png"
             }
+          },
+          {
+            "name": "blanks",
+            "in": "query",
+            "description": "Values for the blanks of the label, see the schema.",
+            "schema": {
+              "$ref": "#/components/schemas/SavedLabelBlanks"
+            }
           }
         ],
+        "requestBody": {
+          "description": "name and blanks may also be sent in the body instead of the query.",
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
+                  }
+                }
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The label as it is printed.",
@@ -701,6 +873,9 @@
                 "properties": {
                   "name": {
                     "type": "string"
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
                   }
                 }
               }
@@ -748,6 +923,9 @@
                     ],
                     "default": 0,
                     "description": "1 cuts only after the last label."
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
                   }
                 }
               }
@@ -971,6 +1149,14 @@
               "type": "string"
             },
             "description": "Printer the label is generated for."
+          },
+          {
+            "name": "blanks",
+            "in": "query",
+            "description": "Values for the blanks of the label, see the schema.",
+            "schema": {
+              "$ref": "#/components/schemas/SavedLabelBlanks"
+            }
           }
         ],
         "responses": {
@@ -1055,6 +1241,9 @@
                 "properties": {
                   "id": {
                     "type": "string"
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
                   }
                 }
               }
@@ -1102,6 +1291,9 @@
                     ],
                     "default": 0,
                     "description": "1 cuts only after the last label."
+                  },
+                  "blanks": {
+                    "$ref": "#/components/schemas/SavedLabelBlanks"
                   }
                 }
               }
@@ -1428,7 +1620,31 @@
               1
             ],
             "default": 0,
-            "description": "Make all lines of text smaller by the same factor until they fit on the label, instead of cutting the text off."
+            "description": "Make all lines of text smaller by the same factor until they fit on the label, instead of cutting the text off. Like `text_fit` `shrink`, which takes its place where given."
+          },
+          "text_fit": {
+            "type": "string",
+            "enum": [
+              "none",
+              "shrink",
+              "fill"
+            ],
+            "description": "How the text is sized: `none` as set, `shrink` all lines smaller by the same factor where it does not fit, `fill` all lines by the same factor as large as fits within the margins: as wide as endless tape, as high as tape it runs along, both ways on die-cut labels. Left out, `shrink_text` decides between `shrink` and `none`."
+          },
+          "image_text_gap": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Distance between the image or code and the text in dots, for labels with both. Empty or left out chooses two fifths of the largest text size, for a QR code at least two of its modules."
+          },
+          "image_position": {
+            "type": "string",
+            "enum": [
+              "above",
+              "below",
+              "left",
+              "right"
+            ],
+            "description": "Where the image or code is next to the text, for labels with both. Left out or empty: above it across the tape, left of it along the tape (`orientation` `rotated`). An endless label grows along the tape to hold both. Fitted to the label (`image_fit`), it takes at most half of the label along the side of the text, the text the rest, where the label does not grow with the text. Where it is follows the lines of text as written, also those of blanks left empty."
           },
           "print_type": {
             "type": "string",
@@ -1452,7 +1668,7 @@
           "code_text": {
             "type": "string",
             "maxLength": 1000,
-            "description": "Content of the code. Without it the code contains the text of all lines."
+            "description": "Content of the code, its templates are filled in like those of the text. Without it, or with only blanks that are left empty, the code contains the text of all lines."
           },
           "barcode_type": {
             "type": "string",
@@ -1503,7 +1719,7 @@
               1
             ],
             "default": 1,
-            "description": "Fit the image to the label. On die-cut labels an image without text is also turned to the orientation that shows it largest."
+            "description": "Fit the image to the label, on endless tape across it. On die-cut labels an image without text is also turned to the orientation that shows it largest. Next to text see `image_position`."
           },
           "image_crop": {
             "type": "integer",
@@ -1616,6 +1832,13 @@
             "type": "string",
             "examples": [
               "EAN-Label.json"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Name of the label as the label designer saved it, missing for labels saved without one.",
+            "examples": [
+              "Kitchen shelf"
             ]
           },
           "mtime": {
@@ -1773,6 +1996,46 @@
             "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
           }
         }
+      },
+      "BlankValues": {
+        "type": "string",
+        "contentMediaType": "application/json",
+        "description": "Values for the blanks (`{{blank:<name>}}`) in the text and the code as JSON object of texts or numbers, e.g. `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default from `fields`, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format from `fields`, else as it is. A blank is a date if `fields` says so, else text.",
+        "examples": [
+          "{\"Room\": \"Garage\"}"
+        ]
+      },
+      "BlankSettings": {
+        "type": "string",
+        "contentMediaType": "application/json",
+        "description": "Settings of the blanks by name as JSON object, as the label designer saves them with a label: `type` (`text`, `number` or `date`), `default`, and for a date its `format` (strftime, e.g. `%d.%m.%Y`). Another type, a format that is no text or a default that is no text or number is refused.",
+        "examples": [
+          "{\"Frozen on\": {\"type\": \"date\", \"format\": \"%d.%m.%Y\"}}"
+        ]
+      },
+      "SavedLabelBlanks": {
+        "description": "Values for the blanks (`{{blank:<name>}}`) of the label as JSON object of texts or numbers, e.g. `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default saved with the label, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format saved with the label, else as it is. A blank is a date if its saved type says so, else text.",
+        "oneOf": [
+          {
+            "type": "string",
+            "contentMediaType": "application/json"
+          },
+          {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "string",
+                "number"
+              ]
+            }
+          }
+        ],
+        "examples": [
+          "{\"Room\": \"Garage\"}",
+          {
+            "Room": "Garage"
+          }
+        ]
       }
     }
   }

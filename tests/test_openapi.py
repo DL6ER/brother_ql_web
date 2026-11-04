@@ -41,6 +41,27 @@ def test_references_resolve():
         assert ref.startswith('#/components/schemas/') and ref.split('/')[-1] in schemas, ref
 
 
+def test_blanks_are_described_once():
+    # Every place refers to the shared schema, a change cannot miss one
+    spec = json.load(open(SPEC))
+    found = []
+
+    def collect(node):
+        if isinstance(node, dict):
+            if node.get('in') == 'query' and node.get('name') in ('blanks', 'fields'):
+                found.append(node['schema'])
+            for key, value in node.items():
+                if key in ('blanks', 'fields') and isinstance(value, dict):
+                    found.append(value)
+                collect(value)
+        elif isinstance(node, list):
+            for value in node:
+                collect(value)
+    collect(spec['paths'])
+    assert len(found) == 17
+    assert all(list(schema) == ['$ref'] for schema in found)
+
+
 def test_spec_is_served(tmp_path):
     client = create_app().test_client()
     response = client.get('/labeldesigner/api/openapi.json')

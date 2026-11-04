@@ -1,0 +1,129 @@
+{
+  "label_size": "60x86",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": false,
+  "image_crop": false,
+  "image_scaling_factor": "72",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "30",
+  "margin_bottom": "30",
+  "margin_left": "40",
+  "margin_right": "40",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "image",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "image_position": "left",
+  "title": "Besucherausweis mit Foto",
+  "language": "de",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "64",
+      "inverted": true,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "  BESUCHER  "
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "14",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "92",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Vorname}}"
+    },
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "92",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Nachname}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "12",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "44",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Datum {{datetime:%d.%m.%Y}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "44",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Uhrzeit {{datetime:%H:%M}} Uhr"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "44",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Nr. {{blank:Nummer}}"
+    }
+  ],
+  "label_text": "  BESUCHER  \n\n{{blank:Vorname}}\n{{blank:Nachname}}\n\nDatum {{datetime:%d.%m.%Y}}\nUhrzeit {{datetime:%H:%M}} Uhr\nNr. {{blank:Nummer}}",
+  "image": "photo.png",
+  "fields": {
+    "Vorname": {
+      "type": "text",
+      "default": "Erika"
+    },
+    "Nachname": {
+      "type": "text",
+      "default": "Mustermann"
+    },
+    "Nummer": {
+      "type": "text",
+      "default": "00021329"
+    }
+  }
+}

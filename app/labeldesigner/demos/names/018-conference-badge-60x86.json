@@ -1,0 +1,117 @@
+{
+  "label_size": "60x86",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": false,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "36",
+  "margin_bottom": "36",
+  "margin_left": "40",
+  "margin_right": "40",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Conference badge",
+  "language": "en",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "40",
+      "inverted": true,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "   {{mdi:star-four-points}} Example Conference 2026   "
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "24",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "130",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:First name}}"
+    },
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "90",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Last name}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "48",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Company}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "24",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "64",
+      "inverted": true,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "    ATTENDEE    "
+    }
+  ],
+  "label_text": "   {{mdi:star-four-points}} Example Conference 2026   \n\n{{blank:First name}}\n{{blank:Last name}}\n{{blank:Company}}\n\n    ATTENDEE    ",
+  "fields": {
+    "First name": {
+      "type": "text",
+      "default": "Jane"
+    },
+    "Last name": {
+      "type": "text",
+      "default": "Smith"
+    },
+    "Company": {
+      "type": "text",
+      "default": "Example Inc."
+    }
+  }
+}

@@ -61,6 +61,26 @@ def test_every_demo_label_fits(client, label_id):
     assert preview.convert('L').getextrema()[0] == 0
 
 
+@pytest.mark.parametrize('old, new', sorted(demos.REPLACED.items()))
+def test_replaced_demo_labels_lead_to_those_in_their_place(client, old, new):
+    # Links to them, e.g. for printing, answered not found
+    assert new in DEMO_IDS and old not in DEMO_IDS
+    response = client.get('/labeldesigner/api/demos/load', query_string={'id': old})
+    assert response.status_code == 200
+    assert response.get_json()['title'] == demos.load(new)['title']
+    previews = [client.get('/labeldesigner/api/demos/preview', query_string={'id': label_id}) for label_id in (old, new)]
+    assert previews[0].status_code == 200 and previews[0].data == previews[1].data
+
+
+@pytest.mark.parametrize('label_id', [['signs/001-fire-extinguisher-62.json'], {'a': 1}])
+def test_a_demo_id_that_is_no_text_is_refused(client, label_id):
+    # It failed with an error of the server
+    response = client.post('/labeldesigner/api/demos/print', json={'id': label_id})
+    assert response.status_code == 400 and response.get_json()['message'] == 'No demo label specified'
+    with pytest.raises(FileNotFoundError):
+        demos.load(label_id)
+
+
 def test_images_and_their_sources():
     used = {demos.load(label_id).get('image') for label_id in DEMO_IDS} - {None}
     files = set(os.listdir(demos.IMAGE_DIR)) - {'SOURCES.md'}

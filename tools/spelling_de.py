@@ -12,7 +12,7 @@ import sys
 DEMOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'labeldesigner', 'demos')
 # Correct, but not in the dictionary: technical terms, compound words and
 # abbreviations, also in capitals
-KNOWN = {'AED', 'Brandfördernd', 'Chili', 'Defibrillator', 'Ibuprofen', 'Inventaretikett', 'mg', 'Minze', 'ml', 'Olivenöl',
+KNOWN = {'AED', 'Brandfördernd', 'Chili', 'Defibrillator', 'Ibuprofen', 'Inventaretikett', 'mg', 'Minze', 'ml', 'Nr', 'Olivenöl',
          'Oxidationsmittel', 'Patchfeld', 'Pesto', 'QR', 'Rack', 'Reagenz', 'Regaletikett', 'Rutschgefahr', 'Umweltgefährlich',
          'Verbandkasten'}
 

@@ -165,11 +165,14 @@ def _open_lock_file(slot: str):
         return None
 
 
-def _flock(fd: int, timeout: float) -> bool:
+def flock_within(fd: int, timeout: float, shared: bool = False) -> bool:
+    """Lock the file fd for this process, waiting at most timeout seconds,
+    shared with other shared locks if shared. Whether it was locked. Raises
+    OSError where the file system cannot lock it."""
     deadline = time.monotonic() + timeout
     while True:
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(fd, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX) | fcntl.LOCK_NB)
             return True
         except BlockingIOError:
             if time.monotonic() >= deadline:
@@ -192,7 +195,7 @@ def device_lock(device_specifier: str, timeout: float | None = None):
     fd = _open_lock_file(slot)
     if fd is not None:
         try:
-            acquired = _flock(fd, timeout)
+            acquired = flock_within(fd, timeout)
         except OSError as e:
             # e.g. ENOLCK on file systems without flock() support
             logger.warning('Cannot lock lock file, locking within this process only: %s', e)

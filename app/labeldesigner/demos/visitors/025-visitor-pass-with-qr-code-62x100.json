@@ -4,7 +4,7 @@
   "sync_font_settings": false,
   "print_color": "black",
   "barcode_type": "QR",
-  "qrcode_size": "10",
+  "qrcode_size": "13",
   "qrcode_correction": "M",
   "code_text": "VISITOR {{datetime:%Y-%m-%d}} Jane Smith",
   "image_mode": "black_and_white",
