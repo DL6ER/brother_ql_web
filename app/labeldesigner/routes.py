@@ -7,14 +7,13 @@ import uuid
 import time
 import base64
 import secrets
-import barcode
 import threading
 import contextlib
 from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
 from urllib.parse import urlparse
-from . import bp, demos, refusals
+from . import bp, codes, demos, refusals
 from .refusals import IMAGE_MODE_REFUSED, UNKNOWN_MODEL
 from app import get_fonts
 from app.fonts import FontNotFound
@@ -549,6 +548,7 @@ def repo_save():
             data['label_size'] = stored_label_size(data['label_size'])
             if not any(label.identifier == data['label_size'] for label in ALL_LABELS):
                 raise ValueError('Unknown label_size')
+        check_code_correction(check_code_type(data.get('barcode_type')), data.get('qrcode_correction'))
     except ValueError as e:
         _log_refused_request('Saving the label', e)
         return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
@@ -694,6 +694,9 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
             data['text_fit'] = _text_fit(data)
         except ValueError:
             pass
+    # The kind of code as the label designer offers it, e.g., ean13 as EAN13
+    if 'barcode_type' in data:
+        data['barcode_type'] = check_code_type(data['barcode_type'])
     image_ref = data.get('image')
     if isinstance(image_ref, str) and len(image_ref) > 0:
         image_path = os.path.join(image_dir, secure_filename(image_ref))
@@ -794,6 +797,24 @@ def check_image_mode(value, default: str = 'grayscale') -> str:
     if mode not in IMAGE_MODES:
         raise ValueError(IMAGE_MODE_REFUSED)
     return mode
+
+
+def check_code_type(value) -> str:
+    """The barcode_type of a request, QR where it is left out or empty, as
+    /api/barcodes names it, also when given in lowercase, e.g., ean13."""
+    value = _given(value, 'QR')
+    if isinstance(value, str) and value.upper() in codes.TYPES:
+        return value.upper()
+    return value
+
+
+def check_code_correction(code_type: str, value) -> str:
+    """The error correction of a request for a code of code_type, also in
+    lowercase. Where none is given the first level the code has, L for codes
+    without a choice. A level the code does not have raises ValueError."""
+    if isinstance(value, str):
+        value = value.strip().upper()
+    return codes.correction(code_type, value) or 'L'
 
 
 def _whole(value) -> int:
@@ -999,9 +1020,13 @@ def _check_print_count(print_count: int) -> int:
 
 @bp.route('/api/barcodes', methods=['GET'])
 def get_barcodes():
-    barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]
-    barcodes.insert(0, 'QR')  # Add QR at the top
-    return {'barcodes': barcodes}
+    # The 2D codes at the top, QR codes first. codes tells which are 2D and
+    # which levels of error correction each has.
+    return {
+        'barcodes': codes.TYPES,
+        'codes': [{'type': code, 'name': codes.NAMES.get(code, code), 'two_d': code in codes.NAMES,
+                   'corrections': list(codes.CORRECTIONS.get(code, ()))} for code in codes.TYPES],
+    }
 
 
 @bp.route('/api/preview', methods=['POST'])
@@ -1212,9 +1237,9 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'border_distanceY': int(d.get('border_distance_y', 0)),
         'border_color': d.get('border_color', 'black'),
         'text': json.loads(d.get('text', '[]')),
-        'barcode_type': d.get('barcode_type', 'QR'),
+        'barcode_type': check_code_type(d.get('barcode_type')),
         'qrcode_size': int(d.get('qrcode_size', 10)),
-        'qrcode_correction': d.get('qrcode_correction', 'L'),
+        'qrcode_correction': check_code_correction(check_code_type(d.get('barcode_type')), d.get('qrcode_correction')),
         'image_mode': check_image_mode(d.get('image_mode')),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': _whole_or(d.get('image_fit'), 1) > 0,
