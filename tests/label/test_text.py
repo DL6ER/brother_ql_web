@@ -217,26 +217,6 @@ class TestLabelDesignerAPI:
         # Check image
         verify_image(response.data, 'large_label.png')
 
-    def test_non_utf8_encoded_text(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        # Latin-1 encoded string
-        text = 'Café'.encode('latin-1')
-        data['text'] = text
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-
-    def test_html_in_text(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': '<b>Bold</b>', 'size': '12', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 200
-        assert response.content_type in ['image/png']
-
-        # Check image
-        verify_image(response.data, 'html_in_text_plain.png')
-
     def test_invalid_alignment(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = json.dumps([

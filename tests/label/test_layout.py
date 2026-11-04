@@ -39,6 +39,13 @@ class TestLabelDesignerAPI:
             }
         ])
 
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200
+        assert response.content_type in ['image/png']
+
+        # Check image
+        verify_image(response.data, 'simple_no_margins.png')
+
     def test_generate_preview_no_margins_rotated(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['orientation'] = 'rotated'

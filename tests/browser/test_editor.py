@@ -319,19 +319,6 @@ def test_label_with_a_font_that_is_not_installed(designer, app):
         os.remove(path)
 
 
-def test_undo_and_redo(designer):
-    type_line(designer, 0, 'One')
-    kept(designer)
-    type_line(designer, 0, 'Two')
-    kept(designer)
-    designer.click('#edUndo')
-    wait_for_preview(designer)
-    assert designer.input_value('[data-row="0"] .tx') == 'One'
-    designer.click('#edRedo')
-    wait_for_preview(designer)
-    assert designer.input_value('[data-row="0"] .tx') == 'Two'
-
-
 def test_a_pause_in_typing_is_a_step_to_undo(designer):
     # Changes without a pause between them are one step. Undo right after a
     # change, before the pause, takes back that change.

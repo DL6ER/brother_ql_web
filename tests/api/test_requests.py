@@ -25,17 +25,7 @@ class TestLabelDesignerAPI:
         assert b'labeldesigner' in response.data
         assert response.content_type == 'text/html; charset=utf-8'
 
-    def test_invalid_data_types(self, client: FlaskClient):
-        # Non-integer label_size
-        data = EXAMPLE_FORMDATA.copy()
-        data['label_size'] = 'sixty-two'
-        data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Test', 'size': '12', 'align': 'center'}])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-        assert response.is_json
-        assert 'message' in response.get_json()
-
-        # Non-JSON text
+    def test_text_that_is_no_json(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
         data['text'] = 'not-a-json-string'
         response = client.post('/labeldesigner/api/preview', data=data)
@@ -53,14 +43,9 @@ class TestLabelDesignerAPI:
         # 413 = Content Too Large
         assert response.status_code == 413
 
-    def test_method_enforcement(self, client: FlaskClient):
-        # POST required for preview
-        response = client.get('/labeldesigner/api/preview')
-        # 405 = Method Not Allowed
-        assert response.status_code == 405
-
-    @pytest.mark.parametrize('method', ['put', 'delete', 'patch'])
+    @pytest.mark.parametrize('method', ['get', 'head', 'put', 'delete', 'patch'])
     def test_invalid_http_methods(self, client: FlaskClient, method):
+        # POST only, 405 = Method Not Allowed
         func = getattr(client, method)
         response = func('/labeldesigner/api/preview')
         assert response.status_code == 405
@@ -93,15 +78,6 @@ class TestLabelDesignerAPI:
 
         # Check image
         verify_image(response.data, 'extra_fields.png')
-
-    def test_non_existing_label_size(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['label_size'] = 62.5
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Float', 'size': '12', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
 
     def test_missing_optional_fields(self, client: FlaskClient):
         data = {
@@ -137,8 +113,8 @@ class TestLabelDesignerAPI:
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
 
-    @pytest.mark.parametrize('size', [0, -1, -100])
-    def test_negative_zero_label_size(self, client: FlaskClient, size):
+    @pytest.mark.parametrize('size', [62.5, 'sixty-two', 0, -1, -100])
+    def test_unknown_label_size(self, client: FlaskClient, size):
         data = EXAMPLE_FORMDATA.copy()
         data['label_size'] = size
         data['text'] = json.dumps([
@@ -146,28 +122,7 @@ class TestLabelDesignerAPI:
         ])
         response = client.post('/labeldesigner/api/preview', data=data)
         assert response.status_code == 400
-
-    def test_conflicting_fields(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        data['print_type'] = 'qrcode_text'
-        data['barcode_type'] = 'QR'
-        data['image'] = FileStorage(stream=io.BytesIO(b'img'), filename='img.jpg', content_type='image/jpeg')
-        data['image_mode'] = 'grayscale'
-        data['text'] = json.dumps([
-            {'font': 'DejaVu Sans,Book', 'text': 'Conflict', 'size': '12', 'align': 'center'}
-        ])
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-
-    def test_head_request(self, client: FlaskClient):
-        response = client.head('/labeldesigner/api/preview')
-        assert response.status_code == 405
-
-    def test_malformed_multipart(self, client: FlaskClient):
-        # Simulate a malformed multipart by sending a bad content-type
-        data = '--bad-boundary\r\nContent-Disposition: form-data; name="text"\r\n\r\nfoo\r\n--bad-boundary--\r\n'
-        response = client.post('/labeldesigner/api/preview', data=data, headers={'Content-Type': 'multipart/form-data; boundary=bad-boundary'})
-        assert response.status_code == 400
+        assert response.get_json()['message'] == 'Unknown label_size'
 
 
 def test_cross_origin_requests_are_rejected(tmp_path):

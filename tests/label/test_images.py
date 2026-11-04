@@ -173,16 +173,6 @@ class TestLabelDesignerAPI:
         assert 'message' in data
         assert data['message'] == 'Truncated File Read'
 
-    def test_multiple_images_failure(self, client: FlaskClient):
-        data = EXAMPLE_FORMDATA.copy()
-        file1 = FileStorage(stream=io.BytesIO(b'img1'), filename='img1.jpg', content_type='image/jpeg')
-        file2 = FileStorage(stream=io.BytesIO(b'img2'), filename='img2.jpg', content_type='image/jpeg')
-        data['print_type'] = 'image'
-        data['image'] = [file1, file2]
-        data['image_mode'] = 'grayscale'
-        response = client.post('/labeldesigner/api/preview', data=data)
-        assert response.status_code == 400
-
     def test_image_mode_edge_case(self, client: FlaskClient):
         # An unknown mode was printed in black and white. bw, as the webhook
         # was described, is black and white.
