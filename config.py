@@ -22,6 +22,9 @@ class Config(object):
     # Several printers for one label designer, as (model, device) pairs, e.g.
     # [('QL-700', 'usb://0x04f9:0x2042'), ('QL-1100', 'file:///dev/usb/lp1')]
     # or the environment variable PRINTERS="QL-700=usb://0x04f9:0x2042,...".
+    # A third item names a printer, e.g., ('QL-700', 'usb://...', 'Kitchen'),
+    # in the variable "Kitchen:QL-700=usb://...". The label designer shows the
+    # name, requests may choose the printer by it.
     # When set, PRINTER_PRINTER, PRINTER_MODEL and the automatic detection are
     # not used, requests that name no printer go to the first one. The simulator
     # is listed only when configured, e.g. 'QL-700=simulation'.

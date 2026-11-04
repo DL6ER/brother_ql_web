@@ -21,7 +21,7 @@ from app.fonts import FontNotFound
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
-from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
+from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, configured_printers, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
 from brother_ql.models import ALL_MODELS
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
@@ -1148,18 +1148,21 @@ PRINTER_MODELS = [model.identifier for model in ALL_MODELS]
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
     """Return the device and model selected by a request, or the configured
-    ones. With PRINTERS, the model of a listed device is the configured one."""
-    printers = current_app.config.get('PRINTERS') or []
+    ones. With PRINTERS, the model of a listed device is the configured one,
+    and a request may name the printer instead of its device."""
+    printers = configured_printers(current_app.config)
     if printers:
         configured, model = printers[0][1], printers[0][0]
     else:
         configured, model = current_app.config['PRINTER_PRINTER'], current_app.config['PRINTER_MODEL']
     device = requested_device or configured
-    listed = [d for _, d in printers]
+    named = {n.casefold(): d for _, d, n in printers if n}
+    device = named.get(device.casefold(), device)
+    listed = [d for _, d, _ in printers]
     if device not in (configured, 'simulation', '?', *listed) and \
             not any(pattern.fullmatch(device) for pattern in PRINTER_DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
-    model = requested_model or next((m for m, d in printers if d == device), model)
+    model = requested_model or next((m for m, d, _ in printers if d == device), model)
     if model not in PRINTER_MODELS:
         # brother_ql refuses it without a message
         raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")

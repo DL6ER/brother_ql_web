@@ -231,6 +231,12 @@ def device_lock(device_specifier: str, timeout: float | None = None):
         os.close(fd)
 
 
+def configured_printers(config) -> list[tuple[str, str, str]]:
+    """The printers of PRINTERS as (model, device, name), the name is empty
+    for a printer without one."""
+    return [(entry[0], entry[1], entry[2] if len(entry) > 2 else '') for entry in config.get('PRINTERS') or []]
+
+
 def is_simulation(device_specifier) -> bool:
     return isinstance(device_specifier, str) and device_specifier in ['simulation', '?']
 
@@ -998,7 +1004,7 @@ def get_ptr_status(config: Config):
             # model, a failed query must not move it to another printer. The
             # simulator is listed only when configured, e.g. QL-700=simulation.
             printers = []
-            for model, device in config['PRINTERS']:
+            for model, device, name in configured_printers(config):
                 try:
                     if device == 'simulation':
                         state = SIMULATOR_PRINTER.copy()
@@ -1009,7 +1015,7 @@ def get_ptr_status(config: Config):
                 except Exception as e:
                     logger.info('Status query of %s failed: %s', device, e)
                     state = _failed_printer_state(device, e)
-                state.update({'path': device, 'model': model})
+                state.update({'path': device, 'model': model, 'name': name})
                 state['red_support'] = model in [m.identifier for m in ALL_MODELS if m.two_color]
                 printers.append(state)
             return {
