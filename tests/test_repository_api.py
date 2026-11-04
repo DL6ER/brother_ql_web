@@ -1234,6 +1234,7 @@ def test_label_with_invalid_blanks_or_their_settings_is_not_saved(tmp_path, valu
     ({'image_text_gap': -4}, 'image_text_gap must not be negative'),
     ({'image_position': 'top'}, 'image_position must be above, below, left or right'),
     ({'text_fit': 'large'}, 'text_fit must be none, shrink or fill'),
+    ({'image_mode': 'sepia'}, 'image_mode must be grayscale, black_and_white, red_and_black or colored'),
 ])
 def test_label_with_settings_its_printing_refuses_is_not_saved(tmp_path, values, message):
     # Saved, it could not be printed or previewed afterwards

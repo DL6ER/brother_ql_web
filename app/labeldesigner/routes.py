@@ -519,6 +519,7 @@ def repo_save():
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
         check_image_position(data.get('image_position'))
+        check_image_mode(data.get('image_mode'))
     except ValueError as e:
         return make_response(jsonify({'success': False, 'message': str(e)}), 400)
     filename = secure_filename(name)
@@ -746,6 +747,22 @@ def _whole_or(value, default) -> int:
     """value as a whole number like _whole(), default where it is left out
     or empty."""
     return _whole(_given(value, default))
+
+
+IMAGE_MODES = ('grayscale', 'black_and_white', 'red_and_black', 'colored')
+IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
+
+
+def check_image_mode(value, default: str = 'grayscale') -> str:
+    """The image mode of a request, default where it is left out or empty.
+    bw, as the webhook was described, is black_and_white. Another one raises
+    ValueError, it was printed in black and white."""
+    mode = _given(value, default)
+    if mode == 'bw':
+        mode = 'black_and_white'
+    if mode not in IMAGE_MODES:
+        raise ValueError(IMAGE_MODE_REFUSED)
+    return mode
 
 
 def _whole(value) -> int:
@@ -1158,7 +1175,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
-        'image_mode': d.get('image_mode', "grayscale"),
+        'image_mode': check_image_mode(d.get('image_mode')),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': _whole_or(d.get('image_fit'), 1) > 0,
         'image_crop': _whole_or(d.get('image_crop'), 0) > 0,
@@ -1398,7 +1415,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     otherwise. Labels without image get [None]. A stored label has its
     image in image_dir, by default the repository, or in image_bytes where
     it was read with the label."""
-    image_mode = d.get('image_mode', 'grayscale')
+    image_mode = check_image_mode(d.get('image_mode'))
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
     dpi = HIGH_RES_DPI if _whole_or(d.get('high_res'), 0) != 0 else DEFAULT_DPI
@@ -1562,7 +1579,7 @@ def webhook_print():
         - images: one or more image files (field name "images")
         - label_size: label size identifier (default: from config)
         - orientation: "standard" or "rotated" (default: from config)
-        - image_mode: "grayscale", "bw", "red_and_black", "colored" (default: from config)
+        - image_mode: "grayscale", "black_and_white" (also "bw"), "red_and_black", "colored" (default: from config)
         - bw_threshold: black/white threshold 0-255 (default: from config)
         - high_res: 0 or 1 for 600 DPI (default: 0)
         - fast_printing: 0 or 1, 1 prints faster and a little less sharp (default: 0)
@@ -1616,6 +1633,10 @@ def webhook_print():
         kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
         if kind is None:
             return make_response(jsonify({'success': False, 'message': f'Unknown label_size: {label_size}'}), 400)
+        try:
+            image_mode = check_image_mode(image_mode, current_app.config['IMAGE_DEFAULT_MODE'])
+        except ValueError:
+            return make_response(jsonify({'success': False, 'message': IMAGE_MODE_REFUSED}), 400)
         # The message is returned without an exception, those may contain
         # details that should not reach the client
         problem = label_size_problem(label_size, model) or resolution_problem(model, high_res)
