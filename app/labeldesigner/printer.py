@@ -1,3 +1,4 @@
+import errno
 import logging
 import os
 import stat
@@ -563,6 +564,29 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     return state
 
 
+# Why a printer did not answer, in the words of those who use it. The error
+# itself is logged where it is caught.
+_UNANSWERED = (
+    ((errno.ENOENT, errno.ENODEV, errno.ENXIO), 'The printer is switched off or not connected'),
+    ((errno.EACCES, errno.EPERM), 'No permission to use the printer'),
+    ((errno.EBUSY,), 'The printer is in use by another program'),
+    ((errno.ETIMEDOUT,), 'The printer does not answer'),
+    ((errno.ECONNREFUSED,), 'The printer refuses the connection'),
+    ((errno.EHOSTUNREACH, errno.ENETUNREACH, errno.EHOSTDOWN), 'The printer cannot be reached'),
+)
+
+
+def unanswered(error: Exception) -> str:
+    """Why a printer did not answer the status query, e.g. 'The printer is
+    switched off or not connected' for a device file that is gone."""
+    if isinstance(error, TimeoutError):
+        return 'The printer does not answer'
+    for numbers, text in _UNANSWERED:
+        if getattr(error, 'errno', None) in numbers:
+            return text
+    return f'The printer does not answer the status query ({error})'
+
+
 def _failed_printer_state(device_specifier: str, error: Exception, model: str = 'Unknown') -> dict:
     """Status of a printer that did not answer the status query: model and
     media from its last answer, if there was one, and the error."""
@@ -573,7 +597,7 @@ def _failed_printer_state(device_specifier: str, error: Exception, model: str = 
         'media_width': known.get('media_width'),
         'media_length': known.get('media_length', 0),
         'media_type': known.get('media_type'),
-        'errors': [f'The printer does not answer the status query ({error})'],
+        'errors': [unanswered(error)],
         'status_type': 'Error',
         'phase_type': 'Unknown',
     }

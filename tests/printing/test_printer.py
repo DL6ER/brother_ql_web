@@ -242,7 +242,25 @@ def test_printer_without_status_answer_stays_listed(client, monkeypatch):
     lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
     assert lp0['model'] == 'QL-1100'
     assert lp0['media_width'] == 104
-    assert lp0['errors'] == ['The printer does not answer the status query (No complete status response within 2.0 s)']
+    assert lp0['errors'] == ['The printer does not answer']
+
+
+
+@pytest.mark.parametrize('error, reason', [
+    # The panel showed e.g. "([Errno 2] No such file or directory:
+    # '/dev/usb/lp0')": a printer switched off has no device file
+    (FileNotFoundError(errno.ENOENT, 'No such file or directory', '/dev/usb/lp0'), 'The printer is switched off or not connected'),
+    # As pyusb raises them
+    (OSError(errno.ENODEV, 'No such device (it may have been disconnected)'), 'The printer is switched off or not connected'),
+    (PermissionError(errno.EACCES, 'Permission denied', '/dev/usb/lp0'), 'No permission to use the printer'),
+    (OSError(errno.EBUSY, 'Resource busy'), 'The printer is in use by another program'),
+    (TimeoutError('timed out'), 'The printer does not answer'),
+    (ConnectionRefusedError(errno.ECONNREFUSED, 'Connection refused'), 'The printer refuses the connection'),
+    (OSError(errno.EHOSTUNREACH, 'No route to host'), 'The printer cannot be reached'),
+    (ValueError('Unexpected status'), 'The printer does not answer the status query (Unexpected status)'),
+])
+def test_why_a_printer_does_not_answer_is_told_in_plain_words(error, reason):
+    assert printer.unanswered(error) == reason
 
 
 def test_print_error_of_the_printer_is_reported(client, monkeypatch):
@@ -296,7 +314,7 @@ def test_configured_printers(client, monkeypatch):
     assert [(p['model'], p['path']) for p in status['printers']] == \
         [('QL-700', DEVICE), ('QL-1100', LP1), ('QL-810W', NET), ('QL-570', 'simulation')]
     # Network printers are asked over IPP
-    assert status['printers'][2]['errors'] == ['The printer does not answer the status query (timed out)']
+    assert status['printers'][2]['errors'] == ['The printer does not answer']
     assert status['selected'] == DEVICE
     with client.application.test_request_context():
         # The model of a listed printer is the configured one, unless requested
