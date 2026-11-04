@@ -1673,7 +1673,7 @@
           "barcode_type": {
             "type": "string",
             "default": "QR",
-            "description": "One of `/labeldesigner/api/barcodes`."
+            "description": "One of `/labeldesigner/api/barcodes`. Of a code with a check digit, e.g. EAN13, ISBN10 or UPCA, give the digits without it, which calculates it, or with the right one. A wrong one is refused."
           },
           "qrcode_size": {
             "type": "integer",

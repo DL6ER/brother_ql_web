@@ -81,6 +81,74 @@ def check_image_size(width: int, height: int) -> None:
         raise ValueError(f"Label is too large ({int(width)} x {int(height)} pixels)")
 
 
+def _gtin_check_digit(digits: str) -> str:
+    """Check digit of EAN, UPC, GTIN and ISBN-13: the digits weighted 3 and
+    1 from the right."""
+    total = sum(int(digit) * (3 if i % 2 == 0 else 1) for i, digit in enumerate(reversed(digits)))
+    return str(-total % 10)
+
+
+def _isbn10_check_digit(digits: str) -> str:
+    check = sum(weight * int(digit) for weight, digit in enumerate(digits, start=1)) % 11
+    return 'X' if check == 10 else str(check)
+
+
+def _issn_check_digit(digits: str) -> str:
+    check = -sum(weight * int(digit) for weight, digit in zip(range(8, 1, -1), digits)) % 11
+    return 'X' if check == 10 else str(check)
+
+
+def _pzn_check_digit(digits: str) -> str:
+    # 10 is none, python-barcode refuses such a number
+    return str(sum(weight * int(digit) for weight, digit in enumerate(digits, start=2)) % 11)
+
+
+# The codes with a check digit, by type: their name, the number of digits
+# without it, how it is calculated and whether hyphens may separate the
+# digits (python-barcode leaves them out). python-barcode calculates the
+# check digit itself and ignores what follows the digits it needs, so a wrong
+# check digit or a typo at the end made another valid code.
+CHECK_DIGIT_CODES = {
+    'ean': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean13': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean13-guard': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean8': ('EAN-8', 7, _gtin_check_digit, False),
+    'ean8-guard': ('EAN-8', 7, _gtin_check_digit, False),
+    'ean14': ('EAN-14', 13, _gtin_check_digit, False),
+    'gtin': ('GTIN', 13, _gtin_check_digit, False),
+    'jan': ('JAN', 12, _gtin_check_digit, False),
+    'upc': ('UPC-A', 11, _gtin_check_digit, False),
+    'upca': ('UPC-A', 11, _gtin_check_digit, False),
+    'gs1': ('GS1', 12, _gtin_check_digit, True),
+    'isbn': ('ISBN-13', 12, _gtin_check_digit, True),
+    'isbn13': ('ISBN-13', 12, _gtin_check_digit, True),
+    'isbn10': ('ISBN-10', 9, _isbn10_check_digit, True),
+    'issn': ('ISSN', 7, _issn_check_digit, True),
+    'pzn': ('PZN', 6, _pzn_check_digit, False),
+}
+
+
+def check_check_digit(barcode_type: str, value: str) -> None:
+    """ValueError if value is no number of the type: the digits without the
+    check digit, which is calculated, or with the right one."""
+    if barcode_type.lower() not in CHECK_DIGIT_CODES:
+        return
+    name, length, check_digit, hyphens = CHECK_DIGIT_CODES[barcode_type.lower()]
+    number = value.replace('-', '') if hyphens else value
+    digits, given = number[:length], number[length:].upper()
+    may_be_x = check_digit in (_isbn10_check_digit, _issn_check_digit)
+    if not (len(digits) == length and _is_digits(digits)
+            and (given == '' or len(given) == 1 and (_is_digits(given) or may_be_x and given == 'X'))):
+        raise ValueError(f"{name} takes {length} digits, or {length + 1} with the check digit{', which may be an X' if may_be_x else ''}")
+    expected = check_digit(digits)
+    if given and given != expected and expected != '10':
+        raise ValueError(f"The check digit of {name} {value} must be {expected}")
+
+
+def _is_digits(text: str) -> bool:
+    return text.isascii() and text.isdigit()
+
+
 def _iso_date(value: str) -> datetime.date | None:
     """value as a date if it is one like 2026-11-03."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII):
@@ -761,6 +829,9 @@ class SimpleLabel:
             raise ValueError("The barcode is empty")
         if len(value) > MAX_BARCODE_LENGTH:
             raise ValueError(f"Barcode value must not exceed {MAX_BARCODE_LENGTH} characters")
+        # The marks of blanks are said to be no code below
+        if not self._code_of_marks:
+            check_check_digit(self.barcode_type, value)
         try:
             return _barcode_image(barcode_class, self.barcode_type, value)
         except BarcodeError:
