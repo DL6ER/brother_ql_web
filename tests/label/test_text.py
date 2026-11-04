@@ -127,6 +127,10 @@ class TestLabelDesignerAPI:
         pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': f'--- {i} ---', 'size': str(i + 1), 'align': ['center', 'left', 'right'][i % 3],
                            'inverted': bool(i % 2), 'color': 'red' if i % 5 == 0 else 'black'} for i in range(100)],
                      'large_label.png', id='large_number_of_text_blocks'),
+        # White on black around the letters reaching below and above the line
+        pytest.param({}, [{'font': 'DejaVu Serif,Book', 'text': 'Agjpqy', 'size': '70', 'align': 'center', 'inverted': True},
+                          {'font': 'DejaVu Serif,Book', 'text': '\u00c4gjpqy', 'size': '120', 'align': 'center', 'inverted': True}],
+                     'inverted_descenders.png', id='inverted_descenders'),
         # Composed and decomposed
         pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Caf\u00e9', 'size': '24', 'align': 'center'},
                           {'font': 'DejaVu Sans,Book', 'text': unicodedata.normalize('NFD', 'Caf\u00e9'), 'size': '24', 'align': 'center'}],
@@ -325,6 +329,39 @@ def test_the_box_of_the_last_to_do_line_is_on_the_label(tmp_path, text):
     with Image.open(io.BytesIO(response.data)) as image:
         ink = image.convert('L').point(lambda v: 255 if v < 128 else 0).getbbox()
         assert ink[3] == image.height - int(data['margin_bottom'])
+
+
+@pytest.mark.parametrize('font', ['DejaVu Serif,Book', 'DejaVu Sans,Bold'])
+@pytest.mark.parametrize('size', [70, 120])
+def test_white_on_black_keeps_all_of_the_letters(tmp_path, font, size):
+    # The box was drawn higher than the letters: those reaching below the
+    # line were cut off, white on white
+    client = make_client(tmp_path)
+
+    def ink(inverted):
+        line = {'font': font, 'text': 'Agjpqy \u00c4', 'size': str(size), 'align': 'center', 'inverted': inverted}
+        data = dict(EXAMPLE_FORMDATA, border_thickness='0', text=json.dumps([line]))
+        with Image.open(io.BytesIO(client.post('/labeldesigner/api/preview', data=data).data)) as image:
+            gray = image.convert('L')
+        if not inverted:
+            return sum(gray.histogram()[:128])
+        # The letters are the light pixels in the box
+        inside = gray.crop(gray.point(lambda v: 255 if v < 128 else 0).getbbox())
+        return sum(inside.histogram()[128:])
+    assert ink(True) == pytest.approx(ink(False), rel=0.02)
+
+
+def test_white_on_black_boxes_of_a_size_are_alike(tmp_path):
+    # From the ascender to the descender of the font, whatever the letters
+    client = make_client(tmp_path)
+
+    def box(text):
+        line = {'font': 'DejaVu Sans,Book', 'text': text, 'size': '60', 'inverted': True}
+        data = dict(EXAMPLE_FORMDATA, border_thickness='0', text=json.dumps([line]))
+        with Image.open(io.BytesIO(client.post('/labeldesigner/api/preview', data=data).data)) as image:
+            left, top, right, bottom = image.convert('L').point(lambda v: 255 if v < 128 else 0).getbbox()
+        return top, bottom
+    assert box('ace') == box('Agjpqy') == box('\u00c4\u00d6\u00dc')
 
 
 def test_a_line_before_blank_lines_at_the_end_is_measured_like_any_other(tmp_path):
