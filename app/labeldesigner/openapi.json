@@ -1565,7 +1565,8 @@
         "properties": {
           "text": {
             "type": "string",
-            "maxLength": 10000
+            "maxLength": 10000,
+            "description": "A line break, also in the value of a blank, starts another line with the same settings."
           },
           "font": {
             "type": "string",

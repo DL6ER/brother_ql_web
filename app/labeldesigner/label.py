@@ -369,10 +369,12 @@ class SimpleLabel:
         self._label_type = value
 
     def process_templates(self) -> None:
-        """Process and replace templates in the text lines and the code."""
-        self.text = copy.deepcopy(self.input_text)
+        """Process and replace templates in the text lines and the code. A
+        line with line breaks, e.g. from the value of a blank, becomes as many
+        lines with its settings."""
+        self.text = []
         total_length = 0
-        for line in self.text:
+        for line in copy.deepcopy(self.input_text):
             # Only the templates set it, not the request
             line.pop('unmarked', None)
             text_val = line.get('text', '')
@@ -387,6 +389,7 @@ class SimpleLabel:
             if len(text_val) > MAX_TEXT_LENGTH or total_length > MAX_TOTAL_TEXT_LENGTH:
                 raise TextTooLong("Text is too long")
             line['text'] = text_val
+            self.text.extend(self._split_line(line))
         # The code with the same counter and date as the text, so that e.g.
         # each copy has its own number in the code as well. Icons are drawn
         # with their font, a code keeps their name. Only labels that draw a
@@ -491,8 +494,23 @@ class SimpleLabel:
         # The same pieces, e.g. with the same random text: a code that takes
         # the text gets it as printed
         line['unmarked'] = text
-        shown = [value if value != '' else f'{name}?' for name, value in zip(names, values)]
+        # A name with a line break makes no more lines than the values
+        shown = [value if value != '' else re.sub(r'[\r\n]', ' ', name) + '?' for name, value in zip(names, values)]
         return ''.join(piece + value for piece, value in zip(pieces, shown + ['']))
+
+    @staticmethod
+    def _split_line(line: dict) -> list:
+        """The lines a line shows, one for each of its line breaks, all with
+        its settings. A line break failed the label, Pillow cannot place
+        several lines by the top of the letters, and a carriage return was
+        drawn as a box."""
+        def lines(text):
+            return text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        texts = lines(line['text'])
+        if 'unmarked' not in line:
+            return [dict(line, text=text) for text in texts]
+        # The marks of the blanks in a preview have no line breaks
+        return [dict(line, text=text, unmarked=unmarked) for text, unmarked in zip(texts, lines(line['unmarked']))]
 
     def _now(self) -> datetime.datetime:
         """The time the label is made for: its timestamp, or else now."""
