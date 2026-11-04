@@ -266,12 +266,17 @@ function blanksOf(design) {
 const blankFields = item => (item.design && item.design.fields) || {};
 
 // Kinds of blanks and the kind a name suggests
-const BLANK_KINDS = [['text', 'Text'], ['number', 'Number'], ['date', 'Date']];
+const BLANK_KINDS = [['text', 'Text'], ['number', 'Number'], ['date', 'Date'], ['choice', 'Choice']];
 const guessKind = name => /(^|\s)on$|\bdate\b/i.test(name) ? 'date' : /^(box|number|portions|no\.?|count)$/i.test(name) ? 'number' : 'text';
 
 function fieldType(item, name) {
     return (blankFields(item)[name] || {}).type || guessKind(name);
 }
+
+// The choices of a blank with a fixed list of them, numbers as written
+const blankChoices = (item, name) => ((blankFields(item)[name] || {}).choices || []).map(String);
+// Choices as typed, one per line: each once, empty lines left out
+const choicesOf = text => [...new Set(String(text).split('\n').map(c => c.trim()).filter(Boolean))];
 
 // The blanks of a design as the server fills them in: the values given, and
 // the settings of each blank. A date is written in its format, else as set
@@ -1046,6 +1051,8 @@ function blankStart(item, name) {
 // at today
 function startOf(item, name) {
     const start = blankStart(item, name);
+    // One of the choices: its default, else the first one
+    if (fieldType(item, name) === 'choice') return blankChoices(item, name).includes(String(start)) ? String(start) : blankChoices(item, name)[0] || '';
     return start || name in ((item.design && item.design.blanks) || {}) || fieldType(item, name) !== 'date' ? start : today();
 }
 
@@ -1737,6 +1744,9 @@ function fieldHTML(item, name, value, i) {
     if (t === 'date') {
         return `<div><label class="label-s" for="${id}">${esc(name)}</label><input class="field" id="${id}" type="date" data-blank="${esc(name)}" value="${esc(value || today())}"></div>`;
     }
+    if (t === 'choice') {
+        return `<div><label class="label-s" for="${id}">${esc(name)}</label><select class="field" id="${id}" data-blank="${esc(name)}">${blankChoices(item, name).map(c => `<option${c === value ? ' selected' : ''}>${esc(c)}</option>`).join('')}</select></div>`;
+    }
     const used = [];
     if (item.kind === 'saved') {
         for (const h of S.history) {
@@ -2261,6 +2271,7 @@ function drawEditor() {
         for (const b of blanks) {
             const v = E.values[b], def = startOf(item, b);
             if (v === undefined || (oldTypes[b] && fieldType(item, b) !== oldTypes[b])) continue;
+            if (fieldType(item, b) === 'choice' && !blankChoices(item, b).includes(v)) continue;
             if ((v === '' || v === (oldDefs[b] || '')) && def !== (oldDefs[b] || '')) continue;
             vals[b] = v;
         }
@@ -2273,7 +2284,8 @@ function drawEditor() {
             const k = fieldType(item, b);
             return `<div class="bset-row" data-bname="${esc(b)}"><b>[${esc(b)}]</b>
                 <div class="seg">${BLANK_KINDS.map(([v, n]) => `<button type="button" data-kind="${v}" class="${k === v ? 'on' : ''}">${n}</button>`).join('')}</div>
-                ${k !== 'date' ? `<input class="field" data-default="1" type="${k === 'number' ? 'number' : 'text'}" placeholder="Default, optional" value="${esc(blankStart(item, b))}">`
+                ${k === 'choice' ? `<textarea class="field choices" data-choices rows="2" placeholder="One choice per line, the first is the default" aria-label="Choices of ${esc(b)}, one per line">${esc(blankChoices(item, b).join('\n'))}</textarea>`
+                    : k !== 'date' ? `<input class="field" data-default="1" type="${k === 'number' ? 'number' : 'text'}" placeholder="Default, optional" value="${esc(blankStart(item, b))}">`
                     : blankStart(item, b) ? `<span class="muted small">Starts at ${esc(blankStart(item, b))}</span><button type="button" class="btn sm quiet" data-today="1">Start at today</button>`
                     : '<span class="muted small">Starts at today</span>'}</div>`;
         }).join('')}</div><p class="muted small" style="margin:0">Stored with the label. Rename a blank in its line, between the brackets.</p>`
@@ -2284,6 +2296,7 @@ function drawEditor() {
             E.design.fields = Object.assign({}, E.design.fields);
             E.design.fields[name] = Object.assign({}, blankFields(item)[name] || { type: guessKind(name) }, patch);
             if (E.design.fields[name].default === '') delete E.design.fields[name].default;
+            if (E.design.fields[name].type !== 'choice') delete E.design.fields[name].choices;
             // They replace a value saved with the label through the API
             if (E.design.blanks && name in E.design.blanks) {
                 E.design.blanks = Object.assign({}, E.design.blanks);
@@ -2293,7 +2306,14 @@ function drawEditor() {
             redrawEditor();
         };
         $$('.bset-row', box).forEach(r => {
-            $$('[data-kind]', r).forEach(b => b.onclick = () => setField(r.dataset.bname, { type: b.dataset.kind, default: '' }));
+            // A list of choices starts with the current value
+            $$('[data-kind]', r).forEach(b => b.onclick = () => {
+                const toChoice = b.dataset.kind === 'choice' && fieldType(item, r.dataset.bname) !== 'choice';
+                if (toChoice) S.focusChoices = r.dataset.bname;
+                setField(r.dataset.bname, Object.assign({ type: b.dataset.kind, default: '' }, toChoice ? { choices: choicesOf(E.values[r.dataset.bname] || '') } : {}));
+            });
+            const choices = $('[data-choices]', r);
+            if (choices) choices.addEventListener('change', () => setField(r.dataset.bname, { choices: choicesOf(choices.value) }));
             const dv = $('[data-default]', r);
             if (dv) dv.addEventListener('change', () => setField(r.dataset.bname, { default: dv.value.trim() }));
             const now = $('[data-today]', r);
@@ -2305,6 +2325,10 @@ function drawEditor() {
             inp.dispatchEvent(new Event('input', { bubbles: true }));
         });
         markBlanks(box.parentElement);
+        // Made a list of choices, they are typed next
+        const typing = S.focusChoices && $(`[data-bname="${CSS.escape(S.focusChoices)}"] [data-choices]`, box);
+        S.focusChoices = null;
+        if (typing) { typing.focus(); typing.setSelectionRange(typing.value.length, typing.value.length); }
         if (S.focusBlank && window.matchMedia('(min-width: 761px)').matches) { const f = $('input.need', box); if (f) f.focus(); }
         S.focusBlank = false;
         $$('[data-blank]', box).forEach(inp => inp.addEventListener('input', () => { E.values[inp.dataset.blank] = inp.value; redrawEditor(); }));
@@ -2521,6 +2545,7 @@ function openBlankDialog(d, target) {
             <label><span class="label-s">Name, shown next to the field</span><input class="field" id="bName" value="${esc(suggest)}" autocomplete="off"></label>
             <div><span class="label-s">Kind</span><div class="seg" id="bKinds">${BLANK_KINDS.map(([v, n]) => `<button type="button" data-bkind="${v}">${n}</button>`).join('')}</div></div>
             <label id="bDefWrap"><span class="label-s">Default value, optional</span><input class="field" id="bDef" autocomplete="off" placeholder="Empty"></label>
+            <label id="bChoicesWrap" hidden><span class="label-s">Choices, one per line, the first is the default</span><textarea class="field choices" id="bChoices" rows="3"></textarea></label>
             <p class="muted small" id="bDateNote" hidden>Date blanks start at today's date.</p>
             <p class="err small" id="bErr" hidden style="padding:0;text-align:left"></p>
             <div class="acts"><button class="btn-print" type="submit" id="bInsert"></button></div>
@@ -2529,7 +2554,8 @@ function openBlankDialog(d, target) {
     const sync = () => {
         if (!chosen) kind = guessKind(name.value.trim());
         $$('[data-bkind]').forEach(b => b.classList.toggle('on', b.dataset.bkind === kind));
-        $('#bDefWrap').hidden = kind === 'date';
+        $('#bDefWrap').hidden = kind === 'date' || kind === 'choice';
+        $('#bChoicesWrap').hidden = kind !== 'choice';
         $('#bDateNote').hidden = kind !== 'date';
         def.type = kind === 'number' ? 'number' : 'text';
         $('#bInsert').textContent = `Insert [${name.value.trim() || '...'}]`;
@@ -2542,11 +2568,13 @@ function openBlankDialog(d, target) {
     $('#blankForm').onsubmit = e => {
         e.preventDefault();
         const n = name.value.trim();
+        const choices = choicesOf($('#bChoices').value);
         const err = !n ? 'Give the blank a name.' : /[\[\]{}\n]/.test(n) ? 'Brackets cannot be part of the name.'
-            : ['today', 'counter', 'id'].includes(n.toLowerCase()) ? `[${n}] is a variable already, choose another name.` : '';
+            : ['today', 'counter', 'id'].includes(n.toLowerCase()) ? `[${n}] is a variable already, choose another name.`
+            : kind === 'choice' && !choices.length ? 'Give the blank its choices, one per line.' : '';
         if (err) { $('#bErr').textContent = err; $('#bErr').hidden = false; return; }
         d.fields = d.fields || {};
-        d.fields[n] = Object.assign({ type: kind }, kind !== 'date' && def.value.trim() ? { default: def.value.trim() } : {});
+        d.fields[n] = Object.assign({ type: kind }, kind === 'choice' ? { choices } : kind !== 'date' && def.value.trim() ? { default: def.value.trim() } : {});
         closeLayer(true);
         const input = target();
         if (input) insertAt(input, `[${n}]`);

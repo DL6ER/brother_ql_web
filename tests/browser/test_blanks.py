@@ -7,7 +7,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from tests.browser.helpers import kept, printed, save_as, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, printed, save_as, type_line, wait_for_preview
 
 
 def _next_day(designer):
@@ -250,3 +250,76 @@ def test_code_of_empty_blanks_takes_the_text(designer):
     assert printed(designer) == ['printed']
     form = parse_qs(bodies[0].decode(), keep_blank_values=True)
     assert len(bodies) == 1 and form['code_text'] == ['{{blank:URL}}'] and form['blanks'] == ['{}']
+
+
+def test_choice_blanks_are_filled_in_from_their_list(designer, server, app, monkeypatch, tmp_path):
+    # Chosen from a list, a room is written the same on every label
+    monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
+    type_line(designer, 0, 'Shelf [Room]')
+    designer.fill('#edFields input[data-blank="Room"]', 'Garage')
+    wait_for_preview(designer)
+    designer.click('#blankSet')
+    row = '[data-bname="Room"]'
+    designer.click(f'{row} [data-kind="choice"]')
+    # The list starts with the current value, the next ones are typed
+    designer.wait_for_function("() => document.activeElement && document.activeElement.matches('[data-choices]')")
+    assert designer.evaluate("() => S.edit.design.fields.Room") == {'type': 'choice', 'choices': ['Garage']}
+    designer.keyboard.type('\nKitchen\n\n Attic \nKitchen')
+    designer.dispatch_event(f'{row} [data-choices]', 'change')
+    designer.wait_for_function("() => S.edit.design.fields.Room.choices.length === 3")
+    assert designer.evaluate("() => S.edit.design.fields.Room") == {'type': 'choice', 'choices': ['Garage', 'Kitchen', 'Attic']}
+    designer.click('#blankSet')
+    field = '#edFields select[data-blank="Room"]'
+    designer.wait_for_selector(field)
+    assert designer.eval_on_selector_all(f'{field} option', 'os => os.map(o => o.value)') == ['Garage', 'Kitchen', 'Attic']
+    assert designer.input_value(field) == 'Garage'
+    designer.select_option(field, 'Attic')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.values.Room') == 'Attic'
+    assert 'Everything fits.' in fits_note(designer)
+    designer.click('#edPrint')
+    assert printed(designer) == ['printed']
+    # A value no longer among the choices falls back to the first one
+    designer.click('#blankSet')
+    designer.fill(f'{row} [data-choices]', 'Kitchen\nGarage')
+    designer.dispatch_event(f'{row} [data-choices]', 'change')
+    designer.wait_for_function("() => S.edit.values.Room === 'Kitchen'")
+    # Back to text, the list is gone
+    designer.click(f'{row} [data-kind="text"]')
+    designer.wait_for_function("() => S.edit.design.fields.Room.type === 'text'")
+    assert 'choices' not in designer.evaluate('() => S.edit.design.fields.Room')
+
+
+def test_a_new_choice_blank_needs_its_choices(designer):
+    designer.click('#edBlank')
+    designer.fill('#bName', 'Room')
+    designer.click('[data-bkind="choice"]')
+    assert designer.is_hidden('#bDefWrap') and designer.is_visible('#bChoicesWrap')
+    designer.click('#bInsert')
+    assert designer.inner_text('#bErr') == 'Give the blank its choices, one per line.'
+    designer.fill('#bChoices', 'Fridge\nFreezer\n\nFridge')
+    designer.click('#bInsert')
+    designer.wait_for_selector('#edFields select[data-blank="Room"]')
+    assert designer.evaluate("() => [S.edit.design.fields.Room, S.edit.values.Room]") == [{'type': 'choice', 'choices': ['Fridge', 'Freezer']}, 'Fridge']
+
+
+def test_choice_blanks_of_saved_labels_are_chosen_where_they_are_printed(designer, server):
+    # Also in the wizard and from a link, the default first
+    designer.request.post(server + '/labeldesigner/api/repository/save', headers={'Content-Type': 'application/json'},
+                          data=json.dumps({'name': 'Shelf.json', 'title': 'Shelf', 'label_size': '62',
+                                           'text': [{'text': 'Shelf {{blank:Room}}', 'size': '40'}],
+                                           'fields': {'Room': {'type': 'choice', 'choices': ['Garage', 'Kitchen', 2.5], 'default': 'Kitchen'}}}))
+    try:
+        designer.evaluate("async () => { await loadSaved(); location.hash = 'fill/Shelf.json'; }")
+        field = '#libFields select[data-blank="Room"]'
+        designer.wait_for_selector(field)
+        assert designer.eval_on_selector_all(f'{field} option', 'os => os.map(o => o.value)') == ['Garage', 'Kitchen', '2.5']
+        assert designer.input_value(field) == 'Kitchen'
+        designer.select_option(field, '2.5')
+        designer.wait_for_selector('#libPrint')
+        designer.evaluate('() => { window.printJob = job => { window.job = job; return true; }; }')
+        designer.click('#libPrint')
+        designer.wait_for_function('() => window.job')
+        assert designer.evaluate("() => job.values.Room") == '2.5'
+    finally:
+        designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Shelf.json'})
