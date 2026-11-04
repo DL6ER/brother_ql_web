@@ -20,6 +20,11 @@ from brother_ql.models import ALL_MODELS
 # The pins are those of the 128-pin print head, the PT-P900 series places
 # tapes differently on its wider one
 SMALL_HEAD_MODELS = ['PT-E550W', 'PT-P700', 'PT-P750W']
+# brother_ql's tapes made for the 128-pin print head at 180 dpi. Offered to
+# the PT-P900 series as well, with its 560 pins at 360 dpi they printed half
+# as large and in the wrong place. Its 18 and 36 mm tapes ("18", pt36) are
+# made for its head.
+SMALL_HEAD_TAPES = ('pt12', 'pt18', 'pt24')
 
 EXTRA_LABELS = (
     Label('pt6', (6, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (32, 0), 48, feed_margin=14,
@@ -55,5 +60,12 @@ def _correct_model_codes():
             model.model_code = MODEL_CODES[model.identifier]
 
 
+def _restrict_tapes():
+    for label in brother_ql.labels.ALL_LABELS:
+        if label.identifier in SMALL_HEAD_TAPES:
+            label.restricted_to_models = SMALL_HEAD_MODELS
+
+
 _add_labels()
 _correct_model_codes()
+_restrict_tapes()

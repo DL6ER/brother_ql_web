@@ -7,7 +7,7 @@ from brother_ql.conversion import convert
 from brother_ql.labels import ALL_LABELS
 from brother_ql.raster import BrotherQLRaster
 
-from app.labeldesigner.label_names import LABEL_NAMES, label_printers
+from app.labeldesigner.label_names import LABEL_NAMES, PTOUCH_LABELS, check_label_size, label_printers
 from tests.helpers import make_client
 
 
@@ -36,6 +36,17 @@ def test_label_printers():
     assert 'PT-P900W' not in label_printers(_label('62'))
     # The black/red roll only on printers that print red
     assert label_printers(_label('62red')) == ['QL-800', 'QL-810W', 'QL-820NWB']
+
+
+@pytest.mark.parametrize('identifier', ['pt12', 'pt18', 'pt24'])
+def test_tapes_of_the_small_print_head_are_not_offered_to_the_pt_p900_series(identifier):
+    # Made for the 128-pin print head at 180 dpi, the PT-P900 series printed
+    # them half as large and in the wrong place
+    assert label_printers(_label(identifier)) == ['PT-E550W', 'PT-P700', 'PT-P750W']
+    with pytest.raises(ValueError, match='cannot be printed on a PT-P900W$'):
+        check_label_size(identifier, 'PT-P900W')
+    # Its own tapes stay
+    assert sorted(size for size in PTOUCH_LABELS if 'PT-P950NW' in label_printers(_label(size))) == ['18', 'pt36']
 
 
 def test_every_offered_label_size_can_be_printed():
@@ -76,7 +87,7 @@ def test_narrow_tze_tapes_use_the_pins_of_the_raster_command_reference(identifie
     # brother_ql has no 6 and 9 mm tapes, the label designer adds them
     printers = label_printers(_label(identifier))
     assert 'PT-E550W' in printers
-    assert ('PT-P900W' in printers) == (identifier == 'pt12')
+    assert 'PT-P900W' not in printers
     image = Image.new('1', (len(pins), 40), 0)
     data = convert(BrotherQLRaster('PT-E550W'), [image], identifier, cut=True, rotate=0)
     used = set()
