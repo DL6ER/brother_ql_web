@@ -217,3 +217,25 @@ def test_label_stays_with_its_images_when_it_cannot_be_kept(designer):
     wait_for_preview(designer)
     kept(designer)
     assert designer.evaluate('() => loadEdit().design.image.data') == first
+
+
+def test_instances_below_one_host_keep_their_labels_apart(designer, server):
+    # Served below different paths behind a reverse proxy, they shared the
+    # label kept for the next visit, the print history and the printer
+    designer.evaluate("""() => {
+        S.edit.title = 'Of the root';
+        storeEdit();
+        localStorage.setItem('designer_printer', JSON.stringify('file:///dev/usb/lp7'));
+    }""")
+    designer.route('**/labeldesigner/', lambda route: route.fulfill(
+        response=route.fetch(), body=route.fetch().text().replace('"storage_prefix": ""', '"storage_prefix": "/labels/"')))
+    designer.reload()
+    wait_for_preview(designer)
+    # Neither the label nor the printer of the other instance
+    assert designer.input_value('#edTitle') != 'Of the root'
+    assert not designer.is_visible('#toast:has-text("/dev/usb/lp7 is not connected")')
+    type_line(designer, 0, 'Below /labels')
+    kept(designer)
+    stored = designer.evaluate("""() => [JSON.parse(localStorage.getItem('/labels/designer_edit')).design.text[0].text,
+                                         JSON.parse(localStorage.getItem('designer_edit')).title]""")
+    assert stored == ['Below /labels', 'Of the root']

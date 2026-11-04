@@ -180,6 +180,10 @@ def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     assert manifest_url.startswith('/labels/')
     # The API is called below the path too
     assert '"base": "/labels/labeldesigner"' in html
+    # What it keeps in the browser is apart from an instance at the root,
+    # which keeps the names it always had
+    assert '"storage_prefix": "/labels/"' in html
+    assert '"storage_prefix": ""' in client.get('/labeldesigner/').get_data(as_text=True)
     # Bookmarks of the previous designer open this one
     assert client.get('/labeldesigner/classic', headers=headers).headers['Location'] == '/labels/labeldesigner/'
 
