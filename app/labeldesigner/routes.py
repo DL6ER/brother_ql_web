@@ -22,6 +22,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
+from brother_ql.models import ALL_MODELS
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
@@ -1109,6 +1110,11 @@ def _log_refused_request(what: str, error: Exception):
         current_app.logger.exception(error)
 
 
+PRINTER_MODELS = [model.identifier for model in ALL_MODELS]
+# A detected printer whose status names no model brother_ql knows
+UNKNOWN_MODEL = 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'
+
+
 def _printer(requested_device, requested_model) -> tuple[str, str]:
     """Return the device and model selected by a request, or the configured
     ones. With PRINTERS, the model of a listed device is the configured one."""
@@ -1122,8 +1128,11 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
     if device not in (configured, 'simulation', '?', *listed) and \
             not any(pattern.fullmatch(device) for pattern in PRINTER_DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
-    model = next((m for m, d in printers if d == device), model)
-    return device, requested_model or model
+    model = requested_model or next((m for m, d in printers if d == device), model)
+    if model not in PRINTER_MODELS:
+        # brother_ql refuses it without a message
+        raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")
+    return device, model
 
 
 def create_printer_from_request(request: Request):
