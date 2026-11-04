@@ -10,7 +10,7 @@ from PIL import Image
 from brother_ql.labels import ALL_LABELS
 
 from app.labeldesigner import demos
-from test_labeldesigner_api import make_client
+from tests.helpers import make_client
 
 LABEL_SIZES = {label.identifier for label in ALL_LABELS}
 DEMO_IDS = [label_id for category in demos.categories() for label_id, _ in demos.labels(category['id'])]

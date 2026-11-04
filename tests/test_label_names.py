@@ -8,7 +8,7 @@ from brother_ql.labels import ALL_LABELS
 from brother_ql.raster import BrotherQLRaster
 
 from app.labeldesigner.label_names import LABEL_NAMES, label_printers
-from test_labeldesigner_api import make_client
+from tests.helpers import make_client
 
 
 def _label(identifier):

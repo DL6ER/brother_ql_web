@@ -7,7 +7,7 @@ import pytest
 from brother_ql.backends import linux_kernel
 
 from app.labeldesigner import printer
-from test_labeldesigner_api import EXAMPLE_FORMDATA, make_client
+from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 DEVICE = 'file:///dev/usb/lp0'
 

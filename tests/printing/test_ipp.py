@@ -11,7 +11,7 @@ import pytest
 from app import create_app
 from app.labeldesigner import ipp, printer
 
-FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'ipp')
+FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'ipp')
 
 
 def fixture(name: str) -> bytes:
@@ -223,7 +223,7 @@ COVER_OPEN = response(attribute(0x41, 'printer-make-and-model', b'Brother QL-800
 def network_job(fake_printer, monkeypatch, tmp_path):
     """Print on a network printer at 127.0.0.1: the IPP answers come from
     the fake printer, what is sent to port 9100 is collected."""
-    from test_labeldesigner_api import EXAMPLE_FORMDATA, make_client
+    from tests.helpers import EXAMPLE_FORMDATA, make_client
     sent = []
     monkeypatch.setattr(printer, 'send', lambda data, device: sent.append(device) or {})
     monkeypatch.setattr(printer, 'NETWORK_JOB_POLL', 0.01)

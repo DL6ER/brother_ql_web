@@ -3,7 +3,7 @@ import os
 
 from app import create_app
 
-SPEC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'app', 'labeldesigner', 'openapi.json')
+SPEC = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'app', 'labeldesigner', 'openapi.json')
 
 
 def _api_routes(app) -> dict:
