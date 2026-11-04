@@ -34,6 +34,9 @@ from app.utils import (
 )
 
 DEFAULT_DPI = 300
+# The label size of a request or a saved label that names none, the same for
+# the label and the printer
+DEFAULT_LABEL_SIZE = '62'
 HIGH_RES_DPI = 600
 
 # Image types the repository stores next to the label JSON files
@@ -491,11 +494,19 @@ def repo_list():
         if isinstance(data.get('title'), str) and data['title'].strip():
             entry['title'] = data['title'].strip()
         # Parse label size (support both snake_case and legacy camelCase)
-        label_size = data.get('label_size') or data.get('labelSize')
+        label_size = stored_label_size(data.get('label_size') or data.get('labelSize'))
         entry['label_size_id'] = label_size
         entry['label_size'] = _label_size_name(label_size)
         files.append(entry)
     return {'files': files}
+
+
+def stored_label_size(value):
+    """A label size as the labels name it. JSON clients may send a whole
+    number, e.g. 62 for "62", labels saved like that before are read the same."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return value
 
 
 def _label_size_name(label_size: str | None) -> str | None:
@@ -531,6 +542,10 @@ def repo_save():
         _text_fit(data)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
+        if 'label_size' in data:
+            data['label_size'] = stored_label_size(data['label_size'])
+            if not any(label.identifier == data['label_size'] for label in ALL_LABELS):
+                raise ValueError('Unknown label_size')
     except ValueError as e:
         return make_response(jsonify({'success': False, 'message': str(e)}), 400)
     filename = secure_filename(name)
@@ -660,6 +675,8 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     text = data.get('text', [])
     data['text'] = json.dumps(text)
     data = fill_first_line_fields(text, data)
+    if 'label_size' in data:
+        data['label_size'] = stored_label_size(data['label_size'])
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
@@ -802,6 +819,8 @@ def _load_repo_json(name: str) -> tuple[dict, bytes | None]:
             raise FileNotFoundError(name)
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
+        if 'label_size' in data:
+            data['label_size'] = stored_label_size(data['label_size'])
         image, image_bytes = data.get('image'), None
         if isinstance(image, str) and image and os.path.exists(os.path.join(repo, secure_filename(image))):
             with open(os.path.join(repo, secure_filename(image)), 'rb') as fh:
@@ -878,7 +897,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     try:
         data['blanks'] = _requested_blanks(data.get('blanks'))
         device, model = _printer(requested_printer, _requested('model'))
-        label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
+        label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
         # Determine printing options (print_count, cut_once, high_res)
@@ -1146,7 +1165,7 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
 
 
 def create_printer_from_request(request: Request):
-    label_size = request.values.get('label_size', '62')
+    label_size = request.values.get('label_size', DEFAULT_LABEL_SIZE)
     # Allow overriding the device specifier via the request (frontend selection)
     device, model = _printer(request.values.get('printer'), request.values.get('model'))
     return PrinterQueue(
@@ -1171,7 +1190,7 @@ def _label_type(kind: FormFactor) -> LabelType:
 
 
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
-    label_size = d.get('label_size', "62")
+    label_size = d.get('label_size', DEFAULT_LABEL_SIZE)
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
         raise LookupError("Unknown label_size")

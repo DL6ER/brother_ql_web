@@ -381,6 +381,8 @@ def test_label_with_invalid_blanks_or_their_settings_is_not_saved(tmp_path, valu
     ({'image_position': 'top'}, 'image_position must be above, below, left or right'),
     ({'text_fit': 'large'}, 'text_fit must be none, shrink or fill'),
     ({'image_mode': 'sepia'}, 'image_mode must be grayscale, black_and_white, red_and_black or colored'),
+    ({'label_size': '63'}, 'Unknown label_size'),
+    ({'label_size': None}, 'Unknown label_size'),
 ])
 def test_label_with_settings_its_printing_refuses_is_not_saved(tmp_path, values, message):
     # Saved, it could not be printed or previewed afterwards
@@ -392,3 +394,47 @@ def test_label_with_settings_its_printing_refuses_is_not_saved(tmp_path, values,
         return
     assert resp.status_code == 400 and resp.get_json()['message'] == message
     assert os.listdir(client.application.config['LABEL_REPOSITORY_DIR']) == []
+
+
+def test_a_label_size_sent_as_a_number_is_saved_as_the_size_it_names(tmp_path):
+    # It was saved as a number, which no label size is, and the label could
+    # not be previewed or printed
+    client = make_client(tmp_path, empty_repo=True)
+    assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': 62, 'text': TEXT}).status_code == 200
+    with open(os.path.join(client.application.config['LABEL_REPOSITORY_DIR'], 'Shelf.json'), encoding='utf-8') as fh:
+        assert json.load(fh)['label_size'] == '62'
+    response = client.get('/labeldesigner/api/repository/preview?name=Shelf.json')
+    assert response.status_code == 200 and response.mimetype == 'image/png'
+
+
+def test_a_label_saved_with_a_number_as_its_size_is_read_as_the_size_it_names(tmp_path, monkeypatch):
+    # Saved like that before
+    from app.labeldesigner import printer
+    sizes = []
+    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, *args, **kwargs: sizes.append(self.label_size))
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    client = make_client(tmp_path, empty_repo=True)
+    with open(os.path.join(client.application.config['LABEL_REPOSITORY_DIR'], 'Shelf.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'name': 'Shelf.json', 'label_size': 62, 'text': TEXT}, fh)
+    entry = client.get('/labeldesigner/api/repository/list').get_json()['files'][0]
+    assert (entry['label_size_id'], entry['label_size']) == ('62', '62 mm endless (DK-22205 / DK-2205)')
+    assert client.get('/labeldesigner/api/repository/load?name=Shelf.json').get_json()['label_size'] == '62'
+    assert client.get('/labeldesigner/api/repository/preview?name=Shelf.json').status_code == 200
+    assert client.post('/labeldesigner/api/repository/print', json={'name': 'Shelf.json'}).get_json() == {'success': True}
+    assert sizes == ['62']
+
+
+def test_a_label_saved_without_a_size_prints_on_the_size_its_preview_shows(tmp_path, monkeypatch):
+    # The printer took LABEL_DEFAULT_SIZE, the label was made for 62 mm
+    from app.labeldesigner import printer
+    sizes = []
+    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, *args, **kwargs: sizes.append(self.label_size))
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    client = make_client(tmp_path, empty_repo=True)
+    client.application.config['LABEL_DEFAULT_SIZE'] = '29'
+    assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'text': TEXT}).status_code == 200
+    preview = client.get('/labeldesigner/api/repository/preview?name=Shelf.json')
+    on_62 = client.post('/labeldesigner/api/preview', data={'label_size': '62', 'text': json.dumps(TEXT)})
+    assert preview.data == on_62.data
+    assert client.post('/labeldesigner/api/repository/print', json={'name': 'Shelf.json'}).get_json() == {'success': True}
+    assert sizes == ['62']
