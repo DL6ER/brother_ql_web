@@ -213,6 +213,10 @@ def index():
         'designer.html',
         config={
             'base': url_for('.index').rstrip('/'),
+            # Instances below one host, e.g. served below different paths
+            # behind a reverse proxy, keep what they store in the browser
+            # apart. The one at the root keeps the names it always had.
+            'storage_prefix': f'{request.script_root}/' if request.script_root else '',
             'fonts': fonts.fontlist(),
             'default_font': ','.join(fonts.get_default_font()),
             'label_sizes': label_sizes,

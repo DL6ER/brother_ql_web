@@ -37,6 +37,12 @@ function latest(fn, keyOf = () => null) {
 // The date of the browser, not of UTC
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
+// What belongs to this instance of the label designer is kept apart from
+// other instances below the same host, e.g. behind a reverse proxy below
+// different paths: its draft, print history, printer and settings. The theme
+// and the language of the demo labels belong to the person, they are shared.
+const own = key => C.storage_prefix + key;
+
 function load(key, fallback) {
     try {
         const v = localStorage.getItem(key);
@@ -587,12 +593,12 @@ async function typedThumb(img, job) {
 const S = {
     printers: [], printer: null, tape: C.default_label_size, tapeAssumed: true,
     demos: null, demoList: [], saved: [], barcodes: ['QR'],
-    history: load('designer_history', []),
+    history: load(own('designer_history'), []),
     lang: load('designer_lang', (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en'),
     fitsOnly: true,
     libCatChosen: false, typedGen: 0,
     // tapes: the tape set by hand for each printer
-    settings: Object.assign({ quality: 'quality', cut: 'each', tapes: {}, dateFmt: '' }, load('designer_settings', {})),
+    settings: Object.assign({ quality: 'quality', cut: 'each', tapes: {}, dateFmt: '' }, load(own('designer_settings'), {})),
     wizardText: '',
     libCat: 'saved', libSel: null,
     fillValues: {},
@@ -609,9 +615,9 @@ const saveHistory = () => {
         S.history.forEach((h, i) => {
             if (i >= keep && (h.design.image || h.design.more_images)) { delete h.design.image; delete h.design.more_images; h.noImage = true; }
         });
-        if (storeQuiet('designer_history', S.history)) return;
+        if (storeQuiet(own('designer_history'), S.history)) return;
     }
-    store('designer_history', S.history);
+    store(own('designer_history'), S.history);
 };
 
 // Wide labels, e.g. for a code next to text: endless tape rotated, die-cut
@@ -651,7 +657,7 @@ async function refreshPrinters() {
         const r = await fetch(API + '/printer_status');
         const data = await r.json();
         S.printers = Array.isArray(data.printers) ? data.printers : [data];
-        const chosen = load('designer_printer', null);
+        const chosen = load(own('designer_printer'), null);
         const kept = S.printers.find(p => p.path === chosen);
         S.printer = kept || S.printers.find(p => p.path === data.selected) || S.printers[0] || null;
         // The chosen one comes back by itself when it is there again
@@ -1835,8 +1841,8 @@ function storeEdit() {
     if (keys !== storedImages) {
         if (imagesTooLarge && imagesTooLarge.keys === keys && Date.now() - imagesTooLarge.time < 60000) without = true;
         else {
-            try { before = localStorage.getItem('designer_edit_images'); } catch (e) { before = null; }
-            if (storeQuiet('designer_edit_images', images)) { storedImages = keys; imagesTooLarge = null; }
+            try { before = localStorage.getItem(own('designer_edit_images')); } catch (e) { before = null; }
+            if (storeQuiet(own('designer_edit_images'), images)) { storedImages = keys; imagesTooLarge = null; }
             else { storedImages = null; imagesTooLarge = { keys, time: Date.now() }; without = true; }
         }
     }
@@ -1844,8 +1850,8 @@ function storeEdit() {
     const plain = Object.assign({}, d, { image: undefined, more_images: undefined });
     const kept = without ? plain
         : Object.assign({}, d, { image: d.image ? ref(d.image) : undefined, more_images: d.more_images ? d.more_images.map(ref) : undefined });
-    const forgetImages = () => { try { localStorage.removeItem('designer_edit_images'); } catch (e) { } };
-    if (storeQuiet('designer_edit', Object.assign({}, S.edit, { design: kept }))) {
+    const forgetImages = () => { try { localStorage.removeItem(own('designer_edit_images')); } catch (e) { } };
+    if (storeQuiet(own('designer_edit'), Object.assign({}, S.edit, { design: kept }))) {
         // Kept without its images, the images stored before belong to no
         // label kept
         if (without) forgetImages();
@@ -1854,20 +1860,20 @@ function storeEdit() {
     // Kept without its images, which are not tried again before a minute
     // has passed. Images stored before make room for the newest text. Where
     // it finds none even so, the label kept before keeps its images.
-    if (before === undefined) try { before = localStorage.getItem('designer_edit_images'); } catch (e) { before = null; }
+    if (before === undefined) try { before = localStorage.getItem(own('designer_edit_images')); } catch (e) { before = null; }
     forgetImages();
     storedImages = null;
     imagesTooLarge = { keys, time: Date.now() };
-    if (!storeQuiet('designer_edit', Object.assign({}, S.edit, { design: plain })) && before !== null) {
-        try { localStorage.setItem('designer_edit_images', before); } catch (e) { }
+    if (!storeQuiet(own('designer_edit'), Object.assign({}, S.edit, { design: plain })) && before !== null) {
+        try { localStorage.setItem(own('designer_edit_images'), before); } catch (e) { }
     }
 }
 // Another tab stored its images, they are stored again with the next change
-addEventListener('storage', e => { if (e.key === 'designer_edit_images' || e.key === null) storedImages = null; });
+addEventListener('storage', e => { if (e.key === own('designer_edit_images') || e.key === null) storedImages = null; });
 function loadEdit() {
-    const edit = load('designer_edit', null);
+    const edit = load(own('designer_edit'), null);
     if (!edit || !edit.design) return edit;
-    const images = new Map(load('designer_edit_images', []).map(im => [imageKey(im), im]));
+    const images = new Map(load(own('designer_edit_images'), []).map(im => [imageKey(im), im]));
     // Stored before images were kept apart, the image is in the label
     const get = r => (r && r.ref ? images.get(r.ref) : r);
     const d = edit.design;
@@ -2637,10 +2643,10 @@ function bindPrinterPanel() {
     const box = $('.pp');
     if (!box) return;
     const redraw = () => { box.innerHTML = printerPanelHTML(); bindPrinterPanel(); };
-    const saveSettings = () => { store('designer_settings', S.settings); detectTape(); renderPrinterChip(); tapeChanged = true; redraw(); };
+    const saveSettings = () => { store(own('designer_settings'), S.settings); detectTape(); renderPrinterChip(); tapeChanged = true; redraw(); };
     $$('[data-printer]', box).forEach(b => b.onclick = () => {
         S.printer = S.printers.find(p => p.path === b.dataset.printer) || S.printer;
-        store('designer_printer', S.printer.path);
+        store(own('designer_printer'), S.printer.path);
         detectTape();
         renderPrinterChip();
         tapeChanged = true;

@@ -11,3 +11,5 @@ location /labels/ {
     proxy_set_header X-Forwarded-Prefix /labels;
 }
 ```
+
+Several instances can be served below different paths of one host. Each keeps its own label in progress, print history, printer and settings in the browser; the theme and the language of the demo labels are shared.
