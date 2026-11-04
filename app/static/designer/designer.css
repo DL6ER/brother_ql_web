@@ -201,7 +201,19 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .cut i { position: absolute; left: -4px; top: -.55rem; font-size: .8rem; color: #8a939d; transform: rotate(-90deg); }
 .stage.side .cut { left: auto; top: -18px; bottom: -18px; right: -1px; border-bottom: 0; border-right: 2px dashed #9aa3ac; }
 .stage.side .cut i { left: -.32rem; top: -4px; transform: none; }
-.stage.diecut .cut { display: none; }
+.stage.diecut .cut, .stage .cut[hidden] { display: none; }
+.stage .cuts { position: absolute; left: .9rem; bottom: .75rem; display: flex; align-items: center; gap: .55rem; font-size: .75rem; color: var(--muted); }
+/* Copies as cut: labels, cuts (a gap), half cuts (dashed) and the printer,
+   which keeps the last label with chain printing */
+.cut-strip { display: inline-flex; align-items: center; flex: none; }
+.cut-strip .lab { width: 20px; height: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
+.cut-strip .cm.full { width: 6px; }
+.cut-strip .cm.half { width: 0; height: 12px; border-left: 2px dotted #6b747d; margin: 0 -1px; position: relative; z-index: 1; }
+.cut-strip .cm.none, .cut-strip .cm.chain { width: 0; }
+.cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); margin-left: 4px; }
+.cut-strip .cm.chain + .out { margin-left: 0; }
+.cut-show { display: flex; gap: .7rem; align-items: center; margin-top: .6rem; }
+.cutting .seg + .label-s { margin-top: .5rem; }
 .stage .dim-x, .stage .dim-y { position: absolute; font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: .4rem; white-space: nowrap; }
 .stage .dim-x { left: 0; right: 0; bottom: -1.9rem; justify-content: center; }
 .stage .dim-x::before, .stage .dim-x::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .5; }

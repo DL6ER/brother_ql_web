@@ -212,7 +212,35 @@
                           1
                         ],
                         "default": 0,
-                        "description": "1 cuts only after the last label."
+                        "description": "1 cuts only after the last label, like `cut` `last`."
+                      },
+                      "cut": {
+                        "type": "string",
+                        "enum": [
+                          "each",
+                          "last",
+                          "none"
+                        ],
+                        "default": "each",
+                        "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+                      },
+                      "half_cut": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 1,
+                        "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+                      },
+                      "chain": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
                       },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
@@ -260,7 +288,35 @@
                           1
                         ],
                         "default": 0,
-                        "description": "1 cuts only after the last label."
+                        "description": "1 cuts only after the last label, like `cut` `last`."
+                      },
+                      "cut": {
+                        "type": "string",
+                        "enum": [
+                          "each",
+                          "last",
+                          "none"
+                        ],
+                        "default": "each",
+                        "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+                      },
+                      "half_cut": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 1,
+                        "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+                      },
+                      "chain": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
                       },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
@@ -922,7 +978,35 @@
                       1
                     ],
                     "default": 0,
-                    "description": "1 cuts only after the last label."
+                    "description": "1 cuts only after the last label, like `cut` `last`."
+                  },
+                  "cut": {
+                    "type": "string",
+                    "enum": [
+                      "each",
+                      "last",
+                      "none"
+                    ],
+                    "default": "each",
+                    "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+                  },
+                  "half_cut": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 1,
+                    "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+                  },
+                  "chain": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 0,
+                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
                   },
                   "blanks": {
                     "$ref": "#/components/schemas/SavedLabelBlanks"
@@ -1290,7 +1374,35 @@
                       1
                     ],
                     "default": 0,
-                    "description": "1 cuts only after the last label."
+                    "description": "1 cuts only after the last label, like `cut` `last`."
+                  },
+                  "cut": {
+                    "type": "string",
+                    "enum": [
+                      "each",
+                      "last",
+                      "none"
+                    ],
+                    "default": "each",
+                    "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+                  },
+                  "half_cut": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 1,
+                    "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+                  },
+                  "chain": {
+                    "type": "integer",
+                    "enum": [
+                      0,
+                      1
+                    ],
+                    "default": 0,
+                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
                   },
                   "blanks": {
                     "$ref": "#/components/schemas/SavedLabelBlanks"

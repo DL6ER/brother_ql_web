@@ -3,6 +3,7 @@ copies."""
 
 import base64
 import json
+from urllib.parse import parse_qs
 
 from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
 
@@ -309,3 +310,36 @@ def test_printer_panel_of_a_link_stays_closed(designer):
     designer.keyboard.press('Escape')
     designer.wait_for_timeout(500)
     assert designer.evaluate("() => document.getElementById('layer').hidden")
+
+
+def test_cutting_per_printer_and_per_label(designer):
+    # Set in the printer panel for each printer, half cuts and chain printing
+    # only for P-touch printers. A label can keep its own cutting.
+    def sent():
+        with designer.expect_request('**/api/print') as request:
+            designer.click('#edPrint')
+        # Without files a plain form
+        form = parse_qs(request.value.post_data)
+        return {k: form[k][0] for k in ('cut', 'half_cut', 'chain')}
+
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.evaluate("() => { S.settings.cut = 'last'; }")
+    type_line(designer, 0, 'Hello')
+    # Printers without a setting of their own keep the one set before for all
+    assert sent() == {'cut': 'last', 'half_cut': '1', 'chain': '0'}
+    designer.evaluate("() => openPrinterPanel()")
+    assert designer.locator('[data-c="chain"]').count() == 0
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); closeLayer(true); openPrinterPanel(); }")
+    designer.click('[data-c="cut"][data-v="none"]')
+    designer.click('[data-c="chain"][data-v="1"]')
+    assert designer.get_attribute('.pp .cut-strip', 'title') == 'Half cut between the labels, not cut. The last label stays in the printer, the next print cuts it off.'
+    designer.keyboard.press('Escape')
+    assert sent() == {'cut': 'none', 'half_cut': '1', 'chain': '1'}
+    # Saved with the label, it is cut its own way
+    designer.select_option('#edCut', 'each')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.cut, S.edit.design.chain]') == ['each', '1']
+    assert sent() == {'cut': 'each', 'half_cut': '1', 'chain': '1'}
+    designer.select_option('#edCut', '')
+    wait_for_preview(designer)
+    assert sent()['cut'] == 'none'

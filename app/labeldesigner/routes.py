@@ -738,6 +738,33 @@ def _option(key: str, stored: dict, default):
     return value if value is not None else stored.get(key) or default
 
 
+CUTS = ('each', 'last', 'none')
+
+
+def _cutting(get) -> tuple[str, bool, bool]:
+    """How the labels of a job are cut, of the option get(key, default):
+    cut after each label, after the last one or not at all, the old
+    cut_once as after the last one. half_cut and chain only matter on
+    P-touch printers: a half cut between labels that are not cut, and the
+    last label left in the printer, cut off by the next job."""
+    cut = get('cut', None)
+    if cut in (None, ''):
+        cut = 'last' if _whole(get('cut_once', 0)) == 1 else 'each'
+    if cut not in CUTS:
+        raise ValueError(f'cut is one of {", ".join(CUTS)}, not {cut}')
+    return cut, _whole(get('half_cut', 1)) != 0, _whole(get('chain', 0)) != 0
+
+
+def _queue_labels(printer, labels, data, files, high_res, fast):
+    """Adds the labels to the queue, each cut as printer.cut says."""
+    # The copies share the text measured, alike where nothing changes
+    layouts = {}
+    for i, image in enumerate(labels):
+        label = create_label_from_request(data, files, i, image, layouts=layouts)
+        last = i == len(labels) - 1
+        printer.add_label_to_queue(label, printer.cut == 'each' or (printer.cut == 'last' and last), high_res, fast=fast)
+
+
 def _given(value, default):
     """value, else default where it is left out or empty."""
     return default if value is None or value == '' else value
@@ -870,9 +897,9 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
-        # Determine printing options (print_count, cut_once, high_res)
+        # Determine printing options (print_count, cutting, high_res)
         print_count = _check_print_count(_whole(_option('print_count', data, 1)))
-        cut_once = _whole(_option('cut_once', data, 0)) == 1
+        printer.cut, printer.half_cut, printer.chain = _cutting(lambda key, default: _option(key, data, default))
         high_res = _whole(_option('high_res', data, 0)) != 0
         fast = _whole(_option('fast_printing', data, 0)) != 0
         # The label and its image have to be generated with the resolution
@@ -887,12 +914,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # Of a PDF each selected page is a label of its own
         images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
         labels = [image for _ in range(print_count) for image in images]
-        # The copies share the text measured, alike where nothing changes
-        layouts = {}
-        for i, image in enumerate(labels):
-            label = create_label_from_request(data, {}, i, image, layouts=layouts)
-            cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res, fast=fast)
+        _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)
@@ -1056,7 +1078,7 @@ def print_label():
     try:
         printer = create_printer_from_request(request)
         print_count = _check_print_count(_whole_or(request.values.get('print_count'), 1))
-        cut_once = _whole_or(request.values.get('cut_once'), 0) == 1
+        printer.cut, printer.half_cut, printer.chain = _cutting(lambda key, default: _given(request.values.get(key), default))
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
     except HTTPException:
@@ -1075,15 +1097,7 @@ def print_label():
         # each selected page is a label of its own, the copies are collated.
         images, _ = load_label_images(values, files, copies=print_count)
         labels = [image for _ in range(print_count) for image in images]
-        # The copies share the text measured, alike where nothing changes
-        layouts = {}
-        for i, image in enumerate(labels):
-            label = create_label_from_request(values, files, i, image, layouts=layouts)
-            # Cut only if we
-            # - always cut, or
-            # - we cut only once and this is the last label to be generated
-            cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res, fast=fast)
+        _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = str(e)

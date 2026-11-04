@@ -123,7 +123,9 @@ function baseDesign(size) {
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
         // Empty: above the text across the tape, left of it along the tape
-        image_position: ''
+        image_position: '',
+        // Empty: cut as set for the printer, else as saved with the label
+        cut: '', half_cut: '', chain: ''
     };
 }
 
@@ -299,6 +301,42 @@ const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_w
 // at 300 dpi, or 600
 const dpiOf = (labelSize, high = highRes()) => (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
 
+// How the labels of a job are cut: after each label, after the last one or
+// not at all, set for each printer. P-touch printers also half cut between
+// labels they do not cut, the backing stays whole, and with chain printing
+// leave the last label in the printer: the next print cuts it off, without
+// the tape fed before it.
+const CUTS = [['each', 'After each label'], ['last', 'After the last label'], ['none', 'Never']];
+const ptPrinter = () => !!(S.printer && String(S.printer.model || '').startsWith('PT-'));
+// Printers without a setting of their own cut as set before for all
+const printerCut = () => Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]);
+// A label saved with its own way of cutting keeps it
+const cutOf = d => d && d.cut ? { cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' } : printerCut();
+
+function cutText(c, pt) {
+    const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
+    const text = c.cut === 'each' ? 'Cut after each label'
+        : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
+    return text + (chain ? '. The last label stays in the printer, the next print cuts it off.' : '.');
+}
+
+// The same in a few words, next to the preview
+function cutShort(c, pt) {
+    const half = pt && c.half_cut === '1' && c.cut !== 'each';
+    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (pt && c.chain === '1' ? ', chain' : '');
+}
+
+// Three copies leaving the printer, as the display of a P-touch printer
+// shows them: cuts, half cuts and the last label left in the printer
+function cutStrip(c, pt) {
+    const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
+    const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
+    const end = chain ? 'chain' : c.cut === 'none' ? 'none' : 'full';
+    const lab = '<span class="lab"></span>', mark = k => `<span class="cm ${k}"></span>`;
+    const text = esc(cutText(c, pt));
+    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
+}
+
 // marks: a preview shows the blanks still to fill in. blanks: those of
 // blankRequest(), e.g. as a cached preview was made for them.
 function formFor(design, copies = 1, forPrint = false, values = null, marks = false, blanks = blankRequest(design, values)) {
@@ -334,7 +372,10 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
     fd.set('high_res', highRes() ? '1' : '0');
     if (forPrint) {
         fd.set('fast_printing', S.settings.quality === 'fast' ? '1' : '0');
-        fd.set('cut_once', S.settings.cut === 'last' ? '1' : '0');
+        const c = cutOf(design);
+        fd.set('cut', c.cut);
+        fd.set('half_cut', c.half_cut);
+        fd.set('chain', c.chain);
     }
     if (S.printer && S.printer.path) fd.append('printer', S.printer.path);
     if (S.printer && S.printer.model) fd.append('model', S.printer.model);
@@ -1181,10 +1222,14 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
+    // The cut after the label, in the corner how copies are cut
+    const pt = isPtouch(design.label_size), cutNow = cutOf(design);
+    const cutEnd = pt && cutNow.chain === '1' ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
     const paper = blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${p.url}">`;
     el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
-        <div class="cut"><i class="fa-solid fa-scissors"></i></div>
-        <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>`;
+        <div class="cut"${cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
+        <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>
+        <div class="cuts">${cutStrip(cutNow, pt)}<span>${esc(cutShort(cutNow, pt))}</span></div>`;
     shown();
     if (onWarning && newest()) onWarning(p.warning, false, p);
 }
@@ -1977,6 +2022,7 @@ function renderEditor() {
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
                     </div>
+                    ${cutField(d)}
                     <div id="edMargins"><span class="label-s">Margins, empty space around the content</span>
                         <div class="margins">${['top', 'bottom', 'left', 'right'].map(side => `
                         <label><span>${side[0].toUpperCase() + side.slice(1)}, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-margin="${side}" value="${dotsToMm(d['margin_' + side], dpiOf(d.label_size))}"></label>`).join('')}</div>
@@ -2061,6 +2107,24 @@ function imageBlock(d) {
 // chooses it from the size of the text, the field then shows its choice.
 const hasTextLines = d => d.text.some(l => String(l.text || '').trim());
 const GAP_TITLE = 'Leave it empty for a distance that suits the size of the text';
+// Buttons for the cutting c, with data-<attr> naming the setting. Half cuts
+// and chain printing only for P-touch printers.
+function cutSettings(attr, c, pt, withCut = true) {
+    const seg = (k, opts) => `<div class="seg wrap">${opts.map(([v, n]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${c[k] === v ? 'on' : ''}">${n}</button>`).join('')}</div>`;
+    return (withCut ? `<span class="label-s">Cutting</span>${seg('cut', CUTS)}` : '')
+        + (pt ? `<span class="label-s">Half cut between labels</span>${seg('half_cut', [['1', 'On'], ['0', 'Off']])}
+            <span class="label-s">Chain printing, the last label stays in the printer</span>${seg('chain', [['0', 'Off'], ['1', 'On']])}` : '');
+}
+
+// A label can keep its own way of cutting, else it is cut as set for the printer
+function cutField(d) {
+    const pc = CUTS.find(x => x[0] === printerCut().cut)[1].toLowerCase();
+    return `<div class="cutting"><label class="label-s" for="edCut">Cutting</label>
+        <select class="field" id="edCut"><option value="">Like the printer: ${esc(pc)}</option>
+        ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}>${n}, saved with the label</option>`).join('')}</select>
+        ${d.cut ? cutSettings('lcut', cutOf(d), isPtouch(d.label_size), false) : ''}</div>`;
+}
+
 function gapField(d) {
     const on = hasTextLines(d);
     return `<label title="${on ? GAP_TITLE : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Distance to the text, mm</span>
@@ -2436,6 +2500,12 @@ function bindEditor() {
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });
+    $('#edCut').onchange = e => {
+        const c = cutOf(d);
+        Object.assign(d, e.target.value ? { cut: e.target.value, half_cut: c.half_cut, chain: c.chain } : { cut: '', half_cut: '', chain: '' });
+        renderEditor();
+    };
+    $$('[data-lcut]').forEach(b => b.onclick = () => { d[b.dataset.lcut] = b.dataset.v; renderEditor(); });
     // Code
     if ($('#edQrSize')) $('#edQrSize').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.qrcode_size = String(v); redrawEditor(); } });
     if ($('#edQrCorr')) $('#edQrCorr').onchange = e => { d.qrcode_correction = e.target.value; redrawEditor(); };
@@ -2659,7 +2729,10 @@ function bindPrinterPanel() {
         $('#qInfoBtn', box).setAttribute('aria-expanded', String(S.qualityInfo));
     };
     $$('[data-q]', box).forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; saveSettings(); });
-    $$('[data-c]', box).forEach(b => b.onclick = () => { S.settings.cut = b.dataset.c; saveSettings(); });
+    $$('[data-c]', box).forEach(b => b.onclick = () => {
+        S.settings.cuts = Object.assign({}, S.settings.cuts, { [printerKey()]: Object.assign(printerCut(), { [b.dataset.c]: b.dataset.v }) });
+        saveSettings();
+    });
     $('a.link', box).onclick = () => closeLayer(true);
 }
 
@@ -2668,7 +2741,7 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 function settingsCard() {
     const p = S.printer;
     const noHigh = p && C.models_without_600_dpi.includes(p.model);
-    const q = S.settings.quality, c = S.settings.cut;
+    const q = S.settings.quality, c = printerCut(), pt = ptPrinter();
     const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
         : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
     return `<div class="settings">
@@ -2691,9 +2764,8 @@ function settingsCard() {
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
-        <div><span class="label-s">Cutting</span><div class="seg">
-            <button type="button" data-c="each" class="${c === 'each' ? 'on' : ''}">After each label</button>
-            <button type="button" data-c="last" class="${c === 'last' ? 'on' : ''}">After the last label</button></div></div>
+        <div class="cutting">${cutSettings('c', c, pt)}
+            <div class="cut-show">${cutStrip(c, pt)}<span class="muted small">${esc(cutText(c, pt))} Labels saved with their own cutting keep it.</span></div></div>
     </div>`;
 }
 
