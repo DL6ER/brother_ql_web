@@ -495,3 +495,24 @@ def test_simulated_labels_are_saved_in_their_order(tmp_path):
     assert client.post('/labeldesigner/api/print', data=data).get_json()['success'] is True
     names = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
     assert [name[-7:] for name in names] == [f'{i:03d}.png' for i in range(12)]
+
+
+def test_configured_printers_with_names(client, monkeypatch):
+    from app.labeldesigner import routes
+    LP1 = 'file:///dev/usb/lp1'
+    client.application.config['PRINTERS'] = [('QL-700', DEVICE, 'Kitchen'), ('QL-1100', LP1), ('QL-800', 'simulation', 'Office desk')]
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert [(p['name'], p['model'], p['path']) for p in status['printers']] == \
+        [('Kitchen', 'QL-700', DEVICE), ('', 'QL-1100', LP1), ('Office desk', 'QL-800', 'simulation')]
+    with client.application.test_request_context():
+        # A request may name the printer instead of its device, in any case
+        assert routes._printer('Kitchen', None) == (DEVICE, 'QL-700')
+        assert routes._printer('office DESK', None) == ('simulation', 'QL-800')
+        assert routes._printer(LP1, None) == (LP1, 'QL-1100')
+        with pytest.raises(ValueError, match='Unsupported printer: Garage'):
+            routes._printer('Garage', None)
+    # Printed on the printer of that name
+    data = dict(EXAMPLE_FORMDATA, printer='Office desk')
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.get_json()['success'] is True
+    assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 1

@@ -24,7 +24,7 @@ from werkzeug.exceptions import HTTPException
 from . import drivers
 from .drivers import DEVICE_PATTERNS, resolution_problem
 from .drivers.devices import flock_within, look_again
-from .printer import PrinterQueue, get_ptr_status
+from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
@@ -1180,18 +1180,21 @@ PRINTER_MODELS = list(MODELS)
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
     """Return the device and model selected by a request, or the configured
-    ones. With PRINTERS, the model of a listed device is the configured one."""
-    printers = current_app.config.get('PRINTERS') or []
+    ones. With PRINTERS, the model of a listed device is the configured one,
+    and a request may name the printer instead of its device."""
+    printers = configured_printers(current_app.config)
     if printers:
         configured, model = printers[0][1], printers[0][0]
     else:
         configured, model = current_app.config['PRINTER_PRINTER'], current_app.config['PRINTER_MODEL']
     device = requested_device or configured
-    listed = [d for _, d in printers]
+    named = {n.casefold(): d for _, d, n in printers if n}
+    device = named.get(device.casefold(), device)
+    listed = [d for _, d, _ in printers]
     if device not in (configured, 'simulation', '?', *listed) and \
             not any(pattern.fullmatch(device) for pattern in DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
-    model = requested_model or next((m for m, d in printers if d == device), model)
+    model = requested_model or next((m for m, d, _ in printers if d == device), model)
     if model not in PRINTER_MODELS:
         # The driver would refuse it without a message
         raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")

@@ -193,7 +193,7 @@
                     "properties": {
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -244,7 +244,7 @@
                     "properties": {
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -934,7 +934,7 @@
                       },
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -1320,7 +1320,7 @@
                       },
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -1962,6 +1962,10 @@
             "type": "string",
             "description": "Printer to pass as `printer`, e.g. `file:///dev/usb/lp0` or `simulation`."
           },
+          "name": {
+            "type": "string",
+            "description": "Name of a printer listed in `PRINTERS`, empty if it has none. Missing for printers that are not listed there. Requests may pass it as `printer`."
+          },
           "model": {
             "type": "string",
             "description": "Model reported by the printer, `Unknown` if it has not answered yet."
@@ -2115,7 +2119,7 @@
           },
           "printer": {
             "type": "string",
-            "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+            "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
           },
           "model": {
             "type": "string",
