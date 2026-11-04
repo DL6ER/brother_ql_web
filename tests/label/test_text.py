@@ -327,6 +327,52 @@ def test_the_box_of_the_last_to_do_line_is_on_the_label(tmp_path, text):
         assert ink[3] == image.height - int(data['margin_bottom'])
 
 
+@pytest.mark.parametrize('settings', [{'align': 'left', 'checkbox': True}, {'align': 'center', 'inverted': True}])
+@pytest.mark.parametrize('line_break', ['\n', '\r\n', '\r'])
+def test_a_line_break_starts_a_line_with_the_same_settings(tmp_path, line_break, settings):
+    # A line break failed the label, "anchor not supported for multiline
+    # text", a carriage return was drawn as a box. Each line keeps the
+    # settings, a to-do box too: a list given as one text is a to-do list.
+    client = make_client(tmp_path)
+    line = dict({'font': 'DejaVu Sans,Book', 'size': '40'}, **settings)
+    assert preview_of_lines(client, EXAMPLE_FORMDATA, [dict(line, text=f'Milk{line_break}Eggs')]) == \
+        preview_of_lines(client, EXAMPLE_FORMDATA, [dict(line, text='Milk'), dict(line, text='Eggs')])
+
+
+def test_a_blank_filled_with_lines_shows_them(tmp_path):
+    # e.g. an address given through the API
+    client = make_client(tmp_path)
+    line = {'font': 'DejaVu Sans,Book', 'size': '40', 'align': 'left'}
+    data = dict(EXAMPLE_FORMDATA, blanks=json.dumps({'Address': 'Jane Doe\r\nMain Street 1'}))
+    assert preview_of_lines(client, data, [dict(line, text='To: {{blank:Address}}')]) == \
+        preview_of_lines(client, EXAMPLE_FORMDATA, [dict(line, text='To: Jane Doe'), dict(line, text='Main Street 1')])
+
+
+def test_a_code_of_the_text_keeps_its_line_breaks(tmp_path):
+    client = make_client(tmp_path)
+    line = {'font': 'DejaVu Sans,Book', 'size': '30', 'align': 'left'}
+    data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='QR')
+    assert preview_of_lines(client, data, [dict(line, text='Milk\r\nEggs')]) == \
+        preview_of_lines(client, data, [dict(line, text='Milk'), dict(line, text='Eggs')])
+    with client.application.test_request_context():
+        label = create_label_from_request(dict(data, label_size='62', code_text='Milk\r\nEggs', text=json.dumps([dict(line, text='Shopping')])))
+        label.process_templates()
+        assert label.code_text == 'Milk\r\nEggs'
+
+
+def test_the_marks_of_blanks_make_no_lines_of_their_own(tmp_path):
+    # A preview shows the name of a blank still to fill in, the text as
+    # printed (e.g. for the code) is split into the same lines
+    client = make_client(tmp_path)
+    text = 'To: {{blank:Name\nof the person}} {{blank:Address}}'
+    data = {'print_type': 'qrcode_text', 'blanks': {'Address': 'Main\nStreet'},
+            'text': json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': text}])}
+    with client.application.test_request_context():
+        label = create_label_from_request(data, mark_blanks=True)
+        label.process_templates()
+    assert [(line['text'], line['unmarked']) for line in label.text] == [('To: Name of the person? Main', 'To:  Main'), ('Street', 'Street')]
+
+
 def test_a_line_before_blank_lines_at_the_end_is_measured_like_any_other(tmp_path):
     # Measured like the final line, its own letters set its height: the
     # blank lines after it came out lower below "ace" than below "Ace"
