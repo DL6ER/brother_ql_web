@@ -135,6 +135,36 @@ def test_every_label_of_a_job_is_confirmed(clock, monkeypatch):
     assert fake.messages == [] and fake.unread == b''
 
 
+# Read from a QL-800: one label of 80 mm, and two of 30 mm in one job, of
+# which only the last one is reported completed, as by a QL-1100
+QL800_ONE_LABEL = [(0, '802042343830000000003e0a0000150000000000000000000001000000000000'),
+                   (0, '802042343830000000003e0a0000150000000601000000000001000000000000'),
+                   (1.32, '802042343830000000003e0a0000150000000101000000000001000000000000'),
+                   (0, '802042343830000000003e0a0000150000000600000000000001000000000000')]
+QL800_TWO_LABELS = [(0, '802042343830000000003e0a0000150000000000000000000001000000000000'),
+                    (0, '802042343830000000003e0a0000150000000601000000000001000000000000'),
+                    (0.85, '802042343830000000003e0a0000150000000000000000000001000000000000'),
+                    (0, '802042343830000000003e0a0000150000000601000000000001000000000000'),
+                    (1.96, '802042343830000000003e0a0000150000000101000000000001000000000000'),
+                    (0, '802042343830000000003e0a0000150000000600000000000001000000000000')]
+QL1100_TWO_LABELS = [(0, '80204234433000000000680a0000270000000000000000000000000000000000'),
+                     (0, '80204234433000000000680a0000270000000601000000000000000000000000'),
+                     (2.54, '80204234433000000000680a0000270000000000000000000000000000000000'),
+                     (0, '80204234433000000000680a0000270000000601000000000000000000000000'),
+                     (3.09, '80204234433000000000680a0000270000000101000000000000000000000000'),
+                     (0, '80204234433000000000680a0000270000000600000000000000000000000000')]
+
+
+@pytest.mark.parametrize('messages, page_lengths', [(QL800_ONE_LABEL, [80]), (QL800_TWO_LABELS, [30, 30]),
+                                                   (QL1100_TWO_LABELS, [30, 30])])
+def test_every_label_of_a_job_is_confirmed_as_reported(clock, monkeypatch, messages, page_lengths):
+    fake = FakePrinter(clock, [(delay, bytes.fromhex(message)) for delay, message in messages])
+    start = clock.now
+    info = send(monkeypatch, fake, page_lengths)
+    assert (info['did_print'], info['ready_for_next_job'], info['confirmed']) == (True, True, len(page_lengths))
+    assert clock.now - start == pytest.approx(sum(delay for delay, _ in messages), abs=0.1)
+
+
 def test_labels_of_a_job_that_were_not_confirmed(clock, monkeypatch):
     fake = FakePrinter(clock, page() + page())
     info = send(monkeypatch, fake, [50, 50, 50])
