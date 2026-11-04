@@ -8,9 +8,9 @@ import pytest
 
 from app import create_app
 from app.labeldesigner import printer, snmp
-from test_ipp import fake_printer, fixture as ipp_fixture, network_job  # noqa: F401
+from tests.printing.test_ipp import fake_printer, fixture as ipp_fixture, network_job  # noqa: F401
 
-FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures', 'snmp')
+FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'snmp')
 STATUS, PRINTER_STATUS = printer.SNMP_STATUS_OID, printer.SNMP_PRINTER_STATUS_OID
 OTHER, IDLE, PRINTING = 1, 3, 4
 

@@ -18,7 +18,7 @@ from werkzeug.serving import make_server  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.labeldesigner import printer  # noqa: E402
-from browser_helpers import wait_for_preview  # noqa: E402
+from tests.browser.helpers import wait_for_preview  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
