@@ -1,3 +1,4 @@
+import io
 import os
 import re
 import hmac
@@ -8,6 +9,7 @@ import base64
 import secrets
 import barcode
 import threading
+import contextlib
 from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
@@ -18,9 +20,9 @@ from app.fonts import FontNotFound
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
-from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, get_ptr_status, resolution_problem
+from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, check_image_size
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -281,9 +283,95 @@ def _stage_file(directory: str, content: bytes) -> str:
     return tmp_path
 
 
+try:
+    import fcntl
+except ImportError:
+    # Windows: one process
+    fcntl = None
+
+
+# Labels are put in place one after the other, so that a new one is not
+# saved under a name that another request has just taken
+_SAVING = threading.Lock()
+# Seconds to wait for another request putting labels in place, e.g. one held
+# up on a slow network share
+SAVE_LOCK_TIMEOUT = 10
+
+
+class LabelsBusy(Exception):
+    """Labels were put in place by another request for longer than
+    SAVE_LOCK_TIMEOUT."""
+
+
+def _busy():
+    return make_response(jsonify({'success': False, 'message': 'Another label is being saved, try again'}), 503)
+
+
+# Told once where the folder of the labels cannot be locked
+_told_unlockable = False
+
+
+def _lock_folder(folder: str, deadline: float, shared: bool = False) -> int | None:
+    """The folder of the labels opened and locked, shared with other readers
+    if shared, waiting until deadline, else LabelsBusy. None where it cannot
+    be locked, e.g. on some network shares."""
+    global _told_unlockable
+    if fcntl is None:
+        return None
+    fd = None
+    try:
+        fd = os.open(folder, os.O_RDONLY)
+        locked = flock_within(fd, max(deadline - time.monotonic(), 0), shared)
+    except OSError as e:
+        if fd is not None:
+            os.close(fd)
+        if not _told_unlockable:
+            _told_unlockable = True
+            current_app.logger.warning(f'Cannot lock the folder of the labels, saving waits for saves of this process only: {e}')
+        return None
+    if not locked:
+        os.close(fd)
+        raise LabelsBusy()
+    return fd
+
+
+@contextlib.contextmanager
+def _saving(folder: str):
+    """One label put in place at a time: in threads by a lock, in processes
+    of the server, e.g. workers of gunicorn, by locking the folder of the
+    labels, where it can be locked. Raises LabelsBusy where others take
+    longer than SAVE_LOCK_TIMEOUT in all."""
+    deadline = time.monotonic() + SAVE_LOCK_TIMEOUT
+    if not _SAVING.acquire(timeout=SAVE_LOCK_TIMEOUT):
+        raise LabelsBusy()
+    try:
+        fd = _lock_folder(folder, deadline)
+        try:
+            yield
+        finally:
+            if fd is not None:
+                os.close(fd)
+    finally:
+        _SAVING.release()
+
+
+@contextlib.contextmanager
+def _reading(folder: str):
+    """A label and its image read as they were saved together: not while
+    one is put in place, alongside other readers. Raises LabelsBusy where a
+    save takes longer than SAVE_LOCK_TIMEOUT."""
+    fd = _lock_folder(folder, time.monotonic() + SAVE_LOCK_TIMEOUT, shared=True)
+    try:
+        yield
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 def _write_atomically(path: str, content: bytes):
     """Write a file so that it either has the old or the new content, also
-    when writing fails part way through (e.g. disk full)."""
+    when writing fails part way through (e.g. disk full). The caller holds
+    _saving()."""
     tmp_path = _stage_file(os.path.dirname(path), content)
     try:
         os.replace(tmp_path, path)
@@ -292,9 +380,80 @@ def _write_atomically(path: str, content: bytes):
         raise
 
 
+def _write_new(path: str, content: bytes):
+    """Write a file that does not exist yet, FileExistsError if it does, also
+    when another request writes it at the same time. The written content is
+    given the name in one step, so the file is never seen empty or half
+    written: as a hard link, which also another process cannot take at the
+    same time, else, e.g. on some network shares, after looking that there
+    is none while no other save of this server puts one in place: the
+    caller holds _saving()."""
+    tmp_path = _stage_file(os.path.dirname(path), content)
+    try:
+        try:
+            os.link(tmp_path, path)
+        except FileExistsError:
+            raise
+        except OSError:
+            if os.path.lexists(path):
+                raise FileExistsError(path) from None
+            os.replace(tmp_path, path)
+            return
+    except BaseException:
+        os.remove(tmp_path)
+        raise
+    # The label is saved, a hidden copy left over does not change that
+    try:
+        os.remove(tmp_path)
+    except OSError as e:
+        current_app.logger.warning(f'Staged file {tmp_path} not removed: {e}')
+
+
+class _Written(str):
+    """A number of a JSON body as it is written, e.g. 2.50."""
+
+
+def _as_numbers(value):
+    """value of a JSON body read with _Written, its numbers as numbers."""
+    if isinstance(value, _Written):
+        return json.loads(value)
+    if isinstance(value, dict):
+        return {key: _as_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_as_numbers(item) for item in value]
+    return value
+
+
+def _defaults_written(fields):
+    """The settings of blanks of a JSON body, their defaults as they are
+    written, all other numbers as numbers."""
+    if not isinstance(fields, dict):
+        return _as_numbers(fields)
+    return {name: {key: value if key == 'default' else _as_numbers(value) for key, value in field.items()} if isinstance(field, dict) else _as_numbers(field)
+            for name, field in fields.items()}
+
+
 def _json_body() -> dict:
-    data = request.get_json(force=True, silent=True)
-    return data if isinstance(data, dict) else {}
+    """The JSON body of the request as object, else empty. Read once. The
+    values of blanks and their defaults keep their numbers as they are
+    written, e.g. 2.50, all other numbers are numbers."""
+    body = request.environ.get('labeldesigner.json_body')
+    if body is None:
+        data = None
+        # Files are uploaded as a form, read once by it, never as JSON
+        if request.mimetype != 'multipart/form-data':
+            try:
+                data = json.loads(request.get_data(cache=True), parse_int=_Written, parse_float=_Written)
+                if isinstance(data, dict):
+                    data = {key: value if key == 'blanks' else _defaults_written(value) if key == 'fields' else _as_numbers(value)
+                            for key, value in data.items()}
+                request.environ['labeldesigner.json_object'] = isinstance(data, dict)
+            except (ValueError, RecursionError):
+                # Also a number of more digits than Python takes, or nested
+                # deeper than it reads
+                data = None
+        body = request.environ['labeldesigner.json_body'] = data if isinstance(data, dict) else {}
+    return body
 
 
 @bp.route('/api/repository/list', methods=['GET'])
@@ -337,19 +496,50 @@ def _label_size_name(label_size: str | None) -> str | None:
 
 @bp.route('/api/repository/save', methods=['POST'])
 def repo_save():
-    # Expect JSON payload
-    data = request.get_json(force=True, silent=True)
-    if not isinstance(data, dict):
+    # Expect JSON payload, values of blanks and their defaults as they are
+    # written, e.g. 2.50
+    data = dict(_json_body())
+    if not request.environ.get('labeldesigner.json_object'):
         return make_response(jsonify({'success': False, 'message': 'No JSON payload provided'}), 400)
-    name = data.get('name') or request.values.get('name') or None
+    # The name as for printing, previewing and removing: of the address,
+    # else of the body
+    name = _requested_name()
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name provided'}), 400)
+    # Checked as when the label is printed, which would refuse them. Blanks
+    # and their settings sent as JSON text are saved as objects.
+    try:
+        for key, parse in (('blanks', _blank_values), ('fields', _blank_fields)):
+            if key in data:
+                value = parse(data[key])
+                if value:
+                    data[key] = value
+                else:
+                    del data[key]
+        _image_text_gap(data.get('image_text_gap'))
+        _text_fit(data)
+        check_image_position(data.get('image_position'))
+    except ValueError as e:
+        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
     filename = secure_filename(name)
     if not filename:
         return make_response(jsonify({'success': False, 'message': 'Invalid name'}), 400)
     if not filename.lower().endswith('.json'):
         filename = filename + '.json'
+    # The name kept with it is the one it is saved under
+    data['name'] = filename
     repo = _get_repo_dir()
+    # A label saved under the name is replaced, unless replace is false
+    # Read like the other flags, e.g. true, false, 1 or 0, in the address
+    # before the body
+    data.pop('replace', None)
+    try:
+        replace = _whole_or(_requested('replace'), 1)
+    except (TypeError, ValueError):
+        replace = None
+    if replace not in (0, 1):
+        return make_response(jsonify({'success': False, 'message': 'replace must be true or false'}), 400)
+    replace = replace == 1
 
     # Accept JSON image payloads that include raw base64 image data in
     # fields `image_data` (base64 string), `image_mime` and optional
@@ -381,7 +571,7 @@ def repo_save():
             ext = REPO_IMAGE_EXTENSIONS.get(data.get('image_mime', 'image/png'), '.png')
             image_name = base + '_image' + ext
             data['image'] = image_name
-        elif data.get('image') not in own_images:
+        elif not isinstance(data.get('image'), str) or data['image'] not in own_images:
             data.pop('image', None)
 
         # Remove raw image data from JSON before saving
@@ -389,7 +579,8 @@ def repo_save():
             del data['image_data']
 
         # Remove redundant information about zeroth line font settings
-        for key in ['font_size', 'font_inverted', 'font', 'font_align', 'font_checkbox', 'font_color', 'line_spacing', 'fontSettingsPerLine']:
+        # and marks of blanks, which are for previews only
+        for key in ['font_size', 'font_inverted', 'font', 'font_align', 'font_checkbox', 'font_color', 'line_spacing', 'fontSettingsPerLine', 'mark_blanks']:
             if key in data:
                 del data[key]
 
@@ -398,14 +589,24 @@ def repo_save():
         # another file type before are removed after that.
         staged_image = _stage_file(repo, image_bytes) if image_bytes is not None else None
         try:
-            _write_atomically(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
-            if staged_image is not None:
-                os.replace(staged_image, _repo_path(repo, image_name))
-                staged_image = None
-                _remove_repo_images(repo, base, keep=image_name)
+            # The label, its image and removing images of before, while no
+            # other save or removal of a label is under way
+            with _saving(repo):
+                write = _write_atomically if replace else _write_new
+                write(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+                if staged_image is not None:
+                    os.replace(staged_image, _repo_path(repo, image_name))
+                    staged_image = None
+                # Images of before the label no longer shows go, e.g. one
+                # removed in the label designer
+                _remove_repo_images(repo, base, keep=data.get('image'))
         finally:
             if staged_image is not None:
                 os.remove(staged_image)
+    except FileExistsError:
+        return make_response(jsonify({'success': False, 'message': 'A label is saved under this name already'}), 409)
+    except LabelsBusy:
+        return _busy()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
@@ -414,7 +615,7 @@ def repo_save():
 
 @bp.route('/api/repository/load', methods=['GET'])
 def repo_load():
-    name = request.values.get('name')
+    name = _requested_name()
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     filename = secure_filename(name)
@@ -423,9 +624,16 @@ def repo_load():
     if not os.path.exists(path):
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
     try:
-        with open(path, 'r', encoding='utf-8') as fh:
-            data = json.load(fh)
-        return _label_for_designer(data, repo)
+        # Not while one is put in place, its image may not be there yet
+        with _reading(repo):
+            with open(path, 'r', encoding='utf-8') as fh:
+                data = json.load(fh)
+            return _label_for_designer(data, repo)
+    except FileNotFoundError:
+        # Removed by another request since it was looked for
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except LabelsBusy:
+        return _busy()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
@@ -434,30 +642,42 @@ def repo_load():
 def _label_for_designer(data: dict, image_dir: str) -> dict:
     """A stored label as the label designer loads it: the text as JSON, the
     settings of the first line, and the image from image_dir as base64 in
-    image_data, so that the page can put it into its image upload."""
+    image_data, so that the page can put it into its image upload. An
+    image that is there but cannot be read raises OSError: without it, the
+    label saved again would lose it."""
     text = data.get('text', [])
     data['text'] = json.dumps(text)
     data = fill_first_line_fields(text, data)
-    try:
-        image_ref = data.get('image')
-        if isinstance(image_ref, str) and len(image_ref) > 0:
-            image_path = os.path.join(image_dir, secure_filename(image_ref))
-            if os.path.exists(image_path):
-                with open(image_path, 'rb') as imgfh:
-                    b = imgfh.read()
-                # Guess mime from extension
-                ext = os.path.splitext(image_path)[1].lower()
-                data['image_name'] = image_ref
-                data['image_mime'] = REPO_IMAGE_MIME_TYPES.get(ext, 'application/octet-stream')
-                data['image_data'] = base64.b64encode(b).decode('ascii')
-    except Exception:
-        current_app.logger.exception('Failed to include the image of the label')
+    # Flags and the text size read as when the label is printed, e.g. "true"
+    # as 1, a text size from shrink_text of labels of before. One that is
+    # refused stays as it is, the preview tells why.
+    for key, default in (('image_fit', 1), ('image_crop', 0)):
+        try:
+            data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
+        except (TypeError, ValueError):
+            pass
+    if _given(data.get('text_fit'), None) is None:
+        try:
+            data['text_fit'] = _text_fit(data)
+        except ValueError:
+            pass
+    image_ref = data.get('image')
+    if isinstance(image_ref, str) and len(image_ref) > 0:
+        image_path = os.path.join(image_dir, secure_filename(image_ref))
+        if os.path.exists(image_path):
+            with open(image_path, 'rb') as imgfh:
+                b = imgfh.read()
+            # Guess mime from extension
+            ext = os.path.splitext(image_path)[1].lower()
+            data['image_name'] = image_ref
+            data['image_mime'] = REPO_IMAGE_MIME_TYPES.get(ext, 'application/octet-stream')
+            data['image_data'] = base64.b64encode(b).decode('ascii')
     return data
 
 
 @bp.route('/api/repository/delete', methods=['POST'])
 def repo_delete():
-    name = _json_body().get('name') or request.values.get('name')
+    name = _requested_name()
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     filename = secure_filename(name)
@@ -466,105 +686,178 @@ def repo_delete():
     if not os.path.exists(path):
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
     try:
-        os.remove(path)
-        # Also remove the image file stored alongside the JSON
-        _remove_repo_images(repo, os.path.splitext(filename)[0])
+        with _saving(repo):
+            os.remove(path)
+            # Also remove the image file stored alongside the JSON
+            _remove_repo_images(repo, os.path.splitext(filename)[0])
         return {'success': True}
+    except FileNotFoundError:
+        # Removed by another request since it was looked for
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except LabelsBusy:
+        return _busy()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to delete file'}), 500)
 
 
-def _load_repo_json(name: str):
+def _requested(key: str):
+    """A parameter of the request: of the form or query, else of a JSON
+    body, so that a parameter of the address can change one of a body that
+    stays the same."""
+    # The body is read first: parsed as a form, e.g. JSON sent as a form by
+    # curl, it is gone. Read as JSON it is no form: e.g. "&name=" in one of
+    # its texts must not be taken for a parameter, only the address goes
+    # before it.
+    body = _json_body()
+    for value in (_address_or_form().get(key), body.get(key)):
+        if value is not None and value != '':
+            return value
+    return None
+
+
+def _address_or_form():
+    """The parameters of the address and of a form, those of the address
+    only where the body is JSON."""
+    _json_body()
+    return request.args if request.environ.get('labeldesigner.json_object') else request.values
+
+
+def _requested_name(key: str = 'name') -> str | None:
+    """The name of a stored label in the request, or its id (key). None for
+    one that is no text, e.g. a list or a number."""
+    name = _requested(key)
+    return name if isinstance(name, str) else None
+
+
+def _option(key: str, stored: dict, default):
+    """An option for printing a stored label: of the request, also false or
+    0, else as stored with it, else default."""
+    value = _requested(key)
+    return value if value is not None else stored.get(key) or default
+
+
+def _given(value, default):
+    """value, else default where it is left out or empty."""
+    return default if value is None or value == '' else value
+
+
+def _whole_or(value, default) -> int:
+    """value as a whole number like _whole(), default where it is left out
+    or empty."""
+    return _whole(_given(value, default))
+
+
+def _whole(value) -> int:
+    """value as a whole number: of a JSON number also 2.0, of text as it is
+    written, e.g. 2, true and false as 1 and 0, also as text."""
+    if isinstance(value, (bool, int)):
+        return int(value)
+    if isinstance(value, str) and value.strip().lower() in ('true', 'false'):
+        return int(value.strip().lower() == 'true')
+    if isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{value} is not a whole number")
+        return int(value)
+    return int(str(value).strip())
+
+
+def _load_repo_json(name: str) -> tuple[dict, bytes | None]:
+    """A saved label and the content of the image saved with it, None
+    without one. Read while no label is put in place: one saved meanwhile
+    may not have its image in place yet."""
     filename = secure_filename(name)
     repo = _get_repo_dir()
     path = os.path.join(repo, filename)
-    if not os.path.exists(path):
-        raise FileNotFoundError(name)
-    with open(path, 'r', encoding='utf-8') as fh:
-        data = json.load(fh)
-        data['text'] = json.dumps(data.get('text', []))
-        return data
+    with _reading(repo):
+        if not os.path.exists(path):
+            raise FileNotFoundError(name)
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+        image, image_bytes = data.get('image'), None
+        if isinstance(image, str) and image and os.path.exists(os.path.join(repo, secure_filename(image))):
+            with open(os.path.join(repo, secure_filename(image)), 'rb') as fh:
+                image_bytes = fh.read()
+    data['text'] = json.dumps(data.get('text', []))
+    return data, image_bytes
 
 
 @bp.route('/api/repository/preview', methods=['GET', 'POST'])
 def repo_preview():
-    name = request.values.get('name')
+    name = _requested_name()
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     try:
-        data = _load_repo_json(name)
+        data, image_bytes = _load_repo_json(name)
     except FileNotFoundError:
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except LabelsBusy:
+        return _busy()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to preview file'}), 500)
 
-    return _preview_response(data, _get_repo_dir())
+    return _preview_response(data, _get_repo_dir(), image_bytes)
 
 
-def _preview_response(data: dict, image_dir: str):
-    """The preview of a stored label whose image is in image_dir, as PNG or
-    base64 (return_format)."""
-    # allow override printer via query param
-    if request.values.get('printer'):
-        data['printer'] = request.values.get('printer')
-
+def _preview_response(data: dict, image_dir: str, image_bytes: bytes | None = None):
+    """The preview of a stored label whose image is in image_dir, or of
+    image_bytes where it was read with the label, as PNG or base64
+    (return_format)."""
+    # allow override printer, in a JSON body or the form or query
+    printer = _requested('printer')
+    if printer:
+        data['printer'] = printer
     try:
-        label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir))
+        data['blanks'] = _requested_blanks(data.get('blanks'))
+        label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir, image_bytes))
         im = label.generate()
     except Exception as e:
         current_app.logger.exception(e)
-        return make_response(jsonify({'message': str(e)}), 400)
+        return make_response(jsonify({'message': str(e)}), 413 if isinstance(e, TextTooLong) else 400)
 
-    return_format = request.values.get('return_format', 'png')
-    response_data = image_to_png_bytes(im)
-    if return_format == 'base64':
-        response_data = base64.b64encode(response_data)
-        content_type = 'text/plain'
-    else:
-        content_type = 'image/png'
-    response = make_response(response_data)
-    response.headers.set('Content-type', content_type)
-    if label.warnings:
-        response.headers.set('X-Label-Warning', ' '.join(label.warnings))
-    return response
+    return _preview_of(label, im, _requested('return_format') or 'png')
 
 
 @bp.route('/api/repository/print', methods=['POST'])
 def repo_print():
     # Print a saved repository template by name. The server will load the JSON
     # and perform the same printing logic as the /api/print endpoint.
-    name = _json_body().get('name') or request.values.get('name')
+    name = _requested_name()
     if not name:
         return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
     try:
-        data = _load_repo_json(name)
+        data, image_bytes = _load_repo_json(name)
     except FileNotFoundError:
         return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except LabelsBusy:
+        return _busy()
     except Exception as e:
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to load file'}), 500)
-    return _print_stored_label(data, _get_repo_dir())
+    return _print_stored_label(data, _get_repo_dir(), image_bytes)
 
 
-def _print_stored_label(data: dict, image_dir: str):
-    """Print a stored label whose image is in image_dir like /api/print."""
-    # Allow overriding printer or other request-like parameters via form/query
-    if request.values.get('printer'):
-        data['printer'] = request.values.get('printer')
-
+def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = None):
+    """Print a stored label whose image is in image_dir, or image_bytes where
+    it was read with the label, like /api/print."""
+    # Allow overriding printer or other request-like parameters, in a JSON
+    # body or the form or query
+    requested_printer = _requested('printer')
+    if requested_printer:
+        data['printer'] = requested_printer
     # Prepare printer queue using requested or default device/model and label_size from data
     try:
-        device, model = _printer(request.values.get('printer'), request.values.get('model'))
+        data['blanks'] = _requested_blanks(data.get('blanks'))
+        device, model = _printer(requested_printer, _requested('model'))
         label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
         # Determine printing options (print_count, cut_once, high_res)
-        print_count = _check_print_count(int(request.values.get('print_count') or data.get('print_count') or 1))
-        cut_once = int(request.values.get('cut_once') or data.get('cut_once') or 0) == 1
-        high_res = int(request.values.get('high_res') or data.get('high_res') or 0) != 0
-        fast = int(request.values.get('fast_printing') or data.get('fast_printing') or 0) != 0
+        print_count = _check_print_count(_whole(_option('print_count', data, 1)))
+        cut_once = _whole(_option('cut_once', data, 0)) == 1
+        high_res = _whole(_option('high_res', data, 0)) != 0
+        fast = _whole(_option('fast_printing', data, 0)) != 0
         # The label and its image have to be generated with the resolution
         # it is printed with
         data['high_res'] = high_res
@@ -575,10 +868,12 @@ def _print_stored_label(data: dict, image_dir: str):
     status = ""
     try:
         # Of a PDF each selected page is a label of its own
-        images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir)
+        images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
         labels = [image for _ in range(print_count) for image in images]
+        # The copies share the text measured, alike where nothing changes
+        layouts = {}
         for i, image in enumerate(labels):
-            label = create_label_from_request(data, {}, i, image)
+            label = create_label_from_request(data, {}, i, image, layouts=layouts)
             cut = not cut_once or (cut_once and i == len(labels) - 1)
             printer.add_label_to_queue(label, cut, high_res, fast=fast)
         status = printer.process_queue()
@@ -624,17 +919,23 @@ def _demo_response(label_id: str | None, respond, text_as_json: bool = True):
 
 @bp.route('/api/demos/load', methods=['GET'])
 def demo_load():
-    return _demo_response(request.values.get('id'), lambda data: _label_for_designer(data, demos.IMAGE_DIR), text_as_json=False)
+    def respond(data):
+        try:
+            return _label_for_designer(data, demos.IMAGE_DIR)
+        except OSError as e:
+            current_app.logger.exception(e)
+            return make_response(jsonify({'success': False, 'message': 'Failed to load the demo label'}), 500)
+    return _demo_response(_requested_name('id'), respond, text_as_json=False)
 
 
 @bp.route('/api/demos/preview', methods=['GET'])
 def demo_preview():
-    return _demo_response(request.values.get('id'), lambda data: _preview_response(data, demos.IMAGE_DIR))
+    return _demo_response(_requested_name('id'), lambda data: _preview_response(data, demos.IMAGE_DIR))
 
 
 @bp.route('/api/demos/print', methods=['POST'])
 def demo_print():
-    return _demo_response(_json_body().get('id') or request.values.get('id'), lambda data: _print_stored_label(data, demos.IMAGE_DIR))
+    return _demo_response(_requested_name('id'), lambda data: _print_stored_label(data, demos.IMAGE_DIR))
 
 
 def _check_print_count(print_count: int) -> int:
@@ -660,18 +961,29 @@ def preview_from_image():
         files = request.files.to_dict(flat=True)
         # Of a PDF the first selected page
         images, page_count = load_label_images(values, files, first_only=True)
-        label = create_label_from_request(values, files, image=images[0])
+        # Only its previews show the blanks still to fill in, never a label
+        # printed or saved
+        label = create_label_from_request(values, files, image=images[0], mark_blanks=_whole_or(values.get('mark_blanks'), 0) != 0)
         im = label.generate()
     except HTTPException:
         # e.g. 413 for a request larger than MAX_CONTENT_LENGTH
         raise
     except Exception as e:
         _log_refused_request('Preview', e)
-        error = 413 if "too long" in str(e) else 400
+        error = 413 if isinstance(e, TextTooLong) else 400
         return make_response(jsonify({'message': str(e)}), error)
 
-    return_format = request.values.get('return_format', 'png')
-    response_data = image_to_png_bytes(im)
+    response = _preview_of(label, im, request.values.get('return_format', 'png'))
+    # The label designer offers to choose pages of a PDF with several
+    if page_count:
+        response.headers.set('X-PDF-Pages', str(page_count))
+    return response
+
+
+def _preview_of(label: SimpleLabel, im, return_format: str):
+    """The response with the preview im of label, as PNG or base64
+    (return_format), with what it tells about the label."""
+    response_data = image_to_png_bytes(im, gray=not label.in_color)
     if return_format == 'base64':
         response_data = base64.b64encode(response_data)
         content_type = 'text/plain'
@@ -679,12 +991,16 @@ def preview_from_image():
         content_type = 'image/png'
     response = make_response(response_data)
     response.headers.set('Content-type', content_type)
+    _label_headers(response, label)
+    return response
+
+
+def _label_headers(response, label: SimpleLabel):
+    """What a preview tells about the label made, for /api/preview and the
+    previews of saved and demo labels alike."""
     # e.g. text that does not fit on the label, shown by the label designer
     if label.warnings:
         response.headers.set('X-Label-Warning', ' '.join(label.warnings))
-    # The label designer offers to choose pages of a PDF with several
-    if page_count:
-        response.headers.set('X-PDF-Pages', str(page_count))
     # The orientation setting has no effect, the label designer says so
     if label.auto_orientation:
         response.headers.set('X-Label-Orientation', 'auto')
@@ -692,7 +1008,10 @@ def preview_from_image():
     # designer next to its setting
     if label.image_text_gap:
         response.headers.set('X-Label-Image-Text-Gap', str(label.image_text_gap))
-    return response
+    # Where the image or code went, shown by the label designer with its
+    # setting
+    if label.image_side:
+        response.headers.set('X-Label-Image-Position', label.image_side)
 
 
 # Description of the API (OpenAPI), kept next to the routes it describes
@@ -719,10 +1038,10 @@ def print_label():
     return_dict = {'success': False}
     try:
         printer = create_printer_from_request(request)
-        print_count = _check_print_count(int(request.values.get('print_count', 1)))
-        cut_once = int(request.values.get('cut_once', 0)) == 1
-        high_res = int(request.values.get('high_res', 0)) != 0
-        fast = int(request.values.get('fast_printing', 0)) != 0
+        print_count = _check_print_count(_whole_or(request.values.get('print_count'), 1))
+        cut_once = _whole_or(request.values.get('cut_once'), 0) == 1
+        high_res = _whole_or(request.values.get('high_res'), 0) != 0
+        fast = _whole_or(request.values.get('fast_printing'), 0) != 0
     except HTTPException:
         raise
     except Exception as e:
@@ -739,8 +1058,10 @@ def print_label():
         # each selected page is a label of its own, the copies are collated.
         images, _ = load_label_images(values, files, copies=print_count)
         labels = [image for _ in range(print_count) for image in images]
+        # The copies share the text measured, alike where nothing changes
+        layouts = {}
         for i, image in enumerate(labels):
-            label = create_label_from_request(values, files, i, image)
+            label = create_label_from_request(values, files, i, image, layouts=layouts)
             # Cut only if we
             # - always cut, or
             # - we cut only once and this is the last label to be generated
@@ -813,7 +1134,7 @@ def _label_type(kind: FormFactor) -> LabelType:
     return LabelType.ROUND_DIE_CUT_LABEL
 
 
-def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE):
+def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
     label_size = d.get('label_size', "62")
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
@@ -839,17 +1160,23 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'qrcode_correction': d.get('qrcode_correction', 'L'),
         'image_mode': d.get('image_mode', "grayscale"),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
-        'image_fit': int(d.get('image_fit', 1)) > 0,
-        'image_crop': int(d.get('image_crop', 0)) > 0,
+        'image_fit': _whole_or(d.get('image_fit'), 1) > 0,
+        'image_crop': _whole_or(d.get('image_crop'), 0) > 0,
         'image_scaling_factor': float(d.get('image_scaling_factor', 100.0)),
         'image_rotation': int(d.get('image_rotation', 0)),
         'print_color': d.get('print_color', 'black'),
         'timestamp': int(d.get('timestamp', 0)),
-        'high_res': int(d.get('high_res', 0)) != 0,
+        'high_res': _whole_or(d.get('high_res'), 0) != 0,
         'code_text': d.get('code_text', '').strip(),
-        'shrink_text': int(d.get('shrink_text', 0)) != 0,
-        # Empty: the distance between image and text follows the text size
-        'image_text_gap': int(d['image_text_gap']) if str(d.get('image_text_gap', '')).strip() != '' else None,
+        'text_fit': _text_fit(d),
+        'image_text_gap': _image_text_gap(d.get('image_text_gap')),
+        # Left out or empty: above the text across the tape, left of it along
+        'image_position': check_image_position(d.get('image_position')),
+        'blanks': _blank_values(d.get('blanks')),
+        # The settings of the blanks, saved with a label or sent with it
+        'blank_fields': _blank_fields(d.get('fields')),
+        # Previews of the label designer show the blanks still to fill in
+        'mark_blanks': mark_blanks,
     }
 
     print_type = context['print_type']
@@ -901,7 +1228,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
             line['font'] = default_font
             line['path'] = fonts.get_path(default_font)
         if len(line.get('text', '')) > MAX_TEXT_LENGTH:
-            raise ValueError("Text is too long")
+            raise TextTooLong("Text is too long")
 
     fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
     border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
@@ -915,15 +1242,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
     # orientation that makes it largest. Without auto-fit the chosen
     # orientation is kept.
     image_label = label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED)
-    has_text = any(str(line.get('text', '')).strip() for line in context['text'])
-    auto_orientation = (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
-                        and context['image_fit'] and not has_text)
-    if auto_orientation:
-        margins = (context['margin_left'], context['margin_right'], context['margin_top'], context['margin_bottom'])
-        width, height, label_orientation = _fitting_orientation(
-            image, width, height, label_orientation, margins, context['image_crop'], context['image_rotation'])
-
-    return SimpleLabel(
+    label = SimpleLabel(
         width=width,
         height=height,
         label_content=label_content,
@@ -954,10 +1273,108 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         code_text=context['code_text'],
         template_env_vars=_template_env_vars(),
         warnings=warnings,
-        shrink_text=context['shrink_text'],
-        auto_orientation=auto_orientation,
+        shrink_text=context['text_fit'] == 'shrink',
+        fill_text=context['text_fit'] == 'fill',
         image_text_gap=context['image_text_gap'],
+        image_position=context['image_position'],
+        blanks=context['blanks'],
+        blank_fields=context['blank_fields'],
+        mark_blanks=context['mark_blanks'],
+        layouts=layouts,
     )
+    if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
+            and context['image_fit'] and not label.has_lines()):
+        margins = (context['margin_left'], context['margin_right'], context['margin_top'], context['margin_bottom'])
+        label.turn_to_fit(*_fitting_orientation(
+            image, width, height, label_orientation, margins, context['image_crop'], context['image_rotation']))
+    return label
+
+
+def _text_fit(d: dict) -> str:
+    """How the text is sized: none as set, shrink made smaller where it does
+    not fit, fill as large as fits. Without text_fit, shrink_text tells
+    shrink or none."""
+    value = d.get('text_fit')
+    if value is None or value == '':
+        try:
+            return 'shrink' if _whole_or(d.get('shrink_text'), 0) != 0 else 'none'
+        except (TypeError, ValueError):
+            raise ValueError("shrink_text must be 0 or 1") from None
+    if value not in ('none', 'shrink', 'fill'):
+        raise ValueError("text_fit must be none, shrink or fill")
+    return value
+
+
+def _image_text_gap(value) -> int | None:
+    """The distance between image or code and text of a request in dots, also
+    a JSON number like 12.0. None (left out, empty or null) lets it follow
+    the text size."""
+    if value is None or str(value).strip() == '':
+        return None
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        gap = _whole(value)
+    except ValueError:
+        raise ValueError("image_text_gap must be a whole number of dots or empty") from None
+    if gap < 0:
+        raise ValueError("image_text_gap must not be negative")
+    return gap
+
+
+def _json_object(value, valid, message: str) -> dict:
+    """value as an object: as given, e.g. saved with a label, or as JSON text
+    in a form or query, its numbers as they are written, e.g. 2.50. Without
+    a value it is empty. One that is no object, or with a value that valid()
+    refuses, raises ValueError(message)."""
+    if value is None or value == '':
+        return {}
+    if isinstance(value, str):
+        try:
+            value = json.loads(value, parse_int=str, parse_float=str)
+        except (ValueError, RecursionError):
+            # Also nested deeper than Python reads
+            value = None
+    if not isinstance(value, dict) or not all(valid(v) for v in value.values()):
+        raise ValueError(message)
+    return value
+
+
+def _blank_values(value) -> dict[str, str]:
+    """The values for the blanks ({{blank:<name>}}) of a label by name: an
+    object of texts or numbers."""
+    values = _json_object(value, lambda v: isinstance(v, (str, int, float)) and not isinstance(v, bool),
+                          'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}')
+    return {name: str(v) for name, v in values.items()}
+
+
+BLANK_TYPES = ('text', 'number', 'date')
+
+
+def _blank_setting(field) -> bool:
+    """Whether field is the settings of a blank: an object, its type one of
+    BLANK_TYPES, its format a text and its default a text or number, each
+    where given."""
+    if not isinstance(field, dict):
+        return False
+    default = field.get('default')
+    return (field.get('type') in (None, *BLANK_TYPES) and isinstance(field.get('format'), (str, type(None)))
+            and (default is None or (isinstance(default, (str, int, float)) and not isinstance(default, bool))))
+
+
+def _blank_fields(value) -> dict:
+    """The settings of the blanks by name, e.g. {"Frozen on": {"type":
+    "date", "format": "%d.%m.%Y"}}."""
+    return _json_object(value, _blank_setting,
+                        'fields must be a JSON object with the settings of each blank: a type of text, number or date, '
+                        'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}')
+
+
+def _requested_blanks(stored=None) -> dict[str, str]:
+    """The values for the blanks of a stored label: those stored with it,
+    over them those of the request, blanks of a JSON body or else of the form
+    or query."""
+    return {**_blank_values(stored), **_blank_values(_requested('blanks'))}
 
 
 def _font_name(font: str) -> str:
@@ -966,24 +1383,25 @@ def _font_name(font: str) -> str:
     return f'{family} ({style})'
 
 
-def load_label_image(d: dict, files: dict, image_dir: str | None = None) -> Image.Image | None:
+def load_label_image(d: dict, files: dict, image_dir: str | None = None, image_bytes: bytes | None = None) -> Image.Image | None:
     """Return the uploaded image, or the image stored with a repository label,
     converted to the image mode of the request. Of a PDF the first selected
     page."""
-    return load_label_images(d, files, first_only=True, image_dir=image_dir)[0][0]
+    return load_label_images(d, files, first_only=True, image_dir=image_dir, image_bytes=image_bytes)[0][0]
 
 
 def load_label_images(d: dict, files: dict, first_only: bool = False, copies: int = 1,
-                      image_dir: str | None = None) -> tuple[list[Image.Image | None], int | None]:
+                      image_dir: str | None = None, image_bytes: bytes | None = None) -> tuple[list[Image.Image | None], int | None]:
     """The images of a label like load_label_image(), of a PDF one for each
     page pdf_pages selects, e.g. "1-3, 5" or "all", each printed as a label
     of its own. The second value is the page count of a PDF, None
     otherwise. Labels without image get [None]. A stored label has its
-    image in image_dir, by default the repository."""
+    image in image_dir, by default the repository, or in image_bytes where
+    it was read with the label."""
     image_mode = d.get('image_mode', 'grayscale')
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
-    dpi = HIGH_RES_DPI if int(d.get('high_res', 0)) != 0 else DEFAULT_DPI
+    dpi = HIGH_RES_DPI if _whole_or(d.get('high_res'), 0) != 0 else DEFAULT_DPI
     pdf_pages = str(d.get('pdf_pages') or '')
     # Pages only make several labels of an image label
     first_only = first_only or d.get('print_type', 'text') != 'image'
@@ -1017,8 +1435,8 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     if isinstance(image_ref, str) and len(image_ref) > 0:
         try:
             image_path = os.path.join(image_dir or _get_repo_dir(), secure_filename(image_ref))
-            if os.path.exists(image_path):
-                with open(image_path, 'rb') as fh:
+            if image_bytes is not None or os.path.exists(image_path):
+                with (io.BytesIO(image_bytes) if image_bytes is not None else open(image_path, 'rb')) as fh:
                     images, page_count = open_images(fh, image_path, dpi, pdf_pages, first_only, copies)
                     return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
         except PageSelectionError:
@@ -1171,10 +1589,8 @@ def webhook_print():
     if not webhook_password:
         return make_response(jsonify({'success': False, 'message': 'Webhook is not enabled'}), 403)
 
-    # Parse JSON body once (only when content type indicates JSON, not for multipart)
-    jdata = request.get_json(silent=True)
-    if not isinstance(jdata, dict):
-        jdata = {}
+    # The JSON body, read once, none for a multipart upload
+    jdata = _json_body()
 
     # Authenticate: accept password via Authorization Bearer token, form field, or JSON field
     provided = (request.headers.get('Authorization', '').removeprefix('Bearer ').strip()
@@ -1186,14 +1602,14 @@ def webhook_print():
     try:
         # Merge parameters from query/form and JSON body (query/form takes precedence)
         def _param(key, default):
-            return request.values.get(key) or jdata.get(key) or default
+            return _given(_requested(key), default)
 
         label_size = _param('label_size', current_app.config['LABEL_DEFAULT_SIZE'])
         orientation = _param('orientation', current_app.config['LABEL_DEFAULT_ORIENTATION'])
         image_mode = _param('image_mode', current_app.config['IMAGE_DEFAULT_MODE'])
         bw_threshold = int(_param('bw_threshold', current_app.config['IMAGE_DEFAULT_BW_THRESHOLD']))
-        high_res = int(_param('high_res', 0)) != 0
-        fast = int(_param('fast_printing', 0)) != 0
+        high_res = _whole_or(_requested('high_res'), 0) != 0
+        fast = _whole_or(_requested('fast_printing'), 0) != 0
         device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size

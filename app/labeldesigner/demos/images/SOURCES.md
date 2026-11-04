@@ -1,6 +1,6 @@
 # Sources of the images
 
-The pictograms of the demo labels, drawn after ISO 7010 (safety signs), the GHS of the United Nations (hazardous substances) and the symbol signs of the US Department of Transportation and AIGA (toilets). They come from Wikimedia Commons, where all of them are in the public domain or under CC0. They were reduced to black, red and white, so that they print in black on black labels and in black and red on black/red labels.
+The pictograms of the demo labels, drawn after ISO 7010 (safety signs), the GHS of the United Nations (hazardous substances) and the symbol signs of the US Department of Transportation and AIGA (toilets), and the silhouette in the frame of the photo on name badges. They come from Wikimedia Commons, where all of them are in the public domain or under CC0. They were reduced to black, red and white, so that they print in black on black labels and in black and red on black/red labels.
 
 | Image | Original | Author | License |
 |---|---|---|---|
@@ -35,6 +35,7 @@ The pictograms of the demo labels, drawn after ISO 7010 (safety signs), the GHS 
 | `no-smoking.png` | [ISO 7010 P002.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_P002.svg) | ISO | Public domain |
 | `no-thoroughfare.png` | [ISO 7010 P004.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_P004.svg) | ISO | Public domain |
 | `not-drinking-water.png` | [ISO 7010 P005.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_P005.svg) | ISO | Public domain |
+| `photo.png` | [Default pfp.svg](https://commons.wikimedia.org/wiki/File:Default_pfp.svg) | Sarang | Public domain |
 | `slippery-floor.png` | [ISO 7010 W011.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_W011.svg) | MaxxL | Public domain |
 | `toilets.png` | [Toilets unisex.svg](https://commons.wikimedia.org/wiki/File:Toilets_unisex.svg) | AIGA | Public domain |
 | `warning.png` | [ISO 7010 W001.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_W001.svg) | Maxxl2 | Public domain |

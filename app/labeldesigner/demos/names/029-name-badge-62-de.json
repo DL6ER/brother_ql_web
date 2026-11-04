@@ -1,0 +1,87 @@
+{
+  "label_size": "62",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": false,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "60",
+  "margin_bottom": "60",
+  "margin_left": "70",
+  "margin_right": "70",
+  "border_thickness": "6",
+  "border_roundness": "48",
+  "border_distance_x": "18",
+  "border_distance_y": "18",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Namensschild",
+  "language": "de",
+  "text": [
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "120",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Name}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "20",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "54",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Funktion}}"
+    },
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "54",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Firma}}"
+    }
+  ],
+  "label_text": "{{blank:Name}}\n\n{{blank:Funktion}}\n{{blank:Firma}}",
+  "fields": {
+    "Name": {
+      "type": "text",
+      "default": "Erika Mustermann"
+    },
+    "Funktion": {
+      "type": "text",
+      "default": "Vertrieb"
+    },
+    "Firma": {
+      "type": "text",
+      "default": "Beispiel GmbH"
+    }
+  }
+}

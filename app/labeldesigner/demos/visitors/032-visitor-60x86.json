@@ -1,0 +1,113 @@
+{
+  "label_size": "60x86",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "black_and_white",
+  "image_fit": false,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "56",
+  "margin_bottom": "56",
+  "margin_left": "64",
+  "margin_right": "64",
+  "border_thickness": "5",
+  "border_roundness": "40",
+  "border_distance_x": "16",
+  "border_distance_y": "16",
+  "border_color": "black",
+  "print_type": "text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Visitor",
+  "language": "en",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "100",
+      "inverted": true,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "  VISITOR  "
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "16",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Condensed / Bold",
+      "size": "96",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Name}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "50",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Company}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "16",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": ""
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "36",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Host: John Doe"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "36",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "Valid on {{datetime:%Y-%m-%d}}"
+    }
+  ],
+  "label_text": "  VISITOR  \n\n{{blank:Name}}\n{{blank:Company}}\n\nHost: John Doe\nValid on {{datetime:%Y-%m-%d}}",
+  "fields": {
+    "Name": {
+      "type": "text",
+      "default": "Jane Smith"
+    },
+    "Company": {
+      "type": "text",
+      "default": "Example Inc."
+    }
+  }
+}
