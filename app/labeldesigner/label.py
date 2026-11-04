@@ -3,7 +3,7 @@ from . import icons
 import os
 import uuid
 from qrcode import QRCode, constants
-from PIL import Image, ImageDraw, ImageFont, ImageChops
+from PIL import Image, ImageDraw, ImageFont, ImageChops, ImageOps
 import logging
 import barcode
 from barcode.errors import BarcodeError
@@ -230,6 +230,7 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        mirror: bool = False,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -317,6 +318,9 @@ class SimpleLabel:
         self._shown_code = code_text
         # The value of each blank, made once for the label
         self._blank_cache: dict[str, str] = {}
+        # Printed mirror-inverted, to be read through clear tape stuck behind
+        # glass
+        self._mirror = mirror
 
     @property
     def label_content(self):
@@ -830,6 +834,9 @@ class SimpleLabel:
 
             # Draw (rounded) rectangle
             draw.rounded_rectangle(rect, radius=self._border_roundness, outline=self._border_color, width=self._border_thickness)
+        # Left and right swapped as the text reads, the preview shows it so
+        if self._mirror:
+            imgResult = ImageOps.mirror(imgResult)
         return imgResult
 
     @staticmethod

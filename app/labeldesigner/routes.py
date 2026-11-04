@@ -543,6 +543,7 @@ def repo_save():
                     del data[key]
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
+        _mirror(data)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
@@ -684,7 +685,7 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
-    for key, default in (('image_fit', 1), ('image_crop', 0)):
+    for key, default in (('image_fit', 1), ('image_crop', 0), ('mirror', 0)):
         try:
             data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
         except (TypeError, ValueError):
@@ -1226,6 +1227,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'high_res': _whole_or(d.get('high_res'), 0) != 0,
         'code_text': d.get('code_text', '').strip(),
         'text_fit': _text_fit(d),
+        'mirror': _mirror(d),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
@@ -1338,6 +1340,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
+        mirror=context['mirror'],
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
             and context['image_fit'] and not label.has_lines()):
@@ -1360,6 +1363,15 @@ def _text_fit(d: dict) -> str:
     if value not in ('none', 'shrink', 'fill'):
         raise ValueError("text_fit must be none, shrink or fill")
     return value
+
+
+def _mirror(d: dict) -> bool:
+    """Whether the label is printed mirror-inverted: mirror 1, also true.
+    Left out or empty it is not."""
+    try:
+        return _whole_or(d.get('mirror'), 0) != 0
+    except (TypeError, ValueError):
+        raise ValueError("mirror must be 0 or 1") from None
 
 
 def _image_text_gap(value) -> int | None:

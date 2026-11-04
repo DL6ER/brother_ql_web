@@ -151,6 +151,9 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .seg button { border: 0; background: transparent; border-radius: 7px; padding: .35rem .7rem; font-size: .88rem; white-space: nowrap; cursor: pointer; }
 .seg button.on { background: var(--surface); box-shadow: 0 0 0 1px var(--line); font-weight: 650; }
 /* Settings that do not apply stay in place, grayed out */
+.seg.tog button i { margin-right: .4rem; color: var(--muted); }
+.seg.tog button.on i { color: var(--ink); }
+.row.wrap { flex-wrap: wrap; gap: .4rem; }
 .seg button:disabled, .mini:disabled, .field:disabled, input[type=range]:disabled { opacity: .4; cursor: not-allowed; }
 .field:disabled { background: var(--surface-2); }
 .label-s.off, label .off { opacity: .55; }

@@ -129,7 +129,9 @@ function baseDesign(size) {
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
         // Empty: above the text across the tape, left of it along the tape
-        image_position: ''
+        image_position: '',
+        // Printed mirror-inverted, to be read through clear tape behind glass
+        mirror: '0'
     };
 }
 
@@ -153,7 +155,7 @@ function normalize(raw) {
     // label. One it refuses stays as it is, the preview tells why, until
     // another is chosen.
     const given = v => v !== undefined && v !== null && v !== '';
-    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
+    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0'], ['mirror', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
     d.text_fit = given(raw.text_fit) ? String(raw.text_fit) : '';
     if (!given(raw.text_fit) && given(raw.shrink_text)) d.shrink_text = String(raw.shrink_text);
     if (raw.image_data) d.image = { data: raw.image_data, mime: raw.image_mime || 'image/png', name: raw.image_name || 'image.png' };
@@ -1977,7 +1979,8 @@ function renderEditor() {
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
-                    <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
+                    <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="row wrap"><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div>
+                        ${toggleSeg('id="edMirror" title="Prints mirror-inverted, to be read through clear tape stuck behind glass"', d.mirror === '1', 'Mirrored')}</div></div>
                     <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
@@ -2077,6 +2080,13 @@ function resetLook(d) {
     d.image_rotation = '0';
     d.image_crop = '0';
     d.image_scaling_factor = '100';
+}
+
+// A setting that is on or off, in the style of the segmented buttons next to
+// it. why: the reason it cannot be changed, it is disabled then.
+function toggleSeg(attr, on, name, why = '') {
+    return `<div class="seg tog"${why ? ` title="${esc(why)}"` : ''}><button type="button" ${attr} class="${on ? 'on' : ''}" aria-pressed="${on}"${why ? ' disabled' : ''}>`
+        + `<i class="fa-${on ? 'solid fa-square-check' : 'regular fa-square'}"></i>${name}</button></div>`;
 }
 
 const fitted = d => d.image_fit === '1';
@@ -2440,6 +2450,7 @@ function bindEditor() {
     if ($('#edUseTape')) $('#edUseTape').onclick = () => { setSize(d, S.tape); renderEditor(); };
     $('#edSize').onchange = e => { setSize(d, e.target.value); renderEditor(); };
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
+    $('#edMirror').onclick = () => { d.mirror = d.mirror === '1' ? '0' : '1'; renderEditor(); };
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });
     // Code
