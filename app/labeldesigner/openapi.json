@@ -1703,7 +1703,8 @@
               "red_and_black",
               "colored"
             ],
-            "default": "grayscale"
+            "default": "grayscale",
+            "description": "Another one is refused. `bw` is read as `black_and_white`."
           },
           "image_bw_threshold": {
             "type": "integer",
@@ -1966,7 +1967,8 @@
               "black_and_white",
               "red_and_black",
               "colored"
-            ]
+            ],
+            "description": "Another one is refused. `bw` is read as `black_and_white`."
           },
           "bw_threshold": {
             "type": "integer",
