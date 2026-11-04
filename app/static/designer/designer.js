@@ -195,15 +195,21 @@ function formatDate(iso, fmt = dateFormat()) {
     return fmt.replace('%Y', y).replace('%m', m).replace('%d', d);
 }
 
-// Templates as text fields show them: [Name] for a blank, [today], [counter]
-// and [id]
-const TEMPLATE_RE = /\{\{(?:blank:([^}]+)|(datetime):[^}]+|counter(:\d+)?|short-uuid)\}\}/g;
+// Templates as text fields show them: [Name] for a blank, [today] (also
+// moved, e.g., [today+5d]), [counter] and [id]
+const TEMPLATE_RE = /\{\{(?:blank:([^}]+)|(datetime)([+-]\d+[dwmy])?:[^}]+|counter(:\d+)?|short-uuid)\}\}/g;
 function shownAs(m) {
     if (m[1] !== undefined) return `[${m[1]}]`;
-    if (m[2]) return '[today]';
-    if (m[0].startsWith('{{counter')) return `[counter${m[3] || ''}]`;
+    if (m[2]) return `[today${m[3] || ''}]`;
+    if (m[0].startsWith('{{counter')) return `[counter${m[4] || ''}]`;
     return '[id]';
 }
+// [today], or a day moved from it as typed, e.g., [today+5d] or [today + 2
+// weeks]: the offset as the server takes it, e.g., +5d or +2w
+const TODAY_RE = /^today(?:\s*([+-])\s*(\d+)\s*(d|days?|w|weeks?|m|months?|y|years?))?$/i;
+const offsetOf = m => m[1] ? m[1] + m[2] + m[3][0].toLowerCase() : '';
+// Names of variables, a blank cannot have them
+const isVariable = n => TODAY_RE.test(n) || /^(counter(:\d+)?|id)$/i.test(n);
 // The text as its field shows it, and where each template is shown
 function displayed(text) {
     text = String(text || '');
@@ -240,13 +246,14 @@ function fromDisplay(text, previous = '', caret = null, inOrder = false) {
         const at = i + m.length <= pre ? i : i >= now.length - suf ? i - now.length + was.length : -1;
         return old.tokens.find(t => t.at === at && t.shown === m);
     });
-    const formats = inOrder ? old.tokens.filter(t => !kept.includes(t) && t.template.startsWith('{{datetime:')).map(t => t.template.slice(11, -2)) : [];
+    const formats = inOrder ? old.tokens.filter(t => !kept.includes(t) && t.template.startsWith('{{datetime')).map(t => t.template.slice(t.template.indexOf(':') + 1, -2)) : [];
     let seen = 0, k = 0;
     return now.replace(/\[([^\]\n]+)\]/g, (m, name) => {
         const own = kept[seen++];
         if (own) return own.template;
         const n = name.trim();
-        if (n.toLowerCase() === 'today') return `{{datetime:${formats.length ? formats[Math.min(k++, formats.length - 1)] : dateFormat()}}}`;
+        const day = n.match(TODAY_RE);
+        if (day) return `{{datetime${offsetOf(day)}:${formats.length ? formats[Math.min(k++, formats.length - 1)] : dateFormat()}}}`;
         const counter = n.match(/^counter(:\d+)?$/i);
         if (counter) return `{{counter${counter[1] || ''}}}`;
         if (n.toLowerCase() === 'id') return '{{short-uuid}}';
@@ -459,7 +466,7 @@ function preview(design, values, stale, first = false) {
     // preview kept from another minute is not used
     const blanks = blankRequest(asked, values || {});
     const shown = JSON.stringify(Object.assign({}, asked, { image: design.image ? imageKey(design.image) : null, more_images: undefined }));
-    const dated = shown.includes('{{datetime:') || Object.entries(blanks.fields).some(([name, f]) => f.type === 'date' && !(name in blanks.blanks));
+    const dated = shown.includes('{{datetime') || Object.entries(blanks.fields).some(([name, f]) => f.type === 'date' && !(name in blanks.blanks));
     const key = JSON.stringify([shown, blanks, dated ? Math.floor(Date.now() / 60000) : 0]);
     if (previewCache.has(key)) {
         // The most recently used stay longest
@@ -1043,10 +1050,39 @@ function blankStart(item, name) {
 }
 
 // What a blank starts with now: a date without a value saved or a default
-// at today
+// at today, one moved from today (e.g., +5d) at that day
 function startOf(item, name) {
     const start = blankStart(item, name);
+    if (fieldType(item, name) === 'date' && DATE_OFFSET_RE.test(start)) return shiftDate(today(), start);
     return start || name in ((item.design && item.design.blanks) || {}) || fieldType(item, name) !== 'date' ? start : today();
+}
+
+// A date like 2026-11-01 moved by an offset like +5d, -1w, +6m or +1y. A date
+// blank starts at the browser's date, moved as the server moves dates:
+// months keep the day, or take the last day of a shorter month.
+const DATE_OFFSET_RE = /^[+-]\d+[dwmy]$/;
+function shiftDate(iso, offset) {
+    const n = parseInt(offset, 10), unit = offset.slice(-1);
+    const [y, m, d] = iso.split('-').map(Number);
+    if (unit === 'd' || unit === 'w') return new Date(Date.UTC(y, m - 1, d + n * (unit === 'w' ? 7 : 1))).toISOString().slice(0, 10);
+    const months = y * 12 + m - 1 + n * (unit === 'y' ? 12 : 1);
+    const year = Math.floor(months / 12), month = months - year * 12;
+    const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+    return `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-${String(Math.min(d, last)).padStart(2, '0')}`;
+}
+
+// "Starts at today + [5] [days]": the offset a date blank starts at, as
+// fields to set it. At today, the unit chosen last stays.
+const OFFSET_UNITS = [['d', 'days'], ['w', 'weeks'], ['m', 'months'], ['y', 'years']];
+function offsetFields(offset, lead = 'Starts at today +', lastUnit = 'd') {
+    const n = DATE_OFFSET_RE.test(offset || '') ? parseInt(offset, 10) : 0, unit = n ? offset.slice(-1) : lastUnit;
+    return `<span class="date-start"><span class="muted small">${lead}</span>
+        <input class="field" type="number" step="1" data-offset-n value="${n || ''}" placeholder="0" aria-label="How many days, weeks, months or years after today">
+        <select class="field" data-offset-unit aria-label="Days, weeks, months or years">${OFFSET_UNITS.map(([v, name]) => `<option value="${v}"${v === unit ? ' selected' : ''}>${name}</option>`).join('')}</select></span>`;
+}
+function offsetIn(root) {
+    const n = parseInt($('[data-offset-n]', root).value, 10) || 0;
+    return n ? `${n > 0 ? '+' : ''}${n}${$('[data-offset-unit]', root).value}` : '';
 }
 
 function defaults(item) {
@@ -1333,12 +1369,13 @@ function varsHelpHTML() {
         <ul>
             <li><code>[Name]</code> - a blank: whoever prints the label fills it in, in the editor or in the wizard. A name ending in "on" or containing "date" (like <code>[Frozen on]</code>) asks for a date, <code>[Box]</code>, <code>[Number]</code>, <code>[Portions]</code> and <code>[Count]</code> ask for a number, every other name for text.</li>
             <li><code>[today]</code> - today's date, in the date format chosen in the printer settings (like the browser by default).</li>
+            <li><code>[today+5d]</code> - a date counted from today: + or -, a number, and d for days, w for weeks, m for months or y for years, e.g., <code>[today+6m]</code> for half a year from now.</li>
             <li><code>[counter]</code> - a number that counts up, each copy gets the next one.</li>
             <li><code>[id]</code> - a short random ID.</li>
         </ul>
         <p>The variables of the server work as well:</p>
         <ul>
-            <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <a href="https://strftime.org/" target="_blank" rel="noopener">strftime</a> codes, e.g. <code>%H:%M:%S %d.%m.%Y</code>.</li>
+            <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <a href="https://strftime.org/" target="_blank" rel="noopener">strftime</a> codes, e.g., <code>%H:%M:%S %d.%m.%Y</code>. <code>{{datetime+5d:&lt;format&gt;}}</code> is 5 days later, like <code>[today+5d]</code>.</li>
             <li><code>{{counter[:&lt;start&gt;]}}</code> - a number that counts up, starting at &lt;start&gt; (default 1). When you print several labels at once, each gets the next number.</li>
             <li><code>{{uuid}}</code> - a random UUID, <code>{{short-uuid}}</code> - a shorter random UUID.</li>
             <li><code>{{mdi:&lt;name&gt;}}</code> - the <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icon</a> &lt;name&gt;, e.g. <code>{{mdi:lightbulb}}</code>. The Symbol button finds the names.</li>
@@ -2274,8 +2311,8 @@ function drawEditor() {
             return `<div class="bset-row" data-bname="${esc(b)}"><b>[${esc(b)}]</b>
                 <div class="seg">${BLANK_KINDS.map(([v, n]) => `<button type="button" data-kind="${v}" class="${k === v ? 'on' : ''}">${n}</button>`).join('')}</div>
                 ${k !== 'date' ? `<input class="field" data-default="1" type="${k === 'number' ? 'number' : 'text'}" placeholder="Default, optional" value="${esc(blankStart(item, b))}">`
-                    : blankStart(item, b) ? `<span class="muted small">Starts at ${esc(blankStart(item, b))}</span><button type="button" class="btn sm quiet" data-today="1">Start at today</button>`
-                    : '<span class="muted small">Starts at today</span>'}</div>`;
+                    : blankStart(item, b) && !DATE_OFFSET_RE.test(blankStart(item, b)) ? `<span class="muted small">Starts at ${esc(blankStart(item, b))}</span><button type="button" class="btn sm quiet" data-today="1">Start at today</button>`
+                    : offsetFields(blankStart(item, b), undefined, (E.offsetUnits || {})[b])}</div>`;
         }).join('')}</div><p class="muted small" style="margin:0">Stored with the label. Rename a blank in its line, between the brackets.</p>`
             : head + `<div class="fill-grid">${blanks.map((n, i) => fieldHTML(item, n, vals[n], 100 + i)).join('')}</div>`;
         box.hidden = !blanks.length;
@@ -2298,6 +2335,10 @@ function drawEditor() {
             if (dv) dv.addEventListener('change', () => setField(r.dataset.bname, { default: dv.value.trim() }));
             const now = $('[data-today]', r);
             if (now) now.onclick = () => setField(r.dataset.bname, { default: '' });
+            $$('[data-offset-n], [data-offset-unit]', r).forEach(el => el.addEventListener('change', () => {
+                E.offsetUnits = Object.assign({}, E.offsetUnits, { [r.dataset.bname]: $('[data-offset-unit]', r).value });
+                setField(r.dataset.bname, { default: offsetIn(r) });
+            }));
         });
         $$('[data-reuse]', box).forEach(pl => pl.onclick = () => {
             const inp = $(`[data-blank="${CSS.escape(pl.dataset.reuse)}"]`, box);
@@ -2521,7 +2562,7 @@ function openBlankDialog(d, target) {
             <label><span class="label-s">Name, shown next to the field</span><input class="field" id="bName" value="${esc(suggest)}" autocomplete="off"></label>
             <div><span class="label-s">Kind</span><div class="seg" id="bKinds">${BLANK_KINDS.map(([v, n]) => `<button type="button" data-bkind="${v}">${n}</button>`).join('')}</div></div>
             <label id="bDefWrap"><span class="label-s">Default value, optional</span><input class="field" id="bDef" autocomplete="off" placeholder="Empty"></label>
-            <p class="muted small" id="bDateNote" hidden>Date blanks start at today's date.</p>
+            <div id="bDateStart" hidden><span class="label-s">Starts at</span>${offsetFields('', 'Today +')}</div>
             <p class="err small" id="bErr" hidden style="padding:0;text-align:left"></p>
             <div class="acts"><button class="btn-print" type="submit" id="bInsert"></button></div>
         </form></div>`);
@@ -2530,7 +2571,7 @@ function openBlankDialog(d, target) {
         if (!chosen) kind = guessKind(name.value.trim());
         $$('[data-bkind]').forEach(b => b.classList.toggle('on', b.dataset.bkind === kind));
         $('#bDefWrap').hidden = kind === 'date';
-        $('#bDateNote').hidden = kind !== 'date';
+        $('#bDateStart').hidden = kind !== 'date';
         def.type = kind === 'number' ? 'number' : 'text';
         $('#bInsert').textContent = `Insert [${name.value.trim() || '...'}]`;
     };
@@ -2543,10 +2584,11 @@ function openBlankDialog(d, target) {
         e.preventDefault();
         const n = name.value.trim();
         const err = !n ? 'Give the blank a name.' : /[\[\]{}\n]/.test(n) ? 'Brackets cannot be part of the name.'
-            : ['today', 'counter', 'id'].includes(n.toLowerCase()) ? `[${n}] is a variable already, choose another name.` : '';
+            : isVariable(n) ? `[${n}] is a variable already, choose another name.` : '';
         if (err) { $('#bErr').textContent = err; $('#bErr').hidden = false; return; }
         d.fields = d.fields || {};
-        d.fields[n] = Object.assign({ type: kind }, kind !== 'date' && def.value.trim() ? { default: def.value.trim() } : {});
+        const start = kind === 'date' ? offsetIn($('#bDateStart')) : def.value.trim();
+        d.fields[n] = Object.assign({ type: kind }, start ? { default: start } : {});
         closeLayer(true);
         const input = target();
         if (input) insertAt(input, `[${n}]`);

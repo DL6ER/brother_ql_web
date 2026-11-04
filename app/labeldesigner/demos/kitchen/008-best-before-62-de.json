@@ -56,8 +56,8 @@
       "align": "center",
       "line_spacing": "100",
       "color": "black",
-      "text": "Innerhalb von 5 Tagen verbrauchen"
+      "text": "Zu verbrauchen bis {{datetime+5d:%d.%m.%Y}}"
     }
   ],
-  "label_text": "Pesto, selbst gemacht\nHergestellt {{datetime:%d.%m.%Y}}\nInnerhalb von 5 Tagen verbrauchen"
+  "label_text": "Pesto, selbst gemacht\nHergestellt {{datetime:%d.%m.%Y}}\nZu verbrauchen bis {{datetime+5d:%d.%m.%Y}}"
 }
