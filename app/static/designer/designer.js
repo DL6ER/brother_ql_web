@@ -16,6 +16,24 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = o => JSON.parse(JSON.stringify(o));
 const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+// Runs fn at once. Called while it runs, it runs once more afterwards with the
+// newest arguments: a preview follows typing without requests piling up.
+// keyOf tells what a run is for, e.g. its stage: a run for another one
+// starts at once instead of waiting for the one before.
+function latest(fn, keyOf = () => null) {
+    let running = null, next = null;
+    const run = async args => {
+        const me = running = { key: keyOf() };
+        try { await fn(...args); } catch (e) { console.error(e); }
+        if (running !== me) return;
+        running = null;
+        if (next) { const a = next; next = null; run(a); }
+    };
+    return (...args) => {
+        if (running && running.key === keyOf()) next = args;
+        else { next = null; run(args); }
+    };
+}
 // The date of the browser, not of UTC
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 
@@ -101,10 +119,21 @@ function baseDesign(size) {
         margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
         image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0',
-        image_scaling_factor: '100', image_rotation: '0', shrink_text: '1', print_color: 'black', high_res: '0', pdf_pages: '',
+        image_scaling_factor: '100', image_rotation: '0', text_fit: 'shrink', print_color: 'black', high_res: '0', pdf_pages: '',
         // Empty: the server chooses the distance from the size of the text
-        image_text_gap: ''
+        image_text_gap: '',
+        // Empty: above the text across the tape, left of it along the tape
+        image_position: ''
     };
+}
+
+// How the text is sized: as set, shrunk where it does not fit, or as large as
+// fits. Labels kept from before have shrink_text only.
+const TEXT_FITS = [['none', 'As set'], ['shrink', 'Shrink to fit'], ['fill', 'Fill the label']];
+const textFit = d => d.text_fit || (d.shrink_text === '1' ? 'shrink' : 'none');
+function setTextFit(d, fit) {
+    d.text_fit = fit;
+    delete d.shrink_text;
 }
 
 // Labels as the API stores them (text as JSON, booleans as true/false)
@@ -114,12 +143,20 @@ function normalize(raw) {
     let text = raw.text;
     if (typeof text === 'string') { try { text = JSON.parse(text); } catch (e) { text = []; } }
     d.text = (Array.isArray(text) ? text : []).map(l => Object.assign(L('', 40), l, { size: String(l.size || 40) }));
-    // Missing ones as the server defaults them, so that the label looks the same
-    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0'], ['shrink_text', '0']]) {
-        d[k] = raw[k] === undefined || raw[k] === null ? def : (raw[k] === true || raw[k] === 1 || raw[k] === '1') ? '1' : '0';
-    }
+    // Flags and the text size as the server reads them when it prints the
+    // label. One it refuses stays as it is, the preview tells why, until
+    // another is chosen.
+    const given = v => v !== undefined && v !== null && v !== '';
+    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
+    d.text_fit = given(raw.text_fit) ? String(raw.text_fit) : '';
+    if (!given(raw.text_fit) && given(raw.shrink_text)) d.shrink_text = String(raw.shrink_text);
     if (raw.image_data) d.image = { data: raw.image_data, mime: raw.image_mime || 'image/png', name: raw.image_name || 'image.png' };
     if (raw.fields && typeof raw.fields === 'object') d.fields = raw.fields;
+    // Values of blanks saved with it through the API, also one left empty
+    // on purpose: filled in where no other is given, kept when it is saved
+    if (raw.blanks && typeof raw.blanks === 'object' && !Array.isArray(raw.blanks)) {
+        d.blanks = Object.fromEntries(Object.entries(raw.blanks).map(([name, v]) => [name, String(v)]));
+    }
     return d;
 }
 
@@ -152,20 +189,58 @@ function formatDate(iso, fmt = dateFormat()) {
     return fmt.replace('%Y', y).replace('%m', m).replace('%d', d);
 }
 
-function toDisplay(text) {
-    return String(text || '')
-        .replace(BLANK_RE, '[$1]')
-        .replace(/\{\{datetime:[^}]+\}\}/g, '[today]')
-        .replace(/\{\{counter(:\d+)?\}\}/g, (m, start) => `[counter${start || ''}]`)
-        .replace(/\{\{short-uuid\}\}/g, '[id]');
+// Templates as text fields show them: [Name] for a blank, [today], [counter]
+// and [id]
+const TEMPLATE_RE = /\{\{(?:blank:([^}]+)|(datetime):[^}]+|counter(:\d+)?|short-uuid)\}\}/g;
+function shownAs(m) {
+    if (m[1] !== undefined) return `[${m[1]}]`;
+    if (m[2]) return '[today]';
+    if (m[0].startsWith('{{counter')) return `[counter${m[3] || ''}]`;
+    return '[id]';
 }
-function fromDisplay(text, previous = '') {
-    // Each [today] keeps the format of the date it was shown for
-    const formats = [...String(previous).matchAll(/\{\{datetime:([^}]+)\}\}/g)].map(m => m[1]);
-    let k = 0;
-    return String(text || '').replace(/\[([^\]\n]+)\]/g, (m, name) => {
+// The text as its field shows it, and where each template is shown
+function displayed(text) {
+    text = String(text || '');
+    const tokens = [];
+    let out = '', last = 0;
+    for (const m of text.matchAll(TEMPLATE_RE)) {
+        out += text.slice(last, m.index);
+        tokens.push({ at: out.length, shown: shownAs(m), template: m[0] });
+        out += shownAs(m);
+        last = m.index + m[0].length;
+    }
+    return { text: out + text.slice(last), tokens };
+}
+function toDisplay(text) {
+    return displayed(text).text;
+}
+// The text of a field with its templates. The text before and after the
+// change is as shown before, a template shown there stays as it was, e.g. a
+// [today] keeps its format. One in the change is new, a [today] gets the
+// format set in the printer panel. caret, where the change ends, e.g. the
+// cursor after typing, tells which of two same ones was deleted. Typed anew
+// as a whole (inOrder), e.g. in the wizard, each new [today] takes the
+// format of the dates there were, in their order.
+function fromDisplay(text, previous = '', caret = null, inOrder = false) {
+    const old = displayed(previous), was = old.text, now = String(text || '');
+    // What was put in ends at the caret: the same before it starts before it
+    const maxPre = caret === null ? now.length : caret - Math.max(0, now.length - was.length), maxSuf = caret === null ? now.length : now.length - caret;
+    let pre = 0, suf = 0;
+    while (pre < was.length && pre < now.length && pre < maxPre && was[pre] === now[pre]) pre++;
+    while (suf < was.length - pre && suf < now.length - pre && suf < maxSuf && was[was.length - 1 - suf] === now[now.length - 1 - suf]) suf++;
+    // The templates kept where they were, each [today] of the others takes
+    // the format of the next date that was not kept
+    const kept = [...now.matchAll(/\[([^\]\n]+)\]/g)].map(({ 0: m, index: i }) => {
+        const at = i + m.length <= pre ? i : i >= now.length - suf ? i - now.length + was.length : -1;
+        return old.tokens.find(t => t.at === at && t.shown === m);
+    });
+    const formats = inOrder ? old.tokens.filter(t => !kept.includes(t) && t.template.startsWith('{{datetime:')).map(t => t.template.slice(11, -2)) : [];
+    let seen = 0, k = 0;
+    return now.replace(/\[([^\]\n]+)\]/g, (m, name) => {
+        const own = kept[seen++];
+        if (own) return own.template;
         const n = name.trim();
-        if (n.toLowerCase() === 'today') return `{{datetime:${formats[Math.min(k++, formats.length - 1)] || dateFormat()}}}`;
+        if (n.toLowerCase() === 'today') return `{{datetime:${formats.length ? formats[Math.min(k++, formats.length - 1)] : dateFormat()}}}`;
         const counter = n.match(/^counter(:\d+)?$/i);
         if (counter) return `{{counter${counter[1] || ''}}}`;
         if (n.toLowerCase() === 'id') return '{{short-uuid}}';
@@ -186,24 +261,26 @@ const blankFields = item => (item.design && item.design.fields) || {};
 
 // Kinds of blanks and the kind a name suggests
 const BLANK_KINDS = [['text', 'Text'], ['number', 'Number'], ['date', 'Date']];
-const guessKind = name => /\b(on|date)\b/i.test(name) ? 'date' : /^(box|number|portions|no\.?|count)$/i.test(name) ? 'number' : 'text';
+const guessKind = name => /(^|\s)on$|\bdate\b/i.test(name) ? 'date' : /^(box|number|portions|no\.?|count)$/i.test(name) ? 'number' : 'text';
 
 function fieldType(item, name) {
     return (blankFields(item)[name] || {}).type || guessKind(name);
 }
 
-function fillBlanks(design, values, forPreview) {
-    const d = clone(design);
-    const sub = s => String(s || '').replace(BLANK_RE, (m, name) => {
-        let v = values ? values[name] : undefined;
-        if (v === undefined || v === '') return forPreview ? name + '?' : '';
-        // Dates are written as set in the printer panel, text stays as typed
-        if (/^\d{4}-\d{2}-\d{2}$/.test(v) && fieldType({ design }, name) === 'date') return formatDate(v);
-        return v;
-    });
-    d.text = d.text.map(l => Object.assign(l, { text: sub(l.text) }));
-    d.code_text = sub(d.code_text);
-    return d;
+// The blanks of a design as the server fills them in: the values given, and
+// the settings of each blank. A date is written in its format, else as set
+// in the printer panel.
+function blankRequest(design, values) {
+    const blanks = {}, fields = {};
+    for (const name of blanksOf(design)) {
+        const f = Object.assign({}, (design.fields || {})[name], { type: fieldType({ design }, name) });
+        if (f.type === 'date' && !f.format) f.format = dateFormat();
+        fields[name] = f;
+        // Also one left empty: it is printed empty, without its default
+        const v = values ? values[name] : undefined;
+        if (v !== undefined) blanks[name] = String(v);
+    }
+    return { blanks, fields };
 }
 
 // --- Talking to the server -------------------------------------------------
@@ -222,10 +299,13 @@ const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_w
 // at 300 dpi, or 600
 const dpiOf = (labelSize, high = highRes()) => (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
 
-function formFor(design, copies = 1, forPrint = false) {
+// marks: a preview shows the blanks still to fill in. blanks: those of
+// blankRequest(), e.g. as a cached preview was made for them.
+function formFor(design, copies = 1, forPrint = false, values = null, marks = false, blanks = blankRequest(design, values)) {
     const fd = new FormData();
     for (const [k, v] of Object.entries(design)) {
-        if (k === 'text' || k === 'image' || k === 'more_images' || k === 'fields') continue;
+        // The blanks are sent with their values below
+        if (k === 'text' || k === 'image' || k === 'more_images' || k === 'fields' || k === 'blanks') continue;
         fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
     }
     // Without red on the tape red parts print black, the preview shows that
@@ -243,6 +323,11 @@ function formFor(design, copies = 1, forPrint = false) {
         // The preview shows the first image, all of them are printed
         for (const im of [design.image].concat(forPrint ? design.more_images || [] : [])) fd.append('image', b64ToBlob(im.data, im.mime), im.name);
     }
+    if (Object.keys(blanks.fields).length) {
+        fd.append('blanks', JSON.stringify(blanks.blanks));
+        fd.append('fields', JSON.stringify(blanks.fields));
+        if (marks) fd.append('mark_blanks', '1');
+    }
     fd.append('print_count', String(copies));
     // The quality is a setting of the printer, previews are made with its
     // resolution as well
@@ -256,9 +341,24 @@ function formFor(design, copies = 1, forPrint = false) {
     return fd;
 }
 
-async function post(path, body) {
-    return fetch(API + path, { method: 'POST', body, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+async function post(path, body, signal = undefined) {
+    // Without files as a plain form, the server reads it faster
+    if (body instanceof FormData && ![...body.values()].some(v => v instanceof Blob)) body = new URLSearchParams(body);
+    return fetch(API + path, { method: 'POST', body, signal, headers: { 'X-Requested-With': 'XMLHttpRequest' } });
 }
+// A preview that does not come gives way to the next one
+let previewTimeout = 60000;
+// AbortSignal.timeout, also in browsers without it, e.g. Safari before 16
+function timeoutSignal(ms) {
+    if (AbortSignal.timeout) return AbortSignal.timeout(ms);
+    const control = new AbortController();
+    const timer = setTimeout(() => control.abort(new DOMException('signal timed out', 'TimeoutError')), ms);
+    // Ended once the preview is there
+    control.signal.done = () => clearTimeout(timer);
+    return control.signal;
+}
+// Why a preview failed on its way
+const previewFailed = e => new Error(['TimeoutError', 'AbortError'].includes(e.name) ? 'The preview took too long' : 'The preview could not be made');
 
 // Everything the server renders (previews and thumbnails) goes through one
 // queue. The server says how many at a time: its CPU cores minus one, at
@@ -266,22 +366,35 @@ async function post(path, body) {
 const PARALLEL = Math.max(1, C.preview_parallel || 2);
 const previewCache = new Map();
 let running = 0;
-const waiting = [];
-function nextJob() { while (running < PARALLEL && waiting.length) waiting.shift()(); }
+// Previews looked at, e.g. of the editor, go before thumbnails
+const waiting = [], waitingFirst = [];
+function nextJob() { while (running < PARALLEL && (waitingFirst.length || waiting.length)) (waitingFirst.shift() || waiting.shift())(); }
 // A request is shared by everyone who asks for the same. Dropped because its
 // first caller no longer needs it, it is made again for a caller who does.
 function shared(p, stale, again) {
     return p.catch(e => { if (e.message === 'stale' && !(stale && stale())) return again(); throw e; });
 }
-function limit(task, stale) {
-    return new Promise((resolve, reject) => {
+function limit(task, stale, first = false) {
+    let queued = null;
+    const p = new Promise((resolve, reject) => {
         const run = () => {
+            // Started, the promise kept for others no longer holds the job
+            // and what it was made for, e.g. a design
+            queued = null;
+            const job = task;
+            task = null;
             if (stale && stale()) { reject(new Error('stale')); return; }
             running++;
-            task().then(resolve, reject).finally(() => { running--; nextJob(); });
+            job().then(resolve, reject).finally(() => { running--; nextJob(); });
         };
-        if (running < PARALLEL) run(); else waiting.push(run);
+        if (running < PARALLEL) run(); else { queued = run; (first ? waitingFirst : waiting).push(run); }
     });
+    // Asked for again by a preview looked at, it goes before thumbnails
+    p.first = () => {
+        const i = waiting.indexOf(queued);
+        if (i >= 0) { waiting.splice(i, 1); waitingFirst.push(queued); }
+    };
+    return p;
 }
 
 const imageCache = new Map();
@@ -298,10 +411,25 @@ function fetchImage(url, stale) {
 }
 
 // A short fingerprint of an image for the cache key (FNV-1a)
+// Two hashes of 32 bits: an image's key also names it in the undo history
+// and in the label kept for the next visit, two images must not share one
 function fingerprint(s) {
-    let h = 0x811c9dc5;
-    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-    return (h >>> 0).toString(36) + s.length.toString(36);
+    let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+    for (let i = 0; i < s.length; i++) {
+        const c = s.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 0x01000193);
+        h2 = Math.imul(h2 ^ c, 0x5bd1e995);
+        h2 ^= h2 >>> 15;
+    }
+    return (h1 >>> 0).toString(36) + (h2 >>> 0).toString(36) + s.length.toString(36);
+}
+
+// Images can be large: each one's fingerprint is made once
+const imageKeys = new WeakMap();
+function imageKey(im) {
+    let k = imageKeys.get(im);
+    if (!k) { k = im.mime + fingerprint(im.data); imageKeys.set(im, k); }
+    return k;
 }
 
 // Previews that dropped out of the cache are released once no image on the
@@ -317,31 +445,60 @@ function release(url) {
     if (dropped.size) release.timer = setTimeout(release, 11000);
 }
 
-function preview(design, values, stale) {
+function preview(design, values, stale, first = false) {
     // In the resolution it is printed with: for 600 dpi the server makes the
     // label twice as large
-    const d = Object.assign(fillBlanks(design, values, true), { high_res: highRes() ? '1' : '0' });
-    const key = JSON.stringify(Object.assign({}, d, { image: d.image ? d.image.mime + fingerprint(d.image.data) : null, more_images: undefined }));
+    const asked = Object.assign({}, design, { high_res: highRes() ? '1' : '0' });
+    // Dates the server fills in, e.g. of a [today], change with the time: a
+    // preview kept from another minute is not used
+    const blanks = blankRequest(asked, values || {});
+    const shown = JSON.stringify(Object.assign({}, asked, { image: design.image ? imageKey(design.image) : null, more_images: undefined }));
+    const dated = shown.includes('{{datetime:') || Object.entries(blanks.fields).some(([name, f]) => f.type === 'date' && !(name in blanks.blanks));
+    const key = JSON.stringify([shown, blanks, dated ? Math.floor(Date.now() / 60000) : 0]);
     if (previewCache.has(key)) {
         // The most recently used stay longest
         const p = previewCache.get(key);
         previewCache.delete(key);
         previewCache.set(key, p);
-        return shared(p, stale, () => preview(design, values, stale));
+        if (first && p.first) p.first();
+        return shared(p, stale, () => preview(design, values, stale, first));
     }
+    // As the label is now, it may change while the preview waits in line.
+    // Images are replaced, never changed, they need no copy.
+    const d = Object.assign(clone(Object.assign({}, asked, { image: undefined, more_images: undefined })),
+        { image: design.image, more_images: design.more_images });
+    values = clone(values || {});
     const p = limit(async () => {
-        const r = await post('/preview', formFor(d));
-        if (!r.ok) {
-            let msg = 'The preview could not be made';
-            try { msg = (await r.json()).message || msg; } catch (e) { }
-            throw new Error(msg);
+        let r;
+        const signal = timeoutSignal(previewTimeout);
+        // The time limit is on the image as well, which may come later
+        let blob;
+        try {
+            try {
+                r = await post('/preview', formFor(d, 1, false, values, true, blanks), signal);
+            } catch (e) {
+                throw previewFailed(e);
+            }
+            if (!r.ok) {
+                let msg = 'The preview could not be made';
+                try { msg = (await r.json()).message || msg; } catch (e) { }
+                // The server refuses the label, it cannot print it either
+                throw Object.assign(new Error(msg), { refused: true });
+            }
+            try {
+                blob = await r.blob();
+            } catch (e) {
+                throw previewFailed(e);
+            }
+        } finally {
+            if (signal.done) signal.done();
         }
-        const blob = await r.blob();
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
-            auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0)
+            auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
+            side: r.headers.get('X-Label-Image-Position') || ''
         };
-    }, stale);
+    }, stale, first);
     previewCache.set(key, p);
     p.catch(() => { if (previewCache.get(key) === p) previewCache.delete(key); });
     if (previewCache.size > 150) {
@@ -358,6 +515,7 @@ const lazyObserver = new IntersectionObserver(entries => {
     for (const e of entries) {
         if (!e.isIntersecting) continue;
         lazyObserver.unobserve(e.target);
+        lazyWaiting.delete(e.target);
         const job = e.target._render;
         if (!job) continue;
         if (job.url) fetchImage(job.url).then(u => { e.target.src = u; }).catch(() => { });
@@ -365,29 +523,38 @@ const lazyObserver = new IntersectionObserver(entries => {
         else preview(job.design, job.values).then(p => { e.target.src = p.url; }).catch(() => { });
     }
 }, { rootMargin: '200px' });
+// Thumbnails waiting to come into view
+const lazyWaiting = new Set();
 function attachLazy(root) {
+    // Those drawn over before they came into view are let go
+    for (const img of lazyWaiting) if (!img.isConnected) { lazyObserver.unobserve(img); lazyWaiting.delete(img); }
     $$('img[data-lazy]', root).forEach(img => {
         const job = LAZY.get(img.dataset.lazy);
-        if (job) { img._render = job; lazyObserver.observe(img); }
+        if (job) { img._render = job; LAZY.delete(img.dataset.lazy); lazyObserver.observe(img); lazyWaiting.add(img); }
     });
+    // Those of pages drawn over before they were shown. Ones made just now
+    // may not be on the page yet.
+    if (LAZY.size > 1000) {
+        const onPage = new Set($$('img[data-lazy]').map(img => img.dataset.lazy));
+        for (const [id, job] of [...LAZY]) if (Date.now() - job.made > 10000 && !onPage.has(id)) LAZY.delete(id);
+    }
 }
 const LAZY = new Map();
 let lazySeq = 0;
-function lazyTag(design, values) {
+function lazyImg(job) {
     const id = 'l' + (++lazySeq);
-    LAZY.set(id, { design, values });
+    LAZY.set(id, Object.assign(job, { made: Date.now() }));
     return `<img data-lazy="${id}" alt="">`;
 }
+function lazyTag(design, values) {
+    return lazyImg({ design, values });
+}
 function lazyUrlTag(url) {
-    const id = 'l' + (++lazySeq);
-    LAZY.set(id, { url });
-    return `<img data-lazy="${id}" alt="">`;
+    return lazyImg({ url });
 }
 // A template with the text typed into the wizard, made when it comes into view
 function lazyTypedTag(item) {
-    const id = 'l' + (++lazySeq);
-    LAZY.set(id, { item, gen: S.typedGen });
-    return `<img data-lazy="${id}" alt="">`;
+    return lazyImg({ item, gen: S.typedGen });
 }
 const designCache = new Map();
 function designOf(item) {
@@ -513,6 +680,9 @@ function printerTakes(s) {
 
 function detectTape() {
     const p = S.printer;
+    // What the printer reported says nothing about a tape set by hand
+    S.tapeUnknown = '';
+    S.tapeRedUnknown = false;
     if (SIZES[manualTape()]) {
         S.tape = manualTape();
         S.tapeAssumed = false;
@@ -521,8 +691,6 @@ function detectTape() {
     }
     S.tapeManual = false;
     let found = null;
-    S.tapeUnknown = '';
-    S.tapeRedUnknown = false;
     if (p && p.media_width) {
         // The width and length of DK and TZe tape can be the same
         const red = /red/i.test(p.text_color || '') || /red/i.test(p.media_type || '');
@@ -573,7 +741,7 @@ async function printJob(job) {
     updateCounts();
     toast(`Printing ${entry.copies} ${entry.copies === 1 ? 'label' : 'labels'}...`);
     try {
-        const r = await post('/print', formFor(fillBlanks(job.design, job.values, false), entry.copies, true));
+        const r = await post('/print', formFor(job.design, entry.copies, true, job.values));
         let data = {};
         try { data = await r.json(); } catch (e) { }
         if (r.ok && data.success !== false) {
@@ -639,20 +807,30 @@ function tapeGuard(job) {
             <p>The ${esc(S.printer ? S.printer.model : 'printer')} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
             ${canAdapt ? `<button class="btn-print" data-r="adapt"><i class="fa-solid fa-maximize"></i>Print it on ${esc(have)}</button>` : ''}
             <button class="btn" data-r="anyway">Print anyway</button>
-            <button class="btn quiet" data-r="cancel">Cancel</button>`, () => resolve('cancel'));
-        $$('[data-r]', $('#layer')).forEach(b => b.onclick = () => { const r = b.dataset.r; closeLayer(true); resolve(r); });
+            <button class="btn quiet" data-r="cancel">Cancel</button>`, () => resolve('cancel'), () => resolve('cancel'));
+        // The answer first, closing would settle it as canceled
+        $$('[data-r]', $('#layer')).forEach(b => b.onclick = () => { resolve(b.dataset.r); closeLayer(true); });
     });
 }
 
 // --- Overlays ------------------------------------------------------------------
 
-let onLayerClose = null;
-function openLayer(html, cls, onClose) {
+let onLayerClose = null, onLayerGone = null;
+// onGone is called however the overlay goes: closed, also silently, or
+// replaced by another one, e.g. to settle a question that waits for it
+function layerGone() {
+    const cb = onLayerGone;
+    onLayerGone = null;
+    if (cb) cb();
+}
+function openLayer(html, cls, onClose, onGone) {
+    layerGone();
     const layer = $('#layer');
     layer.className = 'layer ' + (cls || '');
     layer.innerHTML = html;
     layer.hidden = false;
     onLayerClose = onClose || null;
+    onLayerGone = onGone || null;
     layer.onclick = e => { if (e.target === layer || e.target.closest('[data-close]')) closeLayer(); };
 }
 function closeLayer(silent) {
@@ -660,12 +838,30 @@ function closeLayer(silent) {
     if (layer.hidden) return;
     layer.hidden = true;
     layer.innerHTML = '';
+    layerGone();
     const cb = onLayerClose;
     onLayerClose = null;
     if (cb && !silent) cb();
+    // A view to draw anew, e.g. for a tape changed in a panel this layer took
+    // the place of. Closed for something else, right after that, unless that
+    // drew it already.
+    if (S.routeLater) {
+        S.routeLater = false;
+        if (!silent) route();
+        else {
+            const drawn = S.drawn;
+            // A layer opened by what this one closed for, e.g. a question
+            // before printing, is not closed by it: drawn once that closes
+            setTimeout(() => {
+                if (S.drawn !== drawn) return;
+                if ($('#layer').hidden) route();
+                else S.routeLater = true;
+            });
+        }
+    }
 }
-function sheet(inner, onClose) {
-    openLayer(`<div class="sheet"><div class="grab"></div>${inner}</div>`, 'sheet-layer', onClose);
+function sheet(inner, onClose, onGone) {
+    openLayer(`<div class="sheet"><div class="grab"></div>${inner}</div>`, 'sheet-layer', onClose, onGone);
 }
 
 // --- Data loading --------------------------------------------------------------
@@ -706,18 +902,73 @@ async function saveLabel(title, design, overwrite = null) {
         for (let n = 2; S.saved.some(x => x.name.toLowerCase() === name.toLowerCase()); n++) name = serverName(`${title} ${n}`);
     }
     // The name that was checked above, with ".json": the server only adds it
-    // when it is missing, "a.json" would replace a.json instead of a.json.json
-    const body = Object.assign({}, design, { name, title, text: design.text });
-    if (design.fields) body.fields = Object.fromEntries(Object.entries(design.fields).filter(([k]) => blanksOf(design).includes(k)));
+    // when it is missing, "a.json" would replace a.json instead of a.json.json.
+    // A new label replaces none saved under the name in the meantime.
+    const body = Object.assign({}, design, { name, title, text: design.text, replace: !!overwrite });
+    // Each blank keeps its kind, the server does not guess it, and a date
+    // the format it is shown in, like a [today], also when the label is
+    // printed through the API: the settings previews send
+    body.fields = blankRequest(design, null).fields;
+    if (!Object.keys(body.fields).length) delete body.fields;
     delete body.image;
     delete body.more_images;
     if (design.image) Object.assign(body, { image_data: design.image.data, image_mime: design.image.mime, image_name: design.image.name });
     const r = await fetch(API + '/repository/save', { method: 'POST', body: JSON.stringify(body), headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
     const data = await r.json().catch(() => ({}));
+    if (r.status === 409) {
+        await loadSaved();
+        throw Object.assign(new Error(data.message), { taken: true });
+    }
     if (!r.ok || !data.success) throw new Error(data.message || 'The label could not be saved');
     forget(data.name);
     await loadSaved();
     return data.name;
+}
+// Asks for the name of a label saved for the first time, then calls
+// save(title, name), name that of the saved label it is to replace. A saved
+// label of the same name is only replaced when asked again.
+function saveDialog(title, save) {
+    openLayer(`<div class="dialog narrow" role="dialog" aria-label="Save to your labels">
+        <div class="dialog-h"><div class="grow"><h2>Save to your labels</h2><p>It is listed under this name in the wizard and the search.</p></div>
+            <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
+        <form class="fields" id="saveForm" novalidate>
+            <label><span class="label-s">Name</span><input class="field" id="saveName" value="${esc(title)}" autocomplete="off"></label>
+            <p class="err small" id="saveErr" hidden style="padding:0;text-align:left"></p>
+            <div class="acts"><button class="btn-print" type="submit" id="saveGo">Save</button></div>
+        </form></div>`);
+    const name = $('#saveName'), go = $('#saveGo');
+    let replacing = null;
+    const say = text => { $('#saveErr').textContent = text; $('#saveErr').hidden = !text; };
+    // Closed or replaced while saving, the dialog is gone
+    const tell = text => name.isConnected ? say(text) : toast(text);
+    name.addEventListener('input', () => { replacing = null; say(''); go.textContent = 'Save'; });
+    name.select();
+    name.focus();
+    $('#saveForm').onsubmit = async e => {
+        e.preventDefault();
+        // Saved under the name in another browser in the meantime, the list
+        // is loaded again and the name checked once more
+        for (let tries = 0; tries < 2; tries++) {
+            const t = name.value.trim();
+            if (!t) return tell('Give the label a name.');
+            const taken = S.saved.find(x => x.title.toLowerCase() === t.toLowerCase());
+            if (taken && replacing !== taken.name) {
+                replacing = taken.name;
+                go.textContent = 'Replace it';
+                return tell(`"${taken.title}" is one of your saved labels already. Replace it, or give this label another name.`);
+            }
+            go.disabled = true;
+            try {
+                await save(t, taken ? taken.name : null);
+                if (name.isConnected) closeLayer(true);
+                return;
+            } catch (err) {
+                if (!err.taken || tries) return tell(err.message);
+            } finally {
+                go.disabled = false;
+            }
+        }
+    };
 }
 async function deleteLabel(name) {
     const r = await post('/repository/delete', (() => { const f = new FormData(); f.append('name', name); return f; })());
@@ -772,21 +1023,38 @@ function applyTyped(item, design, values) {
             let k = 0;
             for (const b of blanks) if (fieldType(item, b) === 'text' && k < typed.length) values[b] = typed[k++];
         } else {
-            typed.forEach((t, i) => { if (design.text[i]) design.text[i].text = fromDisplay(t, design.text[i].text); });
+            typed.forEach((t, i) => { if (design.text[i]) design.text[i].text = fromDisplay(t, design.text[i].text, null, true); });
         }
     }
     return { design, values };
 }
 
+// What a blank starts with: the value saved with the label through the
+// API, else its default. Blank settings show it, new settings replace it.
+function blankStart(item, name) {
+    const saved = (item.design && item.design.blanks) || {};
+    return name in saved ? saved[name] : (blankFields(item)[name] || {}).default || '';
+}
+
+// What a blank starts with now: a date without a value saved or a default
+// at today
+function startOf(item, name) {
+    const start = blankStart(item, name);
+    return start || name in ((item.design && item.design.blanks) || {}) || fieldType(item, name) !== 'date' ? start : today();
+}
+
 function defaults(item) {
-    const v = {};
-    for (const name of blanksOf(item.design)) {
-        const t = fieldType(item, name);
-        const f = blankFields(item)[name] || {};
-        v[name] = t === 'date' ? today() : (f.default || '');
-    }
+    return Object.fromEntries(blanksOf(item.design).map(name => [name, startOf(item, name)]));
+}
+
+// The values of the blanks, those still at what they started with (starts)
+// as it is now, e.g. a date at today also past midnight
+function valuesNow(values, starts, item) {
+    const v = Object.assign({}, values);
+    for (const [name, start] of Object.entries(starts || {})) if (v[name] === start) v[name] = startOf(item, name);
     return v;
 }
+const editItem = E => ({ kind: E.origin && E.origin.kind === 'saved' ? 'saved' : 'edit', id: E.origin && E.origin.id, design: E.design });
 
 // --- Rows that scroll sideways ---------------------------------------------------
 // They fade out where more follows, and peek once after loading, so that
@@ -827,6 +1095,9 @@ const currentView = () => parseHash().view;
 
 function route() {
     closeLayer(true);
+    S.routeLater = false;
+    // How often the view was drawn, see closeLayer()
+    S.drawn = (S.drawn || 0) + 1;
     const { view, arg, params } = parseHash();
     const isWizard = ['wizard', 'templates', 'labels', 'fill', 'printer'].includes(view);
     $$('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.tab === (isWizard ? 'wizard' : 'edit')));
@@ -846,8 +1117,8 @@ const SPIN = '<span class="spin" aria-hidden="true"><i class="fa-solid fa-circle
 function stageHTML(id) {
     return `<div class="stage busy" id="${id}">${SPIN}<div class="wait">Making the preview...</div></div>`;
 }
-// Shows the spinner at once, while a debounced update still waits. A preview
-// still on its way is not shown any more, it is out of date.
+// Shows the spinner at once, while an update still waits. The preview shown
+// stays until a newer one is there.
 function busyThen(getEl, fn) {
     return (...args) => {
         const el = getEl();
@@ -860,17 +1131,24 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
     el._seq = (el._seq || 0) + 1;
     const seq = el._seq;
-    // A newer preview was asked for, or the stage was replaced meanwhile
-    const outdated = () => seq !== el._seq || !el.isConnected;
+    // A newer preview is shown already, or the stage was replaced meanwhile.
+    // While typing, the preview of the text before shows until the newest
+    // is there, so that the stage follows.
+    const outdated = () => seq <= (el._shown || 0) || !el.isConnected;
+    const shown = () => { el._shown = seq; if (seq !== el._seq) el.classList.add('busy'); };
+    // Only the newest preview tells about the label as it is now: whether it
+    // fits and can be printed. One of the text before that fails is not shown.
+    const newest = () => seq === el._seq;
     el.classList.add('busy');
     let p;
     try {
-        p = await preview(design, values);
+        p = await preview(design, values, null, true);
     } catch (e) {
-        if (outdated()) return;
+        if (outdated() || !newest()) return;
         el.className = 'stage';
         el.innerHTML = `${SPIN}<div class="err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(e.message)}</div>`;
-        if (onWarning) onWarning(e.message, true);
+        shown();
+        if (onWarning) onWarning(e.message, true, null, !!e.refused);
         return;
     }
     if (outdated()) return;
@@ -907,16 +1185,12 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
         <div class="cut"><i class="fa-solid fa-scissors"></i></div>
         <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>`;
-    if (onWarning) onWarning(p.warning, false, p);
+    shown();
+    if (onWarning && newest()) onWarning(p.warning, false, p);
 }
 
-// The engine stacks code and text on die-cut labels, small ones leave the
-// text no room and it disappears without a warning
+// Red parts on tape without red print black
 function layoutProblem(d) {
-    const size = SIZES[d.label_size];
-    if (d && size && !isEndless(size) && d.print_type === 'qrcode_text' && Math.min(size.dots[0], size.dots[1]) < 600) {
-        return 'On this die-cut label the text gets no room next to the code. Use endless tape or a larger label.';
-    }
     const redParts = (d.print_type !== 'qrcode' && d.text.some(l => l.color === 'red')) || (d.border_color === 'red' && frameOf(d) !== 'none')
         || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
     if (redParts && !redTape(d)) return 'This tape has no red, the red parts print black.';
@@ -929,9 +1203,9 @@ function fitsNote(el, warning, error, design, onShrink) {
     if (error) { el.className = 'fits warn'; el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Fix the label to print it.'; return; }
     el.className = warning ? 'fits warn' : 'fits';
     el.innerHTML = warning ? `<i class="fa-solid fa-triangle-exclamation"></i> ${esc(warning)}` : '<i class="fa-solid fa-circle-check"></i> Everything fits.';
-    if (warning && /text does not fit/i.test(warning) && design && design.shrink_text !== '1' && onShrink) {
+    if (warning && /text does not fit/i.test(warning) && design && textFit(design) === 'none' && onShrink) {
         el.insertAdjacentHTML('beforeend', ' <button class="btn sm" type="button">Shrink it to fit</button>');
-        el.querySelector('button').onclick = () => { design.shrink_text = '1'; onShrink(); };
+        el.querySelector('button').onclick = () => { setTextFit(design, 'shrink'); onShrink(); };
     }
 }
 
@@ -1014,7 +1288,11 @@ function findIcons(list, query) {
 
 async function openSymbols(input) {
     if (!input) return;
+    // Open at once, so that Escape closes it while the lists load
+    openLayer('<div class="dialog narrow" role="dialog" aria-label="Insert a symbol"><p class="muted">Loading the symbols</p></div>');
+    const loading = $('#layer .dialog');
     const [list, icons] = await Promise.all([loadSymbols(), loadIcons()]);
+    if (!loading.isConnected) return;
     openLayer(`<div class="dialog narrow${icons.length ? ' symbols' : ''}" role="dialog" aria-label="Insert a symbol">
         <div class="dialog-h"><div class="grow"><h2>Insert a symbol</h2><p>Not every font has every symbol, the preview shows what prints.</p></div>
             <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
@@ -1103,6 +1381,14 @@ function renderLooks() {
     const box = $('#fzLooks');
     if (!box) return;
     if (!wizardLines().length) { box.innerHTML = ''; return; }
+    // While typing the tiles stay, each shows its last preview until the next
+    // one is there
+    if ($('[data-look]', box) && box.dataset.tape === S.tape) {
+        $$('[data-look]', box).forEach(x => x.classList.remove('sel'));
+        showLooks();
+        return;
+    }
+    box.dataset.tape = S.tape;
     box.innerHTML = `<div class="sec-h"><h2>Your text in six looks</h2><span class="muted">for the ${esc(sizeName(S.tape))} tape</span></div>
         <div class="tiles compact">${LOOKS.map((look, i) => `
             <div class="tile" data-look="${i}" role="button" tabindex="0">
@@ -1110,11 +1396,7 @@ function renderLooks() {
                 <div class="foot"><div class="grow"><b>${esc(look.name)}</b></div>
                     <button class="btn-print sm" type="button" data-plook="${i}" title="Print"><i class="fa-solid fa-print"></i></button></div>
             </div>`).join('')}</div>`;
-    LOOKS.forEach((look, i) => {
-        const bed = $('#flook' + i);
-        const gen = S.typedGen;
-        preview(lookDesign(i), {}, () => gen !== S.typedGen).then(p => { bed.innerHTML = `<img alt="" src="${p.url}">`; }).catch(() => { });
-    });
+    showLooks();
     $$('[data-plook]', box).forEach(b => b.onclick = () => printLook(+b.dataset.plook));
     $$('[data-look]', box).forEach(t => {
         t.onclick = e => { if (!e.target.closest('button')) chooseLook(+t.dataset.look); };
@@ -1123,6 +1405,23 @@ function renderLooks() {
         };
     });
 }
+
+// While typing, the looks of the newest text follow those on their way
+const showLooks = latest(() => Promise.all(LOOKS.map((look, i) => {
+    const bed = $('#flook' + i);
+    if (!bed) return null;
+    const gen = S.typedGen;
+    return preview(lookDesign(i), {}, () => gen !== S.typedGen, true).then(async p => {
+        const img = new Image();
+        img.alt = '';
+        img.src = p.url;
+        try { await img.decode(); } catch (e) { }
+        // A preview of earlier text that comes late does not replace a newer one
+        if (gen < (bed._gen || 0)) return;
+        bed._gen = gen;
+        bed.replaceChildren(img);
+    }).catch(() => { });
+})), () => $('#flook0'));
 
 // A look is shown next to the list, with fields for its blanks
 function chooseLook(i) {
@@ -1203,6 +1502,7 @@ function renderLabels(arg) {
                 <select id="libLang" aria-label="Language of the ready-made labels"><option value="en"${S.lang === 'en' ? ' selected' : ''}>English</option><option value="de"${S.lang === 'de' ? ' selected' : ''}>Deutsch</option></select>
             </div>
             <h1 id="libTitle"></h1>
+            <p class="muted small" id="libOther" hidden></p>
             <div class="g4" id="libGrid"></div>
         </section>
         <aside class="detail" id="libDetail"></aside>
@@ -1212,15 +1512,20 @@ function renderLabels(arg) {
         const ta = $('#wzText');
         const grow = () => { ta.rows = Math.min(6, Math.max(1, ta.value.split('\n').length)); };
         grow();
+        // The looks follow at once, the templates with the text after a pause
         const update = debounce(() => {
+            renderLibGrid();
+            if (S.libSel && S.libSel.kind !== 'look') showDetail(S.libSel);
+        }, 250);
+        ta.addEventListener('input', () => {
+            S.wizardText = ta.value;
+            grow();
             S.typedGen++;
             S.libCatChosen = false;
             $$('.lib-nav button').forEach(x => x.classList.remove('on'));
             renderLooks();
-            renderLibGrid();
-            if (S.libSel && S.libSel.kind !== 'look') showDetail(S.libSel);
-        }, 400);
-        ta.addEventListener('input', () => { S.wizardText = ta.value; grow(); update(); });
+            update();
+        });
         ta.addEventListener('keydown', e => {
             if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); if (wizardLines().length) printLook(0); }
         });
@@ -1273,6 +1578,9 @@ function renderLibGrid() {
     const cat = (S.demos || []).find(c => c.id === S.libCat);
     $('#libTitle').textContent = matches.length ? `Templates for "${toDisplay(wizardLines()[0])}"` :
         ({ saved: 'Saved labels', printed: 'Printed', all: 'All ready-made templates' }[S.libCat] || (cat ? cat.name : 'Templates'));
+    // What the dimmed ones are
+    $('#libOther').hidden = items.slice(0, 240).every(it => fitsTape(it.size));
+    $('#libOther').textContent = `Dimmed labels are made for another label size than ${sizeName(S.tape)}.`;
     if (!items.length) {
         grid.innerHTML = `<p class="empty">${S.libCat === 'printed' ? 'Nothing printed yet.' : 'No labels here.'}</p>`;
         return;
@@ -1303,6 +1611,9 @@ async function showDetail(item) {
     if (S.libSel !== item) return;
     const blanks = blanksOf(design);
     const { values } = applyTyped(item, design, item.values ? Object.assign({}, item.values) : null);
+    // What the blanks started with, those still at it follow it when printed.
+    // Printed before, they are as printed then.
+    const starts = item.values ? item.starts : defaults(Object.assign({}, item, { design }));
     const work = { design, values };
     const fits = fitsTape(design.label_size);
     box.innerHTML = `
@@ -1329,8 +1640,8 @@ async function showDetail(item) {
     // The stage of this label: a delayed refresh after another label was
     // chosen finds it gone and does nothing
     const stage = $('#libStage', box), note = $('#libFitsNote', box);
-    const draw = () => { if (stage.isConnected) showOnStage(stage, work.design, work.values, (w, err) => fitsNote(note, w, err, work.design, () => refresh())); };
-    const refresh = busyThen(() => stage, debounce(draw, 250));
+    const draw = () => { if (stage.isConnected) return showOnStage(stage, work.design, work.values, (w, err) => fitsNote(note, w, err, work.design, () => refresh())); };
+    const refresh = busyThen(() => stage, latest(draw));
     const drawHist = () => {
         const hb = $('#libHist');
         if (!hb) return;
@@ -1343,7 +1654,7 @@ async function showDetail(item) {
     drawHist();
     const doPrint = async () => {
         if (item.entry && item.entry.noImage) { toast(NO_IMAGE); return; }
-        const ok = await printJob({ title: item.title, design: work.design, values: Object.assign({}, work.values), copies: copiesIn(box, '#libCopies'), source: { kind: item.kind, id: item.id } });
+        const ok = await printJob({ title: item.title, design: work.design, values: valuesNow(work.values, starts, Object.assign({}, item, { design: work.design })), copies: copiesIn(box, '#libCopies'), source: { kind: item.kind, id: item.id } });
         drawHist();
         // Ready for the next one: the first blank is emptied
         if (ok && item.kind === 'saved' && blanks.length) {
@@ -1358,12 +1669,12 @@ async function showDetail(item) {
     $('#libPrint').onclick = doPrint;
     $('#libMore').onclick = () => { const m = $('#libMenu'); m.hidden = !m.hidden; $('#libMore').setAttribute('aria-expanded', String(!m.hidden)); };
     $('#libEdit').onclick = () => openEditor({ title: item.title, design: work.design, origin: item.kind === 'saved' ? { kind: 'saved', id: item.id } : null });
-    if ($('#libKeep')) $('#libKeep').onclick = async () => {
+    if ($('#libKeep')) $('#libKeep').onclick = () => {
         $('#libMenu').hidden = true;
-        try {
-            const name = await saveLabel(item.title, work.design);
-            toast(`"${item.title}" is now one of your saved labels`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
-        } catch (e) { toast(e.message); }
+        saveDialog(item.title, async (title, replacing) => {
+            const name = await saveLabel(title, work.design, replacing);
+            toast(`"${title}" is now one of your saved labels`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
+        });
     };
     if ($('#libLinks')) $('#libLinks').onclick = () => { $('#libMenu').hidden = true; linksDialog({ id: item.id, title: item.title, design: work.design }); };
     if ($('#libDelete')) $('#libDelete').onclick = async () => {
@@ -1393,10 +1704,10 @@ function renderFields(box, item, work, refresh, onEnter) {
     $$('[data-blank]', box).forEach(inp => inp.addEventListener('input', () => { work.values[inp.dataset.blank] = inp.value; refresh(); }));
     $$('[data-line]', box).forEach(inp => inp.addEventListener('input', () => {
         const l = work.design.text[+inp.dataset.line];
-        l.text = fromDisplay(inp.value, l.text);
+        l.text = fromDisplay(inp.value, l.text, inp.selectionStart);
         refresh();
     }));
-    if ($('#lnCode', box)) $('#lnCode', box).addEventListener('input', e => { work.design.code_text = fromDisplay(e.target.value, work.design.code_text); refresh(); });
+    if ($('#lnCode', box)) $('#lnCode', box).addEventListener('input', e => { work.design.code_text = fromDisplay(e.target.value, work.design.code_text, e.target.selectionStart); refresh(); });
     $$('[data-stepf]', box).forEach(b => b.onclick = () => {
         const inp = $('#' + b.dataset.for, box);
         inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + +b.dataset.stepf);
@@ -1452,6 +1763,7 @@ async function openFill(id, params) {
     const item = savedItem(s);
     try { item.design = await itemDesign(item); } catch (e) { toast(e.message); return; }
     item.values = defaults(item);
+    item.starts = Object.assign({}, item.values);
     for (const [k, v] of params.entries()) if (blanksOf(item.design).includes(k)) item.values[k] = v;
     S.libSel = item;
     renderLabels('saved');
@@ -1504,6 +1816,70 @@ const isEmptyDesign = d => d.print_type === 'text' && !d.text.some(l => String(l
 function setEdit(edit) {
     S.edit = edit;
     S.hist = { undo: [], redo: [], last: null };
+    histImages.clear();
+    histRefs.clear();
+    editorFailed = false;
+}
+
+// The label in the editor is kept for the next visit. Its images are
+// stored apart, and only when they change. Images too large for the storage
+// are left out, the label is kept without them. They are tried again a
+// minute later at the earliest, not with each pause in typing.
+let storedImages = null, imagesTooLarge = null;
+function storeEdit() {
+    const d = S.edit.design;
+    const images = [d.image, ...(d.more_images || [])].filter(Boolean);
+    const keys = images.map(imageKey).join(' ');
+    // before: the images stored before, read where they are replaced
+    let before, without = false;
+    if (keys !== storedImages) {
+        if (imagesTooLarge && imagesTooLarge.keys === keys && Date.now() - imagesTooLarge.time < 60000) without = true;
+        else {
+            try { before = localStorage.getItem('designer_edit_images'); } catch (e) { before = null; }
+            if (storeQuiet('designer_edit_images', images)) { storedImages = keys; imagesTooLarge = null; }
+            else { storedImages = null; imagesTooLarge = { keys, time: Date.now() }; without = true; }
+        }
+    }
+    const ref = im => ({ ref: imageKey(im) });
+    const plain = Object.assign({}, d, { image: undefined, more_images: undefined });
+    const kept = without ? plain
+        : Object.assign({}, d, { image: d.image ? ref(d.image) : undefined, more_images: d.more_images ? d.more_images.map(ref) : undefined });
+    const forgetImages = () => { try { localStorage.removeItem('designer_edit_images'); } catch (e) { } };
+    if (storeQuiet('designer_edit', Object.assign({}, S.edit, { design: kept }))) {
+        // Kept without its images, the images stored before belong to no
+        // label kept
+        if (without) forgetImages();
+        return;
+    }
+    // Kept without its images, which are not tried again before a minute
+    // has passed. Images stored before make room for the newest text. Where
+    // it finds none even so, the label kept before keeps its images.
+    if (before === undefined) try { before = localStorage.getItem('designer_edit_images'); } catch (e) { before = null; }
+    forgetImages();
+    storedImages = null;
+    imagesTooLarge = { keys, time: Date.now() };
+    if (!storeQuiet('designer_edit', Object.assign({}, S.edit, { design: plain })) && before !== null) {
+        try { localStorage.setItem('designer_edit_images', before); } catch (e) { }
+    }
+}
+// Another tab stored its images, they are stored again with the next change
+addEventListener('storage', e => { if (e.key === 'designer_edit_images' || e.key === null) storedImages = null; });
+function loadEdit() {
+    const edit = load('designer_edit', null);
+    if (!edit || !edit.design) return edit;
+    const images = new Map(load('designer_edit_images', []).map(im => [imageKey(im), im]));
+    // Stored before images were kept apart, the image is in the label
+    const get = r => (r && r.ref ? images.get(r.ref) : r);
+    const d = edit.design;
+    if (d.image) d.image = get(d.image);
+    if (!d.image) delete d.image;
+    if (d.more_images) d.more_images = d.more_images.map(get).filter(Boolean);
+    if (d.more_images && !d.more_images.length) delete d.more_images;
+    // All found, they are stored as they are: the next change does not
+    // store them again
+    const kept = [d.image, ...(d.more_images || [])].filter(Boolean);
+    if (kept.length === images.size) storedImages = kept.map(imageKey).join(' ');
+    return edit;
 }
 
 function openEditor({ title, design, origin }) {
@@ -1520,8 +1896,39 @@ function layoutOf(d) {
     return 'text';
 }
 
+// Where the editor is scrolled to and what has the focus, kept while the
+// same label is drawn anew for a change of a setting, e.g. along the tape
+function editorPlace() {
+    if (S.editShown !== S.edit || !$('#view .ed')) return null;
+    const scrolls = ['#view', '#view .ed-panel', '#view .ed-canvas'].map(sel => [sel, $(sel) ? $(sel).scrollTop : 0]);
+    const active = document.activeElement;
+    let focus = null;
+    if (active && active !== document.body && $('#view').contains(active)) {
+        // The controls of all lines are alike: which of them it is is kept,
+        // after a line was removed the one of the line now in its place
+        const sel = active.id ? '#' + CSS.escape(active.id)
+            : active.tagName.toLowerCase() + ([...active.attributes].filter(a => a.name.startsWith('data-')).map(a => `[${a.name}="${CSS.escape(a.value)}"]`).join('')
+                || (active.classList.length ? '.' + CSS.escape(active.classList[0]) : ''));
+        focus = { sel, nth: $$('#view ' + sel).indexOf(active), caret: null };
+        // Where the caret is in a field of text, number fields have none
+        try { if (typeof active.selectionStart === 'number') focus.caret = [active.selectionStart, active.selectionEnd]; } catch (e) { }
+    }
+    return { scrolls, focus };
+}
+function restoreEditorPlace(place) {
+    for (const [sel, top] of place.scrolls) if ($(sel)) $(sel).scrollTop = top;
+    if (!place.focus) return;
+    const all = $$('#view ' + place.focus.sel);
+    const el = all[Math.min(place.focus.nth, all.length - 1)];
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    if (place.focus.caret) try { el.setSelectionRange(...place.focus.caret); } catch (e) { }
+}
+
 function renderEditor() {
-    if (!S.edit) S.edit = load('designer_edit', null) || newEdit();
+    if (!S.edit) S.edit = loadEdit() || newEdit();
+    const place = editorPlace();
+    S.editShown = S.edit;
     const E = S.edit, d = E.design;
     const lay = layoutOf(d);
     const hasCode = lay === 'code' || lay === 'codetext';
@@ -1541,12 +1948,13 @@ function renderEditor() {
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
                 <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'codetext' ? 'Link or text, empty for the text of the label' : 'Link or text in the code'}" aria-label="Content of the code">
-                <div><span class="label-s">Size</span><div class="seg"><button type="button" data-fit="1" class="${d.image_fit === '1' ? 'on' : ''}">Fit to the label</button><button type="button" data-fit="0" class="${d.image_fit === '1' ? '' : 'on'}">Fixed</button></div></div>
-                ${((qr, dots) => `<div class="pair"${qr ? '' : ' title="Only for QR codes"'}>
-                    <label${qr && !dots ? ' title="The code fits the label"' : ''}><span class="label-s${dots ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${dots ? '' : ' disabled'}></label>
-                    <label><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-                </div>${qr ? '' : '<span class="muted small">Size and error correction exist for QR codes only.</span>'}`)(d.barcode_type === 'QR', d.barcode_type === 'QR' && d.image_fit !== '1')}
-                ${lay === 'codetext' ? gapField(d) : ''}</div></div>` : ''}
+                <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>
+                ${((qr, fixed) => `<div class="pair">
+                    ${qr ? `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${fixed ? '' : ' disabled'}></label>`
+                        : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
+                    <label${qr ? '' : ' title="Only for QR codes"'}><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
+                </div>${qr ? '' : '<span class="muted small">Error correction exists for QR codes only.</span>'}`)(d.barcode_type === 'QR', !fitted(d))}
+                ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' ? imageBlock(d) : ''}
             ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
                 <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d))).join('')}</div>
@@ -1564,7 +1972,7 @@ function renderEditor() {
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
                     <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
-                    <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text that does not fit</span><div class="seg">${[['1', 'Shrink it'], ['0', 'Keep the size']].map(([v, n]) => `<button type="button" data-shrink="${v}" class="${(d.shrink_text === '1') === (v === '1') ? 'on' : ''}"${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
+                    <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -1595,6 +2003,7 @@ function renderEditor() {
     </div>`;
     bindEditor();
     redrawEditor();
+    if (place) { restoreEditorPlace(place); return; }
     const first = $('[data-row="0"] .tx');
     if (first && !first.value && window.matchMedia('(min-width: 761px)').matches) first.focus();
 }
@@ -1626,7 +2035,7 @@ function imageBlock(d) {
     const modes = [['black_and_white', 'Black and white'], ['grayscale', 'Grayscale'], ['red_and_black', 'Red and black'], ['colored', 'Full color']];
     const needsRed = v => (v === 'red_and_black' || v === 'colored') && !red && d.image_mode !== v;
     const bw = d.image_mode === 'black_and_white';
-    const fit = d.image_fit === '1', crop = d.image_crop === '1';
+    const fit = fitted(d), crop = d.image_crop === '1';
     const pdf = d.image && /pdf/i.test(d.image.mime);
     return `<div class="block"><div class="block-h"><i class="fa-regular fa-image"></i>Image</div>
         <div class="block-b">
@@ -1636,7 +2045,7 @@ function imageBlock(d) {
             <div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>
             <label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>
             <div class="row" style="flex-wrap:wrap;align-items:flex-end">
-                <div><span class="label-s">Size</span><div class="seg"><button type="button" data-fit="1" class="${fit ? 'on' : ''}">Fit to the label</button><button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
+                <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
                 <label title="${fit ? 'Only without fitting to the label' : ''}"><span class="label-s${fit ? ' off' : ''}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edScale" value="${esc(d.image_scaling_factor)}" style="width:6rem"${fit ? ' disabled' : ''}></label>
             </div>
             <div class="row" style="flex-wrap:wrap">
@@ -1644,7 +2053,7 @@ function imageBlock(d) {
                     <input class="field rot" type="number" min="0" max="359" id="edRot" value="${esc(d.image_rotation)}" aria-label="Any angle in degrees" title="Any angle in degrees"></div></div>
                 <div><span class="label-s">Image processing</span><div class="seg"><button type="button" data-crop="0" class="${crop ? '' : 'on'}">None</button><button type="button" data-crop="1" class="${crop ? 'on' : ''}" title="Removes the empty border around the image">Auto crop</button></div></div>
             </div>
-            ${gapField(d)}
+            ${sideField(d, 'image')}${gapField(d)}
         </div></div>`;
 }
 
@@ -1656,6 +2065,25 @@ function gapField(d) {
     const on = hasTextLines(d);
     return `<label title="${on ? GAP_TITLE : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Distance to the text, mm</span>
         <input class="field" type="number" min="0" max="50" step="0.5" id="edGap" value="${d.image_text_gap === '' ? '' : dotsToMm(d.image_text_gap, dpiOf(d.label_size))}" placeholder="${on ? 'Automatic' : 'Only with text'}" style="width:10rem"${on ? '' : ' disabled'}></label>`;
+}
+
+function resetLook(d) {
+    d.image_rotation = '0';
+    d.image_crop = '0';
+    d.image_scaling_factor = '100';
+}
+
+const fitted = d => d.image_fit === '1';
+const fitButton = d => `<button type="button" data-fit="1" class="${fitted(d) ? 'on' : ''}">Fit to the label</button>`;
+
+// Where the code or image is next to the text: as chosen, else where the
+// server put it in the last preview
+const SIDES = [['above', 'Above'], ['below', 'Below'], ['left', 'Left'], ['right', 'Right']];
+const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
+function sideField(d, what) {
+    const on = hasTextLines(d);
+    return `<div title="${on ? `Where the ${what} is next to the text` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+        `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
 function frameDetails(d) {
@@ -1730,14 +2158,47 @@ function lineRow(l, i, main, families, red) {
         </div></div>`;
 }
 
-function recordHistory(E) {
-    const snap = JSON.stringify({ t: E.title, d: E.design });
-    if (S.hist.last !== null && snap !== S.hist.last) {
-        S.hist.undo.push(S.hist.last);
-        if (S.hist.undo.length > 60) S.hist.undo.shift();
-        S.hist.redo = [];
+// The steps of the undo history refer to their images, each is kept once
+const histImages = new Map();
+// How many steps refer to each image. One no step refers to any more is let
+// go, the steps are looked at only when they come and go.
+const histRefs = new Map();
+function countRefs(snap, by) {
+    for (const m of snap.matchAll(/"ref":"([^"]+)"/g)) {
+        const n = (histRefs.get(m[1]) || 0) + by;
+        if (n > 0) histRefs.set(m[1], n);
+        else { histRefs.delete(m[1]); histImages.delete(m[1]); }
     }
-    S.hist.last = snap;
+}
+// images: where to put the images of the step, by their keys
+function snapshot(E, images = null) {
+    const keep = im => { const k = imageKey(im); if (images) images.set(k, im); return { ref: k }; };
+    const d = Object.assign({}, E.design);
+    if (d.image) d.image = keep(d.image);
+    if (d.more_images) d.more_images = d.more_images.map(keep);
+    return JSON.stringify({ t: E.title, d });
+}
+function fromSnapshot(snap) {
+    const o = JSON.parse(snap);
+    const get = r => (r && r.ref ? histImages.get(r.ref) : r);
+    if (o.d.image) o.d.image = get(o.d.image);
+    if (o.d.more_images) o.d.more_images = o.d.more_images.map(get);
+    return o;
+}
+function recordHistory(E) {
+    const images = new Map();
+    const snap = snapshot(E, images);
+    if (snap !== S.hist.last) {
+        if (S.hist.last !== null) {
+            S.hist.undo.push(S.hist.last);
+            if (S.hist.undo.length > 60) countRefs(S.hist.undo.shift(), -1);
+            S.hist.redo.forEach(st => countRefs(st, -1));
+            S.hist.redo = [];
+        }
+        for (const [k, im] of images) histImages.set(k, im);
+        countRefs(snap, 1);
+        S.hist.last = snap;
+    }
     if ($('#edUndo')) {
         $('#edUndo').disabled = !S.hist.undo.length;
         $('#edRedo').disabled = !S.hist.redo.length;
@@ -1746,26 +2207,44 @@ function recordHistory(E) {
     }
 }
 function stepHistory(dir) {
+    // A change not yet kept is a step of its own
+    if (S.edit) recordHistory(S.edit);
     const from = dir < 0 ? S.hist.undo : S.hist.redo, to = dir < 0 ? S.hist.redo : S.hist.undo;
     if (!from.length || !S.edit) return;
     to.push(S.hist.last);
     S.hist.last = from.pop();
-    const o = JSON.parse(S.hist.last);
+    const o = fromSnapshot(S.hist.last);
     S.edit.title = o.t;
     S.edit.design = o.d;
+    // Its rotation, cropping and scale belong to the layout brought back
+    delete S.edit.lookOf;
     renderEditor();
 }
 
-const drawEditor = debounce(() => {
+// Each pause in typing is a step to undo, and the label is kept for the next
+// visit. The first state right away, it is where undo leads back to.
+const keepEditor = debounce(() => { if (S.edit) { recordHistory(S.edit); storeEdit(); } }, 250);
+// The server refused the last preview of the editor: Print waits for one it
+// does not refuse. What it cannot draw it cannot print either, nor an empty
+// label. One that took too long may still print.
+let editorFailed = false;
+const printable = empty => { $('#edPrint').disabled = empty || editorFailed; };
+// The fields and buttons follow each change at once, the preview after the
+// one on its way
+function drawEditor() {
     const E = S.edit;
     if (!E || !$('#edStage')) return;
-    recordHistory(E);
+    if (S.hist.last === null) recordHistory(E);
+    keepEditor();
+    // A change not yet kept can be undone as well
+    if ($('#edUndo') && !S.hist.undo.length) $('#edUndo').disabled = snapshot(E) === S.hist.last;
     // A label with blanks shows fields to try values
     const blanks = blanksOf(E.design);
     E.values = E.values || {};
     const box = $('#edFields');
-    const item = { kind: E.origin && E.origin.kind === 'saved' ? 'saved' : 'edit', id: E.origin && E.origin.id, design: E.design };
-    const sig = JSON.stringify([blanks, blanks.map(b => blankFields(item)[b] || null), !!S.blankSettings]);
+    const item = editItem(E);
+    // Also a new day for a date at today
+    const sig = JSON.stringify([blanks, blanks.map(b => [blankFields(item)[b] || null, startOf(item, b)]), !!S.blankSettings]);
     if (box.dataset.sig !== sig) {
         box.dataset.sig = sig;
         const vals = defaults(item);
@@ -1774,21 +2253,23 @@ const drawEditor = debounce(() => {
         // with the label, the fields are made anew with the editor.
         const oldTypes = E.blankTypes || {}, oldDefs = E.blankDefs || {};
         for (const b of blanks) {
-            const v = E.values[b], def = (blankFields(item)[b] || {}).default || '';
+            const v = E.values[b], def = startOf(item, b);
             if (v === undefined || (oldTypes[b] && fieldType(item, b) !== oldTypes[b])) continue;
             if ((v === '' || v === (oldDefs[b] || '')) && def !== (oldDefs[b] || '')) continue;
             vals[b] = v;
         }
         E.blankTypes = Object.fromEntries(blanks.map(b => [b, fieldType(item, b)]));
-        E.blankDefs = Object.fromEntries(blanks.map(b => [b, (blankFields(item)[b] || {}).default || '']));
+        E.blankDefs = Object.fromEntries(blanks.map(b => [b, startOf(item, b)]));
         E.values = vals;
         const head = `<h3>Fill in the blanks <span class="badge warn open-count" hidden></span>
             <button class="btn sm quiet ml-auto${S.blankSettings ? ' on' : ''}" type="button" id="blankSet" aria-pressed="${!!S.blankSettings}"><i class="fa-solid fa-sliders"></i>Blank settings</button></h3>`;
         box.innerHTML = !blanks.length ? '' : S.blankSettings ? head + `<div class="bset">${blanks.map(b => {
-            const k = fieldType(item, b), f = blankFields(item)[b] || {};
+            const k = fieldType(item, b);
             return `<div class="bset-row" data-bname="${esc(b)}"><b>[${esc(b)}]</b>
                 <div class="seg">${BLANK_KINDS.map(([v, n]) => `<button type="button" data-kind="${v}" class="${k === v ? 'on' : ''}">${n}</button>`).join('')}</div>
-                ${k === 'date' ? '<span class="muted small">Starts at today</span>' : `<input class="field" data-default="1" type="${k === 'number' ? 'number' : 'text'}" placeholder="Default, optional" value="${esc(f.default || '')}">`}</div>`;
+                ${k !== 'date' ? `<input class="field" data-default="1" type="${k === 'number' ? 'number' : 'text'}" placeholder="Default, optional" value="${esc(blankStart(item, b))}">`
+                    : blankStart(item, b) ? `<span class="muted small">Starts at ${esc(blankStart(item, b))}</span><button type="button" class="btn sm quiet" data-today="1">Start at today</button>`
+                    : '<span class="muted small">Starts at today</span>'}</div>`;
         }).join('')}</div><p class="muted small" style="margin:0">Stored with the label. Rename a blank in its line, between the brackets.</p>`
             : head + `<div class="fill-grid">${blanks.map((n, i) => fieldHTML(item, n, vals[n], 100 + i)).join('')}</div>`;
         box.hidden = !blanks.length;
@@ -1797,12 +2278,20 @@ const drawEditor = debounce(() => {
             E.design.fields = Object.assign({}, E.design.fields);
             E.design.fields[name] = Object.assign({}, blankFields(item)[name] || { type: guessKind(name) }, patch);
             if (E.design.fields[name].default === '') delete E.design.fields[name].default;
+            // They replace a value saved with the label through the API
+            if (E.design.blanks && name in E.design.blanks) {
+                E.design.blanks = Object.assign({}, E.design.blanks);
+                delete E.design.blanks[name];
+                if (!Object.keys(E.design.blanks).length) delete E.design.blanks;
+            }
             redrawEditor();
         };
         $$('.bset-row', box).forEach(r => {
             $$('[data-kind]', r).forEach(b => b.onclick = () => setField(r.dataset.bname, { type: b.dataset.kind, default: '' }));
             const dv = $('[data-default]', r);
             if (dv) dv.addEventListener('change', () => setField(r.dataset.bname, { default: dv.value.trim() }));
+            const now = $('[data-today]', r);
+            if (now) now.onclick = () => setField(r.dataset.bname, { default: '' });
         });
         $$('[data-reuse]', box).forEach(pl => pl.onclick = () => {
             const inp = $(`[data-blank="${CSS.escape(pl.dataset.reuse)}"]`, box);
@@ -1816,13 +2305,11 @@ const drawEditor = debounce(() => {
         $$('[data-blank]', box).forEach(inp => inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#edPrint').click(); } }));
         $$('[data-stepf]', box).forEach(b => b.onclick = () => { const inp = $('#' + b.dataset.for, box); inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + +b.dataset.stepf); inp.dispatchEvent(new Event('input')); });
     }
-    storeQuiet('designer_edit', S.edit);
     // An empty label is shown blank, as large as one line of text in the
     // first line's size makes it, and cannot be printed or saved yet
     const empty = isEmptyDesign(E.design);
-    $('#edPrint').disabled = empty;
+    printable(empty);
     $('#edSave').disabled = empty;
-    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) }) : E.design;
     const gap = $('#edGap');
     if (gap) {
         const on = hasTextLines(E.design);
@@ -1831,20 +2318,36 @@ const drawEditor = debounce(() => {
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
     }
-    showOnStage($('#edStage'), shown, E.values, (w, err, p) => {
+    drawStage();
+}
+// A stage drawn anew, e.g. for another layout, does not wait for the preview
+// of the one before
+const drawStage = latest(async () => {
+    const E = S.edit, stage = $('#edStage');
+    if (!E || !stage) return;
+    const empty = isEmptyDesign(E.design);
+    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) }) : E.design;
+    const gap = $('#edGap');
+    await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
+        // Where the server put the code or image, its setting shows that
+        if (p && !empty && p.side !== (E.placedSide || '')) {
+            E.placedSide = p.side;
+            const side = imageSide(E.design);
+            $$('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === side));
+        }
         if (p && p.auto && !empty) setTimeout(() => $('#edFits') && $('#edFits').insertAdjacentHTML('beforeend', ' <span class="muted">Turned automatically to fit the label best.</span>'));
         if (gap && p && hasTextLines(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
-        // What the server cannot draw it cannot print either
-        $('#edPrint').disabled = empty || !!err;
+        editorFailed = !!refused;
+        printable(empty);
     }, empty);
-}, 250);
+}, () => $('#edStage'));
 const redrawEditor = busyThen(() => $('#edStage'), drawEditor);
 
 function bindEditor() {
     const E = S.edit, d = E.design;
-    $('#edTitle').oninput = e => { E.title = e.target.value; storeQuiet('designer_edit', S.edit); };
+    $('#edTitle').oninput = e => { E.title = e.target.value; storeEdit(); };
     $('#edNew').onclick = () => {
         const before = S.edit;
         setEdit(newEdit());
@@ -1855,7 +2358,16 @@ function bindEditor() {
     };
     $$('[data-lay]').forEach(b => b.onclick = () => {
         const lay = b.dataset.lay;
-        d.print_type = { text: 'text', codetext: 'qrcode_text', image: 'image', code: 'qrcode' }[lay];
+        // Rotation, cropping and scale belong to the image or the code they
+        // were set for, also after the text layout between: they would act on
+        // the other one, a code does not show them
+        const kindOf = t => (t === 'qrcode' || t === 'qrcode_text') ? 'code' : t === 'image' ? 'image' : null;
+        if (E.lookOf === undefined) E.lookOf = kindOf(d.print_type);
+        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', code: 'qrcode' }[lay];
+        const kind = kindOf(next);
+        if (kind && kind !== E.lookOf && (E.lookOf || kind === 'code')) resetLook(d);
+        if (kind) E.lookOf = kind;
+        d.print_type = next;
         // Next to text, a code without content of its own holds the text
         if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
         if (lay === 'codetext' && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
@@ -1864,8 +2376,14 @@ function bindEditor() {
         if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
     });
-    if ($('#edCode')) $('#edCode').oninput = e => { d.code_text = fromDisplay(e.target.value, d.code_text); redrawEditor(); };
-    if ($('#edBarcode')) $('#edBarcode').onchange = e => { d.barcode_type = e.target.value; renderEditor(); };
+    if ($('#edCode')) $('#edCode').oninput = e => { d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
+    if ($('#edBarcode')) $('#edBarcode').onchange = e => {
+        d.barcode_type = e.target.value;
+        // A QR code has the size of a dot instead of a scale
+        if (d.barcode_type === 'QR') d.image_scaling_factor = '100';
+        renderEditor();
+    };
+    if ($('#edCodeScale')) $('#edCodeScale').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.image_scaling_factor = String(v); redrawEditor(); } });
     if ($('#edFile')) $('#edFile').onchange = e => readImages(e.target.files);
     if ($('#edFamily')) $('#edFamily').onchange = e => {
         if (!e.target.value) return;
@@ -1893,7 +2411,7 @@ function bindEditor() {
         const i = +row.dataset.row, l = d.text[i];
         const tx = $('.tx', row);
         tx.addEventListener('focus', () => { S.editSel = i; $$('[data-row]').forEach(r => r.classList.toggle('sel', r === row)); });
-        tx.addEventListener('input', () => { l.text = fromDisplay(tx.value, l.text); redrawEditor(); });
+        tx.addEventListener('input', () => { l.text = fromDisplay(tx.value, l.text, tx.selectionStart); redrawEditor(); });
         tx.addEventListener('keydown', e => {
             if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); $('#edAdd').click(); }
             if (e.key === 'Backspace' && !tx.value && d.text.length > 1) { e.preventDefault(); d.text.splice(i, 1); S.editSel = Math.max(0, i - 1); renderEditor(); const p = $(`[data-row="${S.editSel}"] .tx`); if (p) p.focus(); }
@@ -1917,7 +2435,7 @@ function bindEditor() {
     $('#edSize').onchange = e => { setSize(d, e.target.value); renderEditor(); };
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
-    $$('[data-shrink]').forEach(b => b.onclick = () => { d.shrink_text = b.dataset.shrink; renderEditor(); });
+    $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });
     // Code
     if ($('#edQrSize')) $('#edQrSize').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.qrcode_size = String(v); redrawEditor(); } });
     if ($('#edQrCorr')) $('#edQrCorr').onchange = e => { d.qrcode_correction = e.target.value; redrawEditor(); };
@@ -1931,6 +2449,7 @@ function bindEditor() {
     $$('[data-imode]').forEach(b => b.onclick = () => { d.image_mode = b.dataset.imode; renderEditor(); });
     if ($('#edThr')) $('#edThr').addEventListener('input', e => { d.image_bw_threshold = e.target.value; $('#edThrV').textContent = e.target.value; redrawEditor(); });
     $$('[data-fit]').forEach(b => b.onclick = () => { d.image_fit = b.dataset.fit; renderEditor(); });
+    $$('[data-side]').forEach(b => b.onclick = () => { d.image_position = b.dataset.side; renderEditor(); });
     if ($('#edScale')) $('#edScale').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.image_scaling_factor = String(v); redrawEditor(); } });
     $$('[data-rot]').forEach(b => b.onclick = () => { d.image_rotation = b.dataset.rot; renderEditor(); });
     if ($('#edRot')) {
@@ -1963,17 +2482,25 @@ function bindEditor() {
     bindCopies($('.ed-top'));
     // The count stays when the editor is drawn again, e.g. after Bold
     $('#edCopies').addEventListener('input', () => { E.copies = copiesIn(document, '#edCopies'); });
-    $('#edPrint').onclick = () => printJob({ title: E.title, design: d, values: E.values || {}, copies: copiesIn(document, '#edCopies'), source: E.origin });
-    $('#edSave').onclick = async () => {
+    $('#edPrint').onclick = () => printJob({ title: E.title, design: d, values: valuesNow(E.values, E.blankDefs, editItem(E)), copies: copiesIn(document, '#edCopies'), source: E.origin });
+    $('#edSave').onclick = () => {
         const over = E.origin && E.origin.kind === 'saved' ? E.origin.id : null;
-        try {
-            const name = await saveLabel(E.title, d, over);
+        const save = async (title, replacing) => {
+            const name = await saveLabel(title, d, over || replacing);
+            E.title = title;
             E.origin = { kind: 'saved', id: name };
-            storeQuiet('designer_edit', S.edit);
-            $('#edSave').innerHTML = '<i class="fa-regular fa-bookmark"></i><span class="lbl">Save</span>';
-            $('#edSave').title = 'Save';
-            toast(over ? `Saved "${E.title}"` : `"${E.title}" is now one of your saved labels`, { label: blanksOf(E.design).length ? 'Fill in and print' : 'Open in the wizard', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
-        } catch (e) { toast(e.message); }
+            if (S.edit === E) storeEdit();
+            // The editor may show something else by now
+            if (S.editShown === E && $('#edTitle')) {
+                $('#edTitle').value = title;
+                $('#edSave').innerHTML = '<i class="fa-regular fa-bookmark"></i><span class="lbl">Save</span>';
+                $('#edSave').title = 'Save';
+            }
+            toast(over ? `Saved "${title}"` : `"${title}" is now one of your saved labels`, { label: blanksOf(E.design).length ? 'Fill in and print' : 'Open in the wizard', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
+        };
+        // A saved label is saved again, a new one is given its name first
+        if (over) save(E.title, null).catch(e => toast(e.message));
+        else saveDialog(E.title, save);
     };
 }
 
@@ -2080,8 +2607,14 @@ function openPrinterPanel() {
     tapeChanged = false;
     const inner = `<div class="pp">${printerPanelHTML()}</div>`;
     const done = () => { if (tapeChanged) route(); };
-    if (matchMedia('(max-width: 760px)').matches) sheet(inner, done);
-    else openLayer(`<div class="pop">${inner}</div>`, 'pop-layer', done);
+    // Opened by a link, closed or replaced by another layer, it goes back to
+    // the labels. A change of the tape shows once that layer is closed.
+    const gone = () => {
+        if (parseHash().view === 'printer') history.replaceState(null, '', '#wizard');
+        if (tapeChanged) S.routeLater = true;
+    };
+    if (matchMedia('(max-width: 760px)').matches) sheet(inner, done, gone);
+    else openLayer(`<div class="pop">${inner}</div>`, 'pop-layer', done, gone);
     bindPrinterPanel();
 }
 
@@ -2305,11 +2838,14 @@ async function receiveShared() {
     } else {
         d.text = item.text.split(/\r?\n/).filter(t => t.trim()).map((t, i) => L(t, i ? 44 : 70, i === 0));
     }
-    const before = S.edit || load('designer_edit', null);
+    const before = S.edit || loadEdit();
     setEdit(edit);
     S.editSel = 0;
     if (before && !isEmptyDesign(before.design)) toast('Started a new label with what was shared', { label: 'Undo', run: () => { setEdit(before); renderEditor(); } });
 }
+
+// A change the pause after it has not kept yet
+addEventListener('pagehide', () => { if (S.edit) storeEdit(); });
 
 (async function start() {
     renderPrinterChip();
