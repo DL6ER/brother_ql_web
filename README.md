@@ -15,7 +15,7 @@ A web interface and REST API for Brother QL label printers. Design labels with t
 | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
 | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
 
-USB printers are detected automatically, network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
+USB printers are detected automatically, network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded, on the QL-800 series also whether it is a black and red roll.
 
 ## Features
 

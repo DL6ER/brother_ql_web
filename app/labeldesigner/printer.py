@@ -617,6 +617,24 @@ def _read_status(printer, timeout: float) -> bytes:
     return data
 
 
+# Byte 25 of the status, reserved in Brother's reference: the QL-800 series
+# sets bit 7 for a black and red roll and reports 0x01 for a black one. Seen
+# on two QL-800 and a QL-810W (black only); other values tell nothing.
+RED_ROLL_BYTE = 25
+TWO_COLOR_MODELS = [model.identifier for model in ALL_MODELS if model.two_color]
+
+
+def _red_roll(data: bytes, model: str, state: dict) -> bool | None:
+    """Whether the roll in a printer that prints red is a black and red one,
+    None where the status does not tell, e.g., for other printers."""
+    if model not in TWO_COLOR_MODELS or not state.get('media_width') or state.get('media_category') == 'TZe':
+        return None
+    color = data[RED_ROLL_BYTE]
+    if color & 0x80:
+        return True
+    return False if color == 0x01 else None
+
+
 def get_status(printer, timeout: float = 2.0):
     """Request and parse the printer status."""
     data = _read_status(printer, timeout)
@@ -627,7 +645,9 @@ def get_status(printer, timeout: float = 2.0):
         data = _read_status(printer, timeout)
     if len(data) < 32:
         raise TimeoutError(f"No complete status response within {timeout} s")
-    return interpret_response(data)
+    state = interpret_response(data)
+    state['red_roll'] = _red_roll(data, state['model'], state)
+    return state
 
 
 def _release(printer):
@@ -702,6 +722,7 @@ def _failed_printer_state(device_specifier: str, error: Exception, model: str = 
         'media_width': known.get('media_width'),
         'media_length': known.get('media_length', 0),
         'media_type': known.get('media_type'),
+        'red_roll': known.get('red_roll'),
         'errors': [unanswered(error)],
         'status_type': 'Error',
         'phase_type': 'Unknown',
@@ -783,7 +804,8 @@ def _network_printer(device_specifier: str, model: str) -> dict:
         'status_type': 'Network Printer',
         'tape_color': '',
         'text_color': '',
-        'red_support': model in [m.identifier for m in ALL_MODELS if m.two_color],
+        'red_support': model in TWO_COLOR_MODELS,
+        'red_roll': None,
     }
 
 
@@ -853,6 +875,7 @@ def _snmp_network_status(device_specifier: str, host: str, default_model: str) -
         status['media_width'] = state['media_width']
         status['media_length'] = state['media_length']
         status['media_type'] = state['media_type']
+        status['red_roll'] = _red_roll(data, status['model'], state)
     elif not errors:
         errors = [NO_LABELS]
     status['errors'] = errors
@@ -971,7 +994,8 @@ def get_ptr_status(config: Config):
         'status_type': 'Simulator',
         'tape_color': '',
         'text_color': '',
-        'red_support': default_model in [m.identifier for m in ALL_MODELS if m.two_color]
+        'red_support': default_model in TWO_COLOR_MODELS,
+        'red_roll': None,
     }
 
     status = {
@@ -990,7 +1014,8 @@ def get_ptr_status(config: Config):
         "status_type": "Unknown",
         "tape_color": "",
         "text_color": "",
-        "red_support": False
+        "red_support": False,
+        "red_roll": None
     }
     try:
         if config.get('PRINTERS'):
@@ -1010,7 +1035,7 @@ def get_ptr_status(config: Config):
                     logger.info('Status query of %s failed: %s', device, e)
                     state = _failed_printer_state(device, e)
                 state.update({'path': device, 'model': model})
-                state['red_support'] = model in [m.identifier for m in ALL_MODELS if m.two_color]
+                state['red_support'] = model in TWO_COLOR_MODELS
                 printers.append(state)
             return {
                 **status,
@@ -1118,7 +1143,7 @@ def get_ptr_status(config: Config):
                 status[key] = value
         # Always include simulator in returned printers list
         sim = SIMULATOR_PRINTER.copy()
-        status['red_support'] = status['model'] in [model.identifier for model in ALL_MODELS if model.two_color]
+        status['red_support'] = status['model'] in TWO_COLOR_MODELS
         return {
             'printers': [sim],
             'selected': status.get('path'),
