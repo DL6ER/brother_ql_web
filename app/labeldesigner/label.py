@@ -851,9 +851,9 @@ class SimpleLabel:
                 elif anchor == "rt":
                     max_bbox_x = text_offset[0] + max(bbox[0][2] for bbox in bboxes)
                     min_bbox_x = max_bbox_x - (bboxes[i][0][2] - bboxes[i][0][0])
-                shift = 0.1 * self._line_size(line)
-                y_min = bboxes[i][0][1] + text_offset[1] - shift
-                y_max = bboxes[i][0][3] + text_offset[1] - shift
+                # As high as the line was measured, see below
+                y_min = bboxes[i][0][1] + text_offset[1]
+                y_max = bboxes[i][0][3] + text_offset[1]
                 draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=color)
                 # Overwrite font color with white on colored background
                 color = (255, 255, 255)
@@ -870,11 +870,25 @@ class SimpleLabel:
                     bbox = (0, bbox[1], bbox[2], bbox[3])
 
                 # Ensure consistent line heights for each line except the last
-                # one (where it is not needed). We still need this when
-                # inverting text to ensure the inversion box is large enough to
-                # hold the entire text
+                # one (where it is not needed)
                 IS_LAST_LINE = i == last or (i == last_shown and last_shown >= last - 1)
-                if not IS_LAST_LINE or INVERT_LINE:
+                # Where the top of the letters is drawn
+                text_y = y
+                if INVERT_LINE:
+                    # White on black: the box reaches from the ascender of
+                    # the font to its descender, the same for all lines of a
+                    # size, and holds what reaches further, e.g. an icon. It
+                    # held only the letters of ASCII and was drawn higher
+                    # than them, those reaching below the line like a "g"
+                    # were white on white. The letters are drawn from their
+                    # top, so they move down by the room above them.
+                    ascent, descent = font.getmetrics()
+                    baseline = self._baseline(draw, line['text'], font)
+                    top = min(bbox[1] - y, baseline - ascent)
+                    bottom = max(bbox[3] - y, baseline + descent)
+                    text_y = y - top
+                    bbox = (bbox[0], y, bbox[2], y + bottom - top)
+                elif not IS_LAST_LINE:
                     # Some characters may need special height
                     all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
                     Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
@@ -883,8 +897,8 @@ class SimpleLabel:
                 # The box is drawn from the top of the line, its lower edge
                 # included, also where the text is lower or there is none
                 if checkbox:
-                    bbox = (bbox[0], bbox[1], bbox[2], max(bbox[3], y + 8 * self._line_size(line) // 10 + 1))
-                bboxes.append((bbox, y))
+                    bbox = (bbox[0], bbox[1], bbox[2], max(bbox[3], text_y + 8 * self._line_size(line) // 10 + 1))
+                bboxes.append((bbox, text_y))
                 y += bbox[3] - bbox[1] + (spacing if i < spaced else 0)
             else:
                 bbox = bboxes[i][0]
@@ -948,10 +962,8 @@ class SimpleLabel:
         width = sum(run_font.getlength(run) for run, run_font in runs)
         # Anchors are "lt", "mt" or "rt": left, middle or right, top of the text font
         x = xy[0] - {'l': 0, 'm': width / 2, 'r': width}[anchor[0]]
-        # The top anchor of Pillow is the ascender of the font, the runs share
-        # the baseline below it
-        ascender = draw.textbbox((0, 0), 'H', font=font, anchor='lt')[1] - draw.textbbox((0, 0), 'H', font=font, anchor='ls')[1]
-        baseline = xy[1] + ascender
+        # The runs share the baseline below the top of an "H"
+        baseline = xy[1] + self._baseline(draw, text, font)
         boxes = []
         for run, run_font in runs:
             if fill is not None:
@@ -959,6 +971,14 @@ class SimpleLabel:
             boxes.append(draw.textbbox((x, baseline), run, font=run_font, anchor='ls'))
             x += run_font.getlength(run)
         return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    @staticmethod
+    def _baseline(draw, text, font) -> int:
+        """How far below xy _draw_line puts the baseline of text: Pillow's
+        top anchor is the top of the letters, with icons that of an "H"."""
+        if any(icons.is_icon(char) for char in text):
+            text = 'H'
+        return -draw.textbbox((0, 0), text, font=font, anchor='ls')[1]
 
     def _line_size(self, line) -> int:
         """Font size of a line, made smaller when the text is shrunk to fit."""
