@@ -863,6 +863,7 @@
     "/labeldesigner/api/repository/print": {
       "post": {
         "summary": "Print a saved label",
+        "description": "Its blanks may also be filled from fields of the request named like them, see `blanks`, e.g., for the labels of Grocy (see docs/grocy.md).",
         "operationId": "repositoryPrint",
         "parameters": [
           {
@@ -2057,7 +2058,7 @@
         ]
       },
       "SavedLabelBlanks": {
-        "description": "Values for the blanks (`{{blank:<name>}}`) of the label as JSON object of texts or numbers, e.g. `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default saved with the label, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format saved with the label, else as it is. A blank is a date if its saved type says so, else text.",
+        "description": "Values for the blanks (`{{blank:<name>}}`) of the label as JSON object of texts or numbers, e.g., `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default saved with the label, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format saved with the label, else as it is. A blank is a date if its saved type says so, else text. A blank not given here takes a field of the request named like it, e.g., `product` as Grocy sends it; a name with dots one inside an object, e.g., `stock_entry.best_before_date` (in a form `stock_entry[best_before_date]`). The parameters of the request, e.g., `name` or `printer`, are never taken for blanks.",
         "oneOf": [
           {
             "type": "string",
