@@ -58,13 +58,13 @@ function storeQuiet(key, value) {
 }
 
 let toastTimer;
-function toast(text, action) {
+function toast(text, action, ms = 0) {
     const el = $('#toast');
     el.innerHTML = esc(text) + (action ? ` <button class="btn sm quiet" style="color:inherit;text-decoration:underline" type="button">${esc(action.label)}</button>` : '');
     el.hidden = false;
     if (action) el.querySelector('button').onclick = () => { el.hidden = true; action.run(); };
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, action ? 6000 : 3500);
+    toastTimer = setTimeout(() => { el.hidden = true; }, ms || (action ? 6000 : 3500));
 }
 
 function fmtTime(ts) {
@@ -80,11 +80,16 @@ function fmtTime(ts) {
 const isEndless = s => s.form === 'endless' || s.form === 'ptouch_endless';
 // TZe tape, only P-touch printers take it
 const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].models.every(m => m.startsWith('PT-'));
+// ZINK tape of the VC-500W, which prints in any color
+const VC500W = 'VC-500W';
+const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
+const isVc500w = p => !!p && p.model === VC500W;
 
 function sizeName(id) {
     const s = SIZES[id];
     if (!s) return id;
     if (isPtouch(id)) return s.name;
+    if (isColorTape(id)) return `${s.tape[0]} mm color tape`;
     if (s.form === 'endless') return `${s.tape[0]} mm endless${s.red ? ', black and red' : ''}`;
     if (s.form === 'round_die_cut') return `${s.tape[0]} mm round`;
     return `${s.tape[0]} x ${s.tape[1]} mm`;
@@ -303,44 +308,52 @@ function b64ToBlob(b64, mime) {
 }
 
 // 600 dpi, if chosen and the printer can print it
-const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_without_600_dpi.includes(S.printer.model));
+const highRes = () => S.settings.quality === 'high' && !(S.printer && (C.models_without_600_dpi.includes(S.printer.model) || isVc500w(S.printer)));
 // P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
 // command reference of the PT-E550W, PT-P750W and PT-P710BT), QL printers
-// at 300 dpi, or 600
-const dpiOf = (labelSize, high = highRes()) => (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
+// at 300 dpi, or 600, the VC-500W at 320 dpi
+const dpiOf = (labelSize, high = highRes()) => isColorTape(labelSize) ? 320 : (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
 
 // How the labels of a job are cut: after each label, after the last one or
-// not at all, set for each printer. P-touch printers also half cut between
-// labels they do not cut, the backing stays whole, and with chain printing
-// leave the last label in the printer: the next print cuts it off, without
-// the tape fed before it.
+// not at all, set for each printer. P-touch printers and the VC-500W also
+// half cut between labels they do not cut, the backing stays whole. P-touch
+// printers with chain printing leave the last label in the printer: the next
+// print cuts it off, without the tape fed before it.
 const CUTS = [['each', 'After each label'], ['last', 'After the last label'], ['none', 'Never']];
 const CUT_KEYS = ['cut', 'half_cut', 'chain'];
 const ptPrinter = () => !!(S.printer && String(S.printer.model || '').startsWith('PT-'));
 // P-touch printers with a half cutter, the PT-P700 has none
 const HALF_CUTTERS = ['PT-E550W', 'PT-P750W', 'PT-P900W', 'PT-P950NW'];
 const halfCutter = () => !!(S.printer && HALF_CUTTERS.includes(S.printer.model));
+// How a label size or the printer cuts: 'pt' for P-touch, 'vc' for the
+// VC-500W, '' for QL printers
+const cutterOf = id => isPtouch(id) ? 'pt' : isColorTape(id) ? 'vc' : '';
+const printerCutter = () => ptPrinter() ? 'pt' : isVc500w(S.printer) ? 'vc' : '';
+// The VC-500W does not leave labels uncut, the server refuses it: the next
+// print would follow them without a cut
+const neverWhy = k => k === 'vc' ? 'The VC-500W would keep the labels inside until the next print' : '';
+const usableCut = (c, k) => neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
-const printerCut = () => Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]);
+const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCutter());
 // P-touch printers cut after the last label unless chain printing, so not
 // cutting at all is chain printing, as the server decides it too
-const chainOf = (c, pt) => pt && (c.chain === '1' || c.cut === 'none');
-const halfOf = (c, pt) => pt && halfCutter() && c.half_cut === '1';
+const chainOf = (c, k) => k === 'pt' && (c.chain === '1' || c.cut === 'none');
+const halfOf = (c, k) => (k === 'vc' || k === 'pt' && halfCutter()) && c.half_cut === '1';
 // A label saved with its own way of cutting keeps it
-const cutOf = d => d && d.cut ? { cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' } : printerCut();
+const cutOf = d => d && d.cut ? usableCut({ cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' }, cutterOf(d.label_size)) : printerCut();
 
-function cutText(c, pt) {
-    const half = halfOf(c, pt), chain = chainOf(c, pt);
+function cutText(c, k) {
+    const half = halfOf(c, k), chain = chainOf(c, k);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
     return text + '.' + (chain ? ' The last label stays in the printer, the next print cuts it off.' : c.cut === 'none' ? ' The last label stays in the printer.' : '')
-        + (pt ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
+        + (k === 'pt' ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
 }
 
 // The same in a few words, next to the preview
-function cutShort(c, pt) {
-    const half = halfOf(c, pt) && c.cut !== 'each';
-    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (pt && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
+function cutShort(c, k) {
+    const half = halfOf(c, k) && c.cut !== 'each';
+    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (k === 'pt' && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
 }
 
 // Three copies leaving the printer, as the display of a P-touch printer
@@ -349,16 +362,16 @@ function cutShort(c, pt) {
 // the last label left in the printer. Not to scale: a PT-E550W fed 22 mm
 // before the first label, 11 mm after a chain print, and gave short labels
 // some more tape.
-function cutStrip(c, pt) {
-    const half = halfOf(c, pt);
+function cutStrip(c, k) {
+    const half = halfOf(c, k);
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     // The last label stays in the printer with chain printing, and on QL
     // printers where it is not cut
-    const end = chainOf(c, pt) || c.cut === 'none' ? 'chain' : 'full';
+    const end = chainOf(c, k) || c.cut === 'none' ? 'chain' : 'full';
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
-    const text = esc(cutText(c, pt));
-    const waste = pt ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
+    const text = esc(cutText(c, k));
+    const waste = k === 'pt' ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
     // The printer on the left, as on its display: the tape leaves it to the
     // right, the waste first
     return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${lab}${mark(between)}${lab}${mark(between)}${lab}${waste}</span>`;
@@ -375,8 +388,9 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
         if (CUT_KEYS.includes(k)) continue;
         fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
     }
-    // Without red on the tape red parts print black, the preview shows that
-    const red = redTape(design);
+    // Without red on the tape red parts print black, the preview shows that.
+    // Other colors the server makes red or black on black and red tape.
+    const red = redTape(design) || isColorTape(design.label_size);
     if (!red) {
         fd.set('border_color', 'black');
         fd.set('print_color', 'black');
@@ -774,9 +788,23 @@ function detectTape() {
     S.tapeAssumed = !found;
 }
 
+// What a VC-500W does: the stage of the label it prints, the label of how
+// many, how far along it is
+function jobText(job) {
+    return job.stage + (job.percent !== undefined ? ` ${job.percent} %` : '') + (job.labels > 1 ? `, label ${job.label} of ${job.labels}` : '');
+}
+
+// The tape left in the cassette of a VC-500W
+function tapeLeft(p) {
+    if (!p || !p.tape_remaining_mm || !p.tape_length_mm) return '';
+    const m = mm => (mm / 1000).toFixed(1);
+    return `${m(p.tape_remaining_mm)} m of ${m(p.tape_length_mm)} m left`;
+}
+
 function printerState(p) {
     if (!p) return { cls: 'off', text: 'No printer' };
     if (p.errors && p.errors.length) return { cls: 'bad', text: p.errors[0] };
+    if (p.job) return { cls: '', text: jobText(p.job) };
     if (/simulat/i.test(p.status_type || p.phase_type || '')) return { cls: '', text: 'Ready (simulated)' };
     return { cls: '', text: 'Ready' };
 }
@@ -811,6 +839,15 @@ async function printJob(job) {
     saveHistory();
     updateCounts();
     toast(`Printing ${entry.copies} ${entry.copies === 1 ? 'label' : 'labels'}...`);
+    // A VC-500W takes about 40 s for a label, what it does is shown meanwhile
+    const followed = isVc500w(S.printer) ? S.printer.path : '';
+    const follow = followed && setInterval(async () => {
+        try {
+            const data = await (await fetch(API + '/printer_status')).json();
+            const p = (Array.isArray(data.printers) ? data.printers : [data]).find(x => x.path === followed);
+            if (p && p.job && entry.state === 'printing') toast(jobText(p.job), null, 10000);
+        } catch (e) { }
+    }, 1500);
     try {
         const r = await post('/print', formFor(job.design, entry.copies, true, job.values));
         let data = {};
@@ -825,6 +862,7 @@ async function printJob(job) {
         entry.state = 'failed';
         entry.message = 'The label designer could not be reached';
     }
+    if (follow) clearInterval(follow);
     saveHistory();
     if ($('#libGrid')) {
         if (S.libCat === 'printed') renderLibGrid();
@@ -1253,22 +1291,26 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
     // The cut after the label, in the corner how copies are cut
-    const pt = isPtouch(design.label_size), cutNow = cutOf(design);
-    const cutEnd = chainOf(cutNow, pt) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
+    const cutter = cutterOf(design.label_size), cutNow = cutOf(design);
+    const cutEnd = chainOf(cutNow, cutter) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
     const paper = blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${p.url}">`;
     el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
         <div class="cut"${cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
         <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>
-        <div class="cuts">${cutStrip(cutNow, pt)}<span>${esc(cutShort(cutNow, pt))}</span></div>`;
+        <div class="cuts">${cutStrip(cutNow, cutter)}<span>${esc(cutShort(cutNow, cutter))}</span></div>`;
     shown();
     if (onWarning && newest()) onWarning(p.warning, false, p);
 }
 
 // Red parts on tape without red print black
 function layoutProblem(d) {
-    const redParts = (d.print_type !== 'qrcode' && d.text.some(l => l.color === 'red')) || (d.border_color === 'red' && frameOf(d) !== 'none')
-        || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
+    if (isColorTape(d.label_size)) return '';
+    const colored = c => (c || 'black') !== 'black';
+    const textColors = d.print_type !== 'qrcode' ? d.text.map(l => l.color) : [];
+    const parts = textColors.concat(frameOf(d) !== 'none' ? [d.border_color] : [], d.print_type !== 'text' ? [d.print_color] : []).filter(colored);
+    const redParts = parts.length || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
     if (redParts && !redTape(d)) return 'This tape has no red, the red parts print black.';
+    if (parts.some(c => c !== 'red')) return 'This tape prints black and red only, other colors print in one of them.';
     return '';
 }
 
@@ -2029,10 +2071,11 @@ function renderEditor() {
                         : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
                     <label${qr ? '' : ' title="Only for QR codes"'}><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
                 </div>${qr ? '' : '<span class="muted small">Error correction exists for QR codes only.</span>'}`)(d.barcode_type === 'QR', !fitted(d))}
+                ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' ? imageBlock(d) : ''}
             ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
-                <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d))).join('')}</div>
+                <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d), isColorTape(d.label_size))).join('')}</div>
                 <div class="addl">
                     <button class="pill" type="button" id="edAdd"><i class="fa-solid fa-plus"></i>Line</button>
                     <button class="pill" type="button" id="edBlank"><i class="fa-regular fa-square"></i>Blank</button>
@@ -2088,8 +2131,8 @@ function renderEditor() {
 // one is always offered, e.g. that of a label made for another printer.
 function sizeOptions(chosen, name) {
     const offered = s => s.id === chosen || printerTakes(s);
-    const groups = [['Endless', s => s.form === 'endless' && !isPtouch(s.id)], ['Die-cut', s => s.form === 'die_cut'],
-        ['Round', s => s.form === 'round_die_cut'], ['P-touch tape', s => isPtouch(s.id)]];
+    const groups = [['Endless', s => s.form === 'endless' && !isPtouch(s.id) && !isColorTape(s.id)], ['Die-cut', s => s.form === 'die_cut'],
+        ['Round', s => s.form === 'round_die_cut'], ['P-touch tape', s => isPtouch(s.id)], ['Color tape', s => isColorTape(s.id)]];
     return groups.map(([group, inGroup]) => {
         const sizes = C.label_sizes.filter(s => inGroup(s) && offered(s));
         return sizes.length ? `<optgroup label="${group}">${sizes.map(s => `<option value="${esc(s.id)}"${s.id === chosen ? ' selected' : ''}>${name(s)}</option>`).join('')}</optgroup>` : '';
@@ -2100,14 +2143,14 @@ function tapeNote(d) {
     const model = esc(S.printer ? S.printer.model : 'printer');
     if (S.tapeUnknown) return `<span class="tape-note warn">The ${model} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
     // An assumed tape matches nothing in the printer
-    if (d.label_size === S.tape) return S.tapeAssumed ? '' : '<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer</span>';
+    if (d.label_size === S.tape) return S.tapeAssumed ? '' : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
     if (fitsTape(d.label_size)) return '';
     const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
     return `<span class="tape-note warn">The ${model} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
 }
 
 function imageBlock(d) {
-    const red = redTape(d);
+    const red = redTape(d), color = isColorTape(d.label_size);
     const modes = [['black_and_white', 'Black and white'], ['grayscale', 'Grayscale'], ['red_and_black', 'Red and black'], ['colored', 'Full color']];
     const needsRed = v => (v === 'red_and_black' || v === 'colored') && !red && d.image_mode !== v;
     const bw = d.image_mode === 'black_and_white';
@@ -2118,8 +2161,8 @@ function imageBlock(d) {
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
             ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own. The preview shows the first, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
-            <div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>
-            <label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>
+            ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
+            ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
             <div class="row" style="flex-wrap:wrap;align-items:flex-end">
                 <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
                 <label title="${fit ? 'Only without fitting to the label' : ''}"><span class="label-s${fit ? ' off' : ''}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edScale" value="${esc(d.image_scaling_factor)}" style="width:6rem"${fit ? ' disabled' : ''}></label>
@@ -2139,16 +2182,16 @@ const hasTextLines = d => d.text.some(l => String(l.text || '').trim());
 const GAP_TITLE = 'Leave it empty for a distance that suits the size of the text';
 // Buttons for the cutting c, with data-<attr> naming the setting. Half cuts
 // and chain printing only for P-touch printers.
-function cutSettings(attr, c, pt, withCut = true) {
+function cutSettings(attr, c, k, withCut = true) {
     // Settings that do not apply are disabled, showing what is printed
     const seg = (k, name, opts, why = '', on = c[k]) => `<div${why ? ` title="${esc(why)}"` : ''}><span class="label-s${why ? ' off' : ''}">${name}</span>
-        <div class="seg wrap">${opts.map(([v, n]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${on === v ? 'on' : ''}"${why ? ' disabled' : ''}>${n}</button>`).join('')}</div></div>`;
+        <div class="seg wrap">${opts.map(([v, n, off]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${on === v ? 'on' : ''}"${off ? ` title="${esc(off)}"` : ''}${why || off ? ' disabled' : ''}>${n}</button>`).join('')}</div></div>`;
     const onOff = [['1', 'On'], ['0', 'Off']];
-    const halfWhy = !pt ? 'Only for P-touch printers' : !halfCutter() ? 'This printer has no half cutter' : '';
-    const chainWhy = !pt ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
-    return (withCut ? seg('cut', 'Cutting', CUTS) : '')
-        + seg('half_cut', 'Half cut between labels', onOff, halfWhy, halfOf(c, pt) ? '1' : halfWhy ? '0' : c.half_cut)
-        + seg('chain', 'Chain printing, the last label stays in the printer', onOff, chainWhy, chainOf(c, pt) ? '1' : chainWhy ? '0' : c.chain);
+    const halfWhy = k === 'vc' ? '' : k !== 'pt' ? 'Only for P-touch printers and the VC-500W' : !halfCutter() ? 'This printer has no half cutter' : '';
+    const chainWhy = k !== 'pt' ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
+    return (withCut ? seg('cut', 'Cutting', CUTS.map(([v, n]) => [v, n, v === 'none' ? neverWhy(k) : ''])) : '')
+        + seg('half_cut', 'Half cut between labels', onOff, halfWhy, halfOf(c, k) ? '1' : halfWhy ? '0' : c.half_cut)
+        + seg('chain', 'Chain printing, the last label stays in the printer', onOff, chainWhy, chainOf(c, k) ? '1' : chainWhy ? '0' : c.chain);
 }
 
 // A label can keep its own way of cutting, else it is cut as set for the printer
@@ -2156,8 +2199,8 @@ function cutField(d) {
     const pc = CUTS.find(x => x[0] === printerCut().cut)[1].toLowerCase();
     return `<div class="cutting"><label class="label-s" for="edCut">Cutting</label>
         <select class="field" id="edCut"><option value="">Like the printer: ${esc(pc)}</option>
-        ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}>${n}, saved with the label</option>`).join('')}</select>
-        ${d.cut ? cutSettings('lcut', cutOf(d), isPtouch(d.label_size), false) : ''}</div>`;
+        ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}${v === 'none' && neverWhy(cutterOf(d.label_size)) ? ' disabled' : ''}>${n}, saved with the label</option>`).join('')}</select>
+        ${d.cut ? cutSettings('lcut', cutOf(d), cutterOf(d.label_size), false) : ''}</div>`;
 }
 
 function gapField(d) {
@@ -2196,7 +2239,8 @@ function frameDetails(d) {
             ${(rd => `<label title="${rd ? '' : 'Only for rounded frames'}"><span class="${rd ? '' : 'off'}">Corners, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_roundness" value="${dotsToMm(d.border_roundness, dpi)}"${rd ? '' : ' disabled'}></label>`)(frameOf(d) === 'rounded')}
         </div>
         <p class="muted small" style="margin:.4rem 0 0">Sides, top and bottom: the distance from the edge of the label. The margins grow so that the text stays inside.</p>
-        <div style="margin-top:.5rem"><span class="label-s">Color</span><div class="seg"><button type="button" data-bcolor="black" class="${d.border_color === 'red' ? '' : 'on'}">Black</button><button type="button" data-bcolor="red" class="${d.border_color === 'red' ? 'on' : ''}"${red || d.border_color === 'red' ? '' : ' disabled title="Needs black and red tape"'}>Red</button></div></div>
+        <div style="margin-top:.5rem"><span class="label-s">Color</span>${isColorTape(d.label_size) ? colorField('edFrameColor', d.border_color, 'Color of the frame')
+            : `<div class="seg"><button type="button" data-bcolor="black" class="${d.border_color === 'red' ? '' : 'on'}">Black</button><button type="button" data-bcolor="red" class="${d.border_color === 'red' ? 'on' : ''}"${red || d.border_color === 'red' ? '' : ' disabled title="Needs black and red tape"'}>Red</button></div>`}</div>
     </div>`;
 }
 
@@ -2234,16 +2278,20 @@ function fitMarginsToFrame(d) {
 }
 
 const redTape = d => !!(SIZES[d.label_size] && SIZES[d.label_size].red);
+// Colors are kept as black, red or #rrggbb
+const hexOf = c => c === 'red' ? '#ff0000' : /^#[0-9a-f]{6}$/i.test(c || '') ? c.toLowerCase() : '#000000';
+const colorOf = hex => hex === '#000000' ? 'black' : hex === '#ff0000' ? 'red' : hex;
+const colorField = (id, color, title) => `<input type="color" class="color-in" id="${id}" value="${hexOf(color)}" title="${title}" aria-label="${title}">`;
 const SPACINGS = [100, 150, 200, 250, 300];
 
 // Two rows per line: the text on top, all settings of the line below it
-function lineRow(l, i, main, families, red) {
+function lineRow(l, i, main, families, red, color) {
     const al = { left: 'align-left', center: 'align-center', right: 'align-right' }[l.align] || 'align-center';
     const fam = familyOf(l.font);
     const noBold = wantsBold(l) && !hasBold(fam);
     const spacing = +(l.line_spacing || 100);
     return `<div class="lrow${wantsBold(l) && !noBold ? ' bold' : ''}${i === S.editSel ? ' sel' : ''}${l.color === 'red' ? ' red' : ''}" data-row="${i}">
-        <span class="txw">${l.checkbox ? '<i class="fa-regular fa-square" title="To-do box"></i>' : ''}<input class="tx" value="${esc(toDisplay(l.text))}" placeholder="${i === 0 ? 'Type the label text' : 'Line ' + (i + 1)}" aria-label="Line ${i + 1}">
+        <span class="txw">${l.checkbox ? '<i class="fa-regular fa-square" title="To-do box"></i>' : ''}<input class="tx"${color && hexOf(l.color) !== '#000000' ? ` style="color:${hexOf(l.color)}"` : ''} value="${esc(toDisplay(l.text))}" placeholder="${i === 0 ? 'Type the label text' : 'Line ' + (i + 1)}" aria-label="Line ${i + 1}">
             <button class="mini quiet" type="button" data-act="del" title="Remove the line"><i class="fa-solid fa-xmark"></i></button></span>
         <div class="st">
             <select class="mini lf${fam !== main ? ' on' : ''}" title="Font of line ${i + 1}" aria-label="Font of line ${i + 1}">${missingFont(fam)}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select>
@@ -2252,7 +2300,7 @@ function lineRow(l, i, main, families, red) {
             <button class="mini" type="button" data-act="align" title="Alignment: ${esc(l.align || 'center')}"><i class="fa-solid fa-${al}"></i></button>
             <button class="mini${l.inverted ? ' on' : ''}" type="button" data-act="invert" title="White on black"><i class="fa-solid fa-circle-half-stroke"></i></button>
             <button class="mini${l.checkbox ? ' on' : ''}" type="button" data-act="todo" title="To-do box in front"><i class="fa-regular fa-square-check"></i></button>
-            <button class="mini red-sw${l.color === 'red' ? ' on' : ''}${l.color === 'red' && !red ? ' nored' : ''}" type="button" data-act="red" title="${red ? 'Red text' : l.color === 'red' ? 'This tape has no red, the line prints black' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>
+            ${color ? `<label class="mini-wrap color-sw" title="Color of line ${i + 1}"><input type="color" class="lcol" value="${hexOf(l.color)}" aria-label="Color of line ${i + 1}"></label>` : `<button class="mini red-sw${l.color === 'red' ? ' on' : ''}${l.color === 'red' && !red ? ' nored' : ''}" type="button" data-act="red" title="${red ? 'Red text' : l.color === 'red' ? 'This tape has no red, the line prints black' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>`}
             <label class="mini-wrap${spacing !== 100 ? ' on' : ''}" title="Line spacing"><i class="fa-solid fa-text-height"></i><select class="mini lsp" aria-label="Line spacing of line ${i + 1}">${SPACINGS.concat(SPACINGS.includes(spacing) ? [] : [spacing]).map(v => `<option value="${v}"${v === spacing ? ' selected' : ''}>${v} %</option>`).join('')}</select></label>
         </div></div>`;
 }
@@ -2518,6 +2566,7 @@ function bindEditor() {
         $('input.mini', row).addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { l.size = String(v); redrawEditor(); } });
         $('select.lf', row).onchange = e => { l.bold = wantsBold(l); l.font = fontOf(e.target.value, l.bold); S.editSel = i; renderEditor(); };
         $('select.lsp', row).onchange = e => { l.line_spacing = e.target.value; S.editSel = i; renderEditor(); };
+        if ($('input.lcol', row)) $('input.lcol', row).onchange = e => { l.color = colorOf(e.target.value); S.editSel = i; renderEditor(); };
         $$('button[data-act]', row).forEach(b => b.onclick = () => {
             const act = b.dataset.act;
             if (act === 'todo') l.checkbox = !l.checkbox;
@@ -2573,6 +2622,8 @@ function bindEditor() {
         renderEditor();
     }));
     $$('[data-bcolor]').forEach(b => b.onclick = () => { d.border_color = b.dataset.bcolor; renderEditor(); });
+    if ($('#edFrameColor')) $('#edFrameColor').onchange = e => { d.border_color = colorOf(e.target.value); renderEditor(); };
+    if ($('#edCodeColor')) $('#edCodeColor').onchange = e => { d.print_color = colorOf(e.target.value); renderEditor(); };
     // Symbols, undo and redo
     if ($('#tplInfoBtn')) $('#tplInfoBtn').onclick = () => toggleVars($('#tplInfoBtn'), $('#tplInfo'));
     if ($('#edSym')) $('#edSym').onclick = () => openSymbols($(`[data-row="${S.editSel}"] .tx`) || $('[data-row] .tx'));
@@ -2728,7 +2779,7 @@ function printerPanelHTML() {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
-            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc(st.text)}, ${esc((p.path || '').replace('file://', ''))}</span></span>
+            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc(st.text)}, ${esc((p.path || '').replace('file://', ''))}${tapeLeft(p) ? ', ' + esc(tapeLeft(p)) : ''}</span></span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
@@ -2775,8 +2826,9 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 
 function settingsCard() {
     const p = S.printer;
-    const noHigh = p && C.models_without_600_dpi.includes(p.model);
-    const q = S.settings.quality, c = printerCut(), pt = ptPrinter();
+    const vc = isVc500w(p), noHigh = p && C.models_without_600_dpi.includes(p.model);
+    // Without 600 dpi the VC-500W prints those labels in quality
+    const q = vc && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut(), cutter = printerCutter();
     const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
         : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
     return `<div class="settings">
@@ -2789,18 +2841,20 @@ function settingsCard() {
             <div class="seg">
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
-            <button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button></div>
+            ${vc ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
             ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
-                <p>Fast printing is quicker, the print is a little less sharp.</p>
-                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>
+                ${vc ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
+                <p>A label takes about 40 seconds, most of it to prepare and preheat. With "After each label" take every label out of the printer, the next one waits for that. "After the last label" keeps the labels together on a strip.</p>`
+                : `<p>Fast printing is quicker, the print is a little less sharp.</p>
+                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>`}
             </div></div>
         <div><label class="label-s" for="setDate">Dates on labels</label>
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
-        <div class="cutting">${cutSettings('c', c, pt)}
-            <div class="cut-show">${cutStrip(c, pt)}<span class="muted small">${esc(cutText(c, pt))} Labels saved with their own cutting keep it.</span></div></div>
+        <div class="cutting">${cutSettings('c', c, cutter)}
+            <div class="cut-show">${cutStrip(c, cutter)}<span class="muted small">${esc(cutText(c, cutter))} Labels saved with their own cutting keep it.</span></div></div>
     </div>`;
 }
 

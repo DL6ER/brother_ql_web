@@ -193,7 +193,7 @@
                     "properties": {
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -244,7 +244,7 @@
                     "properties": {
                       "printer": {
                         "type": "string",
-                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W as `vc500w://<host>`. Default: `PRINTER_PRINTER`."
                       },
                       "model": {
                         "type": "string",
@@ -1632,12 +1632,9 @@
           },
           "color": {
             "type": "string",
-            "enum": [
-              "black",
-              "red"
-            ],
             "default": "black",
-            "description": "Red needs a black/red/white roll and a printer that prints red."
+            "pattern": "^(black|red|#[0-9a-fA-F]{6})$",
+            "description": "Color of the line. `black`, `red` or any color as `#rrggbb`. It is limited to what the label shows: any color on the tapes of the VC-500W, black or red on black/red/white labels (red for reddish colors), black on all others."
           }
         }
       },
@@ -1648,7 +1645,7 @@
           "label_size": {
             "type": "string",
             "default": "62",
-            "description": "Label size identifier of brother_ql, e.g. `62`, `62x29`, `103x164`, `d24`. The label designer lists them."
+            "description": "Label size identifier of brother_ql, e.g. `62`, `62x29`, `103x164`, `d24`, or a tape of the VC-500W (`vc9`, `vc12`, `vc19`, `vc25`, `vc50`). The label designer lists them."
           },
           "orientation": {
             "type": "string",
@@ -1674,7 +1671,7 @@
               1
             ],
             "default": 0,
-            "description": "1 prints faster: the printer does not give priority to print quality, the print is a little less sharp. A QL-810W printed a 29 x 90 mm label in 1.8 instead of 3.0 s."
+            "description": "1 prints faster: the printer does not give priority to print quality, the print is a little less sharp. A QL-810W printed a 29 x 90 mm label in 1.8 instead of 3.0 s. The VC-500W prints in its color instead of its vivid mode, colors come out lighter, a 25 mm label took 27 instead of 33 s."
           },
           "shrink_text": {
             "type": "integer",
@@ -1767,7 +1764,7 @@
               "colored"
             ],
             "default": "grayscale",
-            "description": "Another one is refused. `bw` is read as `black_and_white`."
+            "description": "Another one is refused. `bw` is read as `black_and_white`. On the tapes of the VC-500W images stay in color."
           },
           "image_bw_threshold": {
             "type": "integer",
@@ -1847,19 +1844,15 @@
           },
           "border_color": {
             "type": "string",
-            "enum": [
-              "black",
-              "red"
-            ],
-            "default": "black"
+            "default": "black",
+            "pattern": "^(black|red|#[0-9a-fA-F]{6})$",
+            "description": "Color of the border. `black`, `red` or any color as `#rrggbb`. It is limited to what the label shows: any color on the tapes of the VC-500W, black or red on black/red/white labels (red for reddish colors), black on all others."
           },
           "print_color": {
             "type": "string",
-            "enum": [
-              "black",
-              "red"
-            ],
-            "default": "black"
+            "default": "black",
+            "pattern": "^(black|red|#[0-9a-fA-F]{6})$",
+            "description": "Color of codes. `black`, `red` or any color as `#rrggbb`. It is limited to what the label shows: any color on the tapes of the VC-500W, black or red on black/red/white labels (red for reddish colors), black on all others."
           }
         }
       },
@@ -1980,6 +1973,40 @@
           "red_support": {
             "type": "boolean",
             "description": "The printer prints red."
+          },
+          "color_support": {
+            "type": "boolean",
+            "description": "The printer prints in color (VC-500W), the label designer then offers any color."
+          },
+          "tape_length_mm": {
+            "type": ["integer", "null"],
+            "description": "VC-500W: length of the tape in the cassette when new, in millimeters."
+          },
+          "tape_remaining_mm": {
+            "type": ["integer", "null"],
+            "description": "VC-500W: tape left in the cassette, in millimeters."
+          },
+          "job": {
+            "type": "object",
+            "description": "VC-500W: what it does while it prints a label, which takes about 40 s.",
+            "properties": {
+              "stage": {
+                "type": "string",
+                "description": "e.g. `Preparing`, `Preheating`, `Printing`, `Ejecting` or `Take the printed label out of the printer`."
+              },
+              "percent": {
+                "type": "integer",
+                "description": "While printing: how far the label is, estimated."
+              },
+              "label": {
+                "type": "integer",
+                "description": "The label printed, counted from 1, for a job of this server."
+              },
+              "labels": {
+                "type": "integer",
+                "description": "The labels of the job."
+              }
+            }
           }
         }
       },
@@ -2117,7 +2144,7 @@
               "none"
             ],
             "default": "each",
-            "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+            "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides. The VC-500W refuses `none`, it would keep the labels until the next print."
           },
           "half_cut": {
             "type": "integer",
@@ -2126,7 +2153,7 @@
               1
             ],
             "default": 1,
-            "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+            "description": "P-touch printers and the VC-500W: half cut between labels that are not cut, the backing stays whole. Without it the VC-500W does not cut between them."
           },
           "chain": {
             "type": "integer",

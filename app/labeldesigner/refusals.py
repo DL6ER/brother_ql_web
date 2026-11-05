@@ -16,7 +16,7 @@ from PIL import Image
 from qrcode.exceptions import DataOverflowError
 
 from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
-from .label_names import label_size_problems
+from .label_names import NEVER_CUT, label_size_problems
 from .printer import MODELS_WITHOUT_600_DPI, resolution_problem
 
 IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
@@ -62,6 +62,7 @@ MESSAGES = (
     *check_digit_problems(),
     *(resolution_problem(model, True) for model in MODELS_WITHOUT_600_DPI),
     *label_size_problems(),
+    NEVER_CUT,
 )
 
 # Errors whose text names details, by their text. They may span lines, a
@@ -76,6 +77,7 @@ PATTERNS = (
     (re.compile(r'(?s)Font must be given as "<family>,<style>": .*'), 'Font must be given as "<family>,<style>"'),
     (re.compile(r'(?s)Unknown font (family|style): .*'), 'Unknown font'),
     (re.compile(r'(?s)Unknown label size: .*'), 'Unknown label size'),
+    (re.compile(r'(?s)Unknown color: .*'), 'Unknown color'),
     (re.compile(r'(?s)The label size .* cannot be printed on a .*'), 'The label size cannot be printed on this printer'),
     (re.compile(r'(?s)".*" is not a page selection, give pages like 1-3, 5 or all'),
      'Not a page selection, give pages like 1-3, 5 or all'),

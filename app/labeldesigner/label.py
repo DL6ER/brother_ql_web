@@ -182,6 +182,19 @@ def _iso_date(value: str) -> datetime.date | None:
     return None
 
 
+# Colors of text, codes and borders: black and red for QL printers, any
+# color as #rrggbb for the VC-500W
+COLORS = {'black': (0, 0, 0), 'red': (255, 0, 0)}
+
+
+def parse_color(value) -> Tuple[int, int, int]:
+    if isinstance(value, str) and value in COLORS:
+        return COLORS[value]
+    if isinstance(value, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', value):
+        return tuple(int(value[i:i + 2], 16) for i in (1, 3, 5))
+    raise ValueError(f'Unknown color: {value}')
+
+
 class SimpleLabel:
     """
     Represents a label with text, image, barcode, and QR code support.
@@ -230,6 +243,7 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        min_length: int = 0,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -254,6 +268,8 @@ class SimpleLabel:
             raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
         self._height = height
+        # Of an endless label along the tape, in dots
+        self._min_length = min_length
         self.label_content = label_content
         self.label_orientation = label_orientation
         self.label_type = label_type
@@ -351,9 +367,9 @@ class SimpleLabel:
     def in_color(self) -> bool:
         """Whether red or color is chosen for a part of the label: its text,
         code or frame, or its image in red and black or in color."""
-        red = (255, 0, 0)
-        return (self._fore_color == red or (self._border_color == red and self._border_thickness > 0)
-                or any(line.get('color') == 'red' for line in self.text)
+        black = (0, 0, 0)
+        return (self._fore_color != black or (self._border_color != black and self._border_thickness > 0)
+                or any(parse_color(line.get('color') or 'black') != black for line in self.text)
                 or self._label_content in (LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED))
 
     @property
@@ -744,10 +760,14 @@ class SimpleLabel:
         # the text takes room for it: a label that grows in width makes it
         text_width = self._text_width(textsize)
         bearing = -min(textsize[0], 0)
+        # A label longer than its content has it in the middle
+        longer = 0
         if grows_high:
             height = (max(img_height, text_height) if beside else img_height + gap + text_height) + margin_top + margin_bottom
+            longer = max(self._min_length - height, 0)
+            height += longer
         if grows_wide:
-            width = (img_width + gap + text_width if beside else max(img_width, text_width)) + margin_left + margin_right
+            width = max((img_width + gap + text_width if beside else max(img_width, text_width)) + margin_left + margin_right, self._min_length)
 
         if beside:
             # In the middle of the room between the margins, at its start if
@@ -764,7 +784,7 @@ class SimpleLabel:
                 horizontal_offset_image = width - margin_right - img_width
                 horizontal_offset_text = start
         else:
-            start = margin_top if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
+            start = margin_top + longer // 2 if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
             # Across, in the middle between the margins
             horizontal_offset_text = max((width - text_width)//2 + (margin_left - margin_right)//2, 0) + bearing
             horizontal_offset_image = (width - img_width)//2 + (margin_left - margin_right)//2
@@ -874,7 +894,7 @@ class SimpleLabel:
         if not self._code_of_marks:
             check_check_digit(self.barcode_type, value)
         try:
-            return _barcode_image(barcode_class, self.barcode_type, value)
+            return _barcode_image(barcode_class, self.barcode_type, value, self._fore_color)
         except BarcodeError:
             # The marks of blanks are no digits, e.g. of an EAN
             if self._code_of_marks:
@@ -892,8 +912,9 @@ class SimpleLabel:
                 self._code_of_marks = True
         if not text.strip():
             raise ValueError("The QR code is empty")
-        fill_color = 'red' if self._fore_color == (255, 0, 0) else 'black'
-        return _qr_image(text, self._qr_correction, self._qr_size, fill_color)
+        # Black and red by name, a color as RGB gives another image mode
+        names = {color: name for name, color in COLORS.items()}
+        return _qr_image(text, self._qr_correction, self._qr_size, names.get(self._fore_color, self._fore_color))
 
     def _draw_text(self, img = None, bboxes = [], text_offset = (0, 0)):
         """
@@ -939,10 +960,7 @@ class SimpleLabel:
             else:
                 raise ValueError(f"Unsupported alignment: {align}")
 
-            red_font = 'color' in line and line['color'] == 'red'
-#            if red_font and not self._red_support:
-#                raise ValueError("Red font is not supported on this label")
-            color = (255, 0, 0) if red_font else (0, 0, 0)
+            color = parse_color(line.get('color') or 'black')
 
             # Draw checkbox if needed
             checkbox = line.get('checkbox', False)
@@ -1378,7 +1396,7 @@ class _ImageCache:
 _CODES = _ImageCache(8_000_000)
 
 
-def _qr_image(data: str, correction: int, box_size: int, fill_color: str) -> Image.Image:
+def _qr_image(data: str, correction: int, box_size: int, fill_color) -> Image.Image:
     def make():
         qr = QRCode(version=1, error_correction=correction, box_size=box_size, border=0)
         qr.add_data(data.encode("utf-8"))
@@ -1388,10 +1406,10 @@ def _qr_image(data: str, correction: int, box_size: int, fill_color: str) -> Ima
     return _CODES.get(('qr', data, correction, box_size, fill_color), make)
 
 
-def _barcode_image(barcode_class, barcode_type: str, value: str) -> Image.Image:
+def _barcode_image(barcode_class, barcode_type: str, value: str, color: Tuple[int, int, int] = (0, 0, 0)) -> Image.Image:
     def make():
-        return barcode_class(value, writer=ImageWriter()).render()
-    return _CODES.get(('barcode', barcode_type, value), make)
+        return barcode_class(value, writer=ImageWriter()).render(writer_options={'foreground': '#%02x%02x%02x' % color})
+    return _CODES.get(('barcode', barcode_type, value, color), make)
 
 
 # Bounded, requests can ask for any number of sizes
