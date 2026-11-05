@@ -13,9 +13,9 @@ from flask import current_app, has_app_context
 from barcode.errors import BarcodeError, BarcodeNotFoundError, IllegalCharacterError, NumberOfDigitsError, WrongCountryCodeError
 from pdf2image.exceptions import PDFInfoNotInstalledError, PDFPageCountError, PDFPopplerTimeoutError, PDFSyntaxError
 from PIL import Image
-from qrcode.exceptions import DataOverflowError
 
-from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
+from .codes import BARCODE_TOO_LONG, check_digit_problems, code_problems
+from .label import MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong
 from .label_names import label_size_problems
 from .printer import MODELS_WITHOUT_600_DPI, resolution_problem
 
@@ -52,13 +52,13 @@ MESSAGES = (
     f'Random text length must not exceed {MAX_RANDOM_LENGTH}',
     'Invalid border rectangle',
     'The barcode is empty',
-    f'Barcode value must not exceed {MAX_BARCODE_LENGTH} characters',
+    BARCODE_TOO_LONG,
     'The code is empty until its blanks are filled in.',
-    'The QR code is empty',
     IMAGE_MODE_REFUSED,
     UNKNOWN_MODEL,
     'print_count must be greater than 0',
     *check_digit_problems(),
+    *code_problems(),
     *(resolution_problem(model, True) for model in MODELS_WITHOUT_600_DPI),
     *label_size_problems(),
 )
@@ -89,7 +89,6 @@ KINDS = (
     (WrongCountryCodeError, 'The barcode has a country code its type does not allow'),
     (BarcodeNotFoundError, 'Unknown barcode type'),
     (BarcodeError, 'The barcode cannot be made of this value'),
-    (DataOverflowError, 'The QR code holds too much text'),
     (json.JSONDecodeError, 'The text lines are no valid JSON'),
     (Image.DecompressionBombError, 'The image is too large'),
     ((PDFInfoNotInstalledError, PDFPageCountError, PDFPopplerTimeoutError, PDFSyntaxError), 'The PDF cannot be read'),

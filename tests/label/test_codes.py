@@ -10,7 +10,7 @@ import pytest
 from PIL import Image
 from flask.testing import FlaskClient
 
-from app.labeldesigner.label import CHECK_DIGIT_CODES
+from app.labeldesigner.codes import CHECK_DIGIT_CODES
 from app.labeldesigner.routes import create_label_from_request
 
 from tests.helpers import _red_square, _upload, EXAMPLE_FORMDATA, make_client, pixels, TEXT, verify_image
@@ -184,10 +184,10 @@ def test_check_digits_are_those_of_python_barcode(barcode_type, number):
 
 def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):
     # A BOM in front of the content keeps phones from recognizing URLs (#101)
-    from app.labeldesigner import label
+    from app.labeldesigner import codes
     added = []
-    original = label.QRCode.add_data
-    monkeypatch.setattr(label.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
+    original = codes.QRCode.add_data
+    monkeypatch.setattr(codes.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
     client = make_client(tmp_path)
     data = EXAMPLE_FORMDATA.copy()
     data.update({'print_type': 'qrcode', 'barcode_type': 'QR', 'code_text': 'https://example.com/Größe'})
@@ -212,10 +212,10 @@ def test_templates_in_the_code_are_filled_in(tmp_path):
 def test_code_that_fills_in_to_nothing_keeps_the_text_out(tmp_path, monkeypatch):
     # A variable that is not listed inserts nothing, the code must not hold
     # the text of the label instead. Empty, a code says so.
-    from app.labeldesigner import label
+    from app.labeldesigner import codes
     added = []
-    original = label.QRCode.add_data
-    monkeypatch.setattr(label.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
+    original = codes.QRCode.add_data
+    monkeypatch.setattr(codes.QRCode, 'add_data', lambda self, data, *args: added.append(data) or original(self, data, *args))
     client = make_client(tmp_path)
     data = EXAMPLE_FORMDATA.copy()
     data.update({'print_type': 'qrcode_text', 'barcode_type': 'QR', 'code_text': '{{env:NOT_LISTED_FOR_CODE_TEST}}',
@@ -254,8 +254,8 @@ def test_lines_of_a_request_cannot_set_the_code(tmp_path, monkeypatch):
     # The text of a line without its marks is set by the templates only
     from app.labeldesigner import label as label_module
     coded = []
-    original = label_module._qr_image
-    monkeypatch.setattr(label_module, '_qr_image', lambda data, *args: coded.append(data) or original(data, *args))
+    original = label_module._code_image
+    monkeypatch.setattr(label_module, '_code_image', lambda code_type, data, *args: coded.append(data) or original(code_type, data, *args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='QR', code_text='',
                 text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': 'ABC', 'unmarked': 'XYZ'}]))
@@ -285,7 +285,7 @@ def test_code_cache_gives_the_codes_kept_and_labels_leave_them_as_they_are(tmp_p
     with client.application.test_request_context():
         create_label_from_request(data).generate()
         kept = label_module._CODES._images
-        code = next(image for key, image in kept.items() if key[1] == 'https://example.com/kept')
+        code = next(image for key, image in kept.items() if 'https://example.com/kept' in key)
         before = code.tobytes()
         create_label_from_request(data).generate()
         assert code.tobytes() == before
@@ -313,10 +313,10 @@ def test_a_barcode_of_digits_still_to_fill_in_says_so(tmp_path):
 
 
 def test_codes_are_made_once_while_a_label_is_edited(tmp_path, monkeypatch):
-    from app.labeldesigner import label
+    from app.labeldesigner import codes
     made = []
-    original = label.QRCode.make
-    monkeypatch.setattr(label.QRCode, 'make', lambda self, *args, **kwargs: made.append(1) or original(self, *args, **kwargs))
+    original = codes.QRCode.make
+    monkeypatch.setattr(codes.QRCode, 'make', lambda self, *args, **kwargs: made.append(1) or original(self, *args, **kwargs))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='QR', code_text=f'https://example.com/{random.random()}')
 
