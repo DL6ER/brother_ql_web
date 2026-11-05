@@ -7,17 +7,17 @@ from brother_ql.conversion import convert
 from brother_ql.labels import ALL_LABELS
 from brother_ql.raster import BrotherQLRaster
 
-from app.labeldesigner.label_names import LABEL_NAMES, PTOUCH_LABELS, check_label_size, label_printers
+from app.labeldesigner.label_names import LABEL_NAMES, LABELS, PTOUCH_LABELS, check_label_size, label_printers
 from tests.helpers import make_client
 
 
 def _label(identifier):
-    return next(label for label in ALL_LABELS if label.identifier == identifier)
+    return next(label for label in LABELS if label.identifier == identifier)
 
 
 def test_every_label_size_has_a_name():
     # A new label size in brother_ql needs a name with its Brother code
-    assert {label.identifier for label in ALL_LABELS} == set(LABEL_NAMES)
+    assert {label.identifier for label in LABELS} == set(LABEL_NAMES)
 
 
 def test_names_are_unique():
@@ -98,3 +98,12 @@ def test_narrow_tze_tapes_use_the_pins_of_the_raster_command_reference(identifie
         used |= {pin for pin in range(128) if bits >> (127 - pin) & 1}
         i += 3 + n
     assert used == set(pins)
+
+
+def test_vc500w_takes_only_its_tapes():
+    from app.labeldesigner.label_names import label_size_problem
+    assert label_printers(_label('vc25')) == ['VC-500W']
+    assert 'VC-500W' not in label_printers(_label('62'))
+    assert label_size_problem('vc50', 'VC-500W') == ''
+    assert label_size_problem('62', 'VC-500W') == 'The label size 62 mm endless (DK-22205 / DK-2205) cannot be printed on a VC-500W'
+    assert label_size_problem('vc12', 'QL-800') == 'The label size 12 mm full color tape (VC-500W) cannot be printed on a QL-800'

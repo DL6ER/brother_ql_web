@@ -14,12 +14,13 @@ A web interface and REST API for Brother QL label printers. Design labels with t
 | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
 | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
 | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
+| VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
 
 USB printers are detected automatically, network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
 
 ## Features
 
-- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels, optionally shrunk to fit the label or made as large as fits
+- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
@@ -91,7 +92,7 @@ The navbar shows the version and build time of the running image, please add the
 
 | Environment variable | Meaning | Default |
 |---|---|---|
-| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`, or `?` to detect printers automatically | `?` |
+| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W on the network as `vc500w://<host>`, or `?` to detect printers automatically | `?` |
 | `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer | `QL-800` |
 | `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g. `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1`. There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g. `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |

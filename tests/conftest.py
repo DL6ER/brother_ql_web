@@ -15,4 +15,6 @@ def printer_output(tmp_path, monkeypatch):
     # nor discovered.
     # Tests of USB detection fake the devices they need.
     monkeypatch.setattr(printer, 'ARP_TABLE', os.devnull)
+    # Nor are the device IDs of its USB printers read
+    monkeypatch.setattr(printer, 'USB_DEVICE_ID', str(tmp_path / 'no-usb-device-id-{name}'))
     monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', False)

@@ -204,7 +204,7 @@ def test_preview_shows_the_blanks_of_a_code_that_has_nothing_else(tmp_path, monk
     coded = []
     for name in ('_qr_image', '_barcode_image'):
         original = getattr(label_module, name)
-        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[-1]) or original(*args))
+        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[2]) or original(*args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode', barcode_type=barcode_type, code_text='{{blank:Link}}', text='[]')
     assert client.post('/labeldesigner/api/preview', data=dict(data, mark_blanks='1')).status_code == 200
@@ -227,7 +227,7 @@ def test_preview_shows_the_blanks_of_a_code_that_takes_empty_text(tmp_path, monk
     coded = []
     for name in ('_qr_image', '_barcode_image'):
         original = getattr(label_module, name)
-        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[-1]) or original(*args))
+        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[2]) or original(*args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type=barcode_type, code_text=code, mark_blanks='1',
                 text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': line} for line in lines]))
