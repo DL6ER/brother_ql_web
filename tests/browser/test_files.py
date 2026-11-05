@@ -62,7 +62,7 @@ def test_pages_of_a_pdf_can_be_chosen(designer):
     assert preview_size(designer)[0] < length
     designer.fill('#edPages', '7')
     wait_for_preview(designer)
-    assert 'The PDF has 3 pages, there is no page 7' in designer.inner_text('#edStage')
+    assert 'The PDF has no such page' in designer.inner_text('#edStage')
     # It could not be printed either
     assert designer.is_disabled('#edPrint')
     designer.fill('#edPages', '1')

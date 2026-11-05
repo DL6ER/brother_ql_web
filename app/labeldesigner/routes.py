@@ -14,7 +14,8 @@ from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
 from urllib.parse import urlparse
-from . import bp, demos
+from . import bp, demos, refusals
+from .refusals import IMAGE_MODE_REFUSED, UNKNOWN_MODEL
 from app import get_fonts
 from app.fonts import FontNotFound
 from PIL import Image
@@ -22,6 +23,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
+from brother_ql.models import ALL_MODELS
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
@@ -33,6 +35,9 @@ from app.utils import (
 )
 
 DEFAULT_DPI = 300
+# The label size of a request or a saved label that names none, the same for
+# the label and the printer
+DEFAULT_LABEL_SIZE = '62'
 HIGH_RES_DPI = 600
 
 # Image types the repository stores next to the label JSON files
@@ -61,7 +66,9 @@ PRINTER_DEVICE_PATTERNS = (
 
 @bp.errorhandler(ValueError)
 def handle_value_error(e):
-    return jsonify({"error": str(e)}), 400
+    _log_refused_request('Request', e)
+    # A fixed message, the details are in the log
+    return jsonify({"error": refusals.message(e, refusals.INVALID_INPUT)}), 400
 
 
 @bp.before_request
@@ -213,6 +220,10 @@ def index():
         'designer.html',
         config={
             'base': url_for('.index').rstrip('/'),
+            # Instances below one host, e.g. served below different paths
+            # behind a reverse proxy, keep what they store in the browser
+            # apart. The one at the root keeps the names it always had.
+            'storage_prefix': f'{request.script_root}/' if request.script_root else '',
             'fonts': fonts.fontlist(),
             'default_font': ','.join(fonts.get_default_font()),
             'label_sizes': label_sizes,
@@ -296,6 +307,12 @@ _SAVING = threading.Lock()
 # Seconds to wait for another request putting labels in place, e.g. one held
 # up on a slow network share
 SAVE_LOCK_TIMEOUT = 10
+
+
+# The status of a print the printer did not do, e.g. it reports an error,
+# does not answer or is busy with another job: the same request may succeed
+# later. A request that is refused, e.g. for an unknown label size, gets 400.
+PRINTER_FAILED = 503
 
 
 class LabelsBusy(Exception):
@@ -480,11 +497,19 @@ def repo_list():
         if isinstance(data.get('title'), str) and data['title'].strip():
             entry['title'] = data['title'].strip()
         # Parse label size (support both snake_case and legacy camelCase)
-        label_size = data.get('label_size') or data.get('labelSize')
+        label_size = stored_label_size(data.get('label_size') or data.get('labelSize'))
         entry['label_size_id'] = label_size
         entry['label_size'] = _label_size_name(label_size)
         files.append(entry)
     return {'files': files}
+
+
+def stored_label_size(value):
+    """A label size as the labels name it. JSON clients may send a whole
+    number, e.g. 62 for "62", labels saved like that before are read the same."""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    return value
 
 
 def _label_size_name(label_size: str | None) -> str | None:
@@ -520,8 +545,13 @@ def repo_save():
         _text_fit(data)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
+        if 'label_size' in data:
+            data['label_size'] = stored_label_size(data['label_size'])
+            if not any(label.identifier == data['label_size'] for label in ALL_LABELS):
+                raise ValueError('Unknown label_size')
     except ValueError as e:
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Saving the label', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
     filename = secure_filename(name)
     if not filename:
         return make_response(jsonify({'success': False, 'message': 'Invalid name'}), 400)
@@ -649,6 +679,8 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     text = data.get('text', [])
     data['text'] = json.dumps(text)
     data = fill_first_line_fields(text, data)
+    if 'label_size' in data:
+        data['label_size'] = stored_label_size(data['label_size'])
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
@@ -777,7 +809,6 @@ def _whole_or(value, default) -> int:
 
 
 IMAGE_MODES = ('grayscale', 'black_and_white', 'red_and_black', 'colored')
-IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
 
 
 def check_image_mode(value, default: str = 'grayscale') -> str:
@@ -818,6 +849,8 @@ def _load_repo_json(name: str) -> tuple[dict, bytes | None]:
             raise FileNotFoundError(name)
         with open(path, 'r', encoding='utf-8') as fh:
             data = json.load(fh)
+        if 'label_size' in data:
+            data['label_size'] = stored_label_size(data['label_size'])
         image, image_bytes = data.get('image'), None
         if isinstance(image, str) and image and os.path.exists(os.path.join(repo, secure_filename(image))):
             with open(os.path.join(repo, secure_filename(image)), 'rb') as fh:
@@ -857,8 +890,8 @@ def _preview_response(data: dict, image_dir: str, image_bytes: bytes | None = No
         label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir, image_bytes))
         im = label.generate()
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'message': str(e)}), 413 if isinstance(e, TextTooLong) else 400)
+        _log_refused_request('Preview', e)
+        return make_response(jsonify({'message': refusals.message(e, refusals.PREVIEW_FAILED)}), 413 if isinstance(e, TextTooLong) else 400)
 
     return _preview_of(label, im, _requested('return_format') or 'png')
 
@@ -894,7 +927,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     try:
         data['blanks'] = _requested_blanks(data.get('blanks'))
         device, model = _printer(requested_printer, _requested('model'))
-        label_size = data.get('label_size') or current_app.config['LABEL_DEFAULT_SIZE']
+        label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
         # Determine printing options (print_count, cutting, high_res)
@@ -906,8 +939,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # it is printed with
         data['high_res'] = high_res
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Print job', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.PRINT_FAILED)}), 400)
 
     status = ""
     try:
@@ -917,13 +950,13 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
-        current_app.logger.exception(e)
-        return make_response(jsonify({'success': False, 'message': str(e)}), 400)
+        _log_refused_request('Print job', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.PRINT_FAILED)}), 400)
 
     result = {'success': len(status) == 0}
     if len(status) > 0:
         result['message'] = status
-        return make_response(jsonify(result), 400)
+        return make_response(jsonify(result), PRINTER_FAILED)
     return result
 
 
@@ -1010,7 +1043,8 @@ def preview_from_image():
     except Exception as e:
         _log_refused_request('Preview', e)
         error = 413 if isinstance(e, TextTooLong) else 400
-        return make_response(jsonify({'message': str(e)}), error)
+        # A fixed message, the details are in the log
+        return make_response(jsonify({'message': refusals.message(e, refusals.PREVIEW_FAILED)}), error)
 
     response = _preview_of(label, im, request.values.get('return_format', 'png'))
     # The label designer offers to choose pages of a PDF with several
@@ -1084,8 +1118,8 @@ def print_label():
     except HTTPException:
         raise
     except Exception as e:
-        return_dict['message'] = str(e)
-        current_app.logger.exception(e)
+        return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
+        _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
     status = ""
@@ -1100,27 +1134,30 @@ def print_label():
         _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
-        return_dict['message'] = str(e)
+        return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
         _log_refused_request('Print job', e)
         return make_response(jsonify(return_dict), 400)
 
     return_dict['success'] = len(status) == 0
     if len(status) > 0:
         return_dict['message'] = status
-        return make_response(jsonify(return_dict), 400)
+        return make_response(jsonify(return_dict), PRINTER_FAILED)
     return return_dict
 
 
 def _log_refused_request(what: str, error: Exception):
     """Log why a request was refused. Invalid input like a missing font size
     or an unknown font raises ValueError or LookupError, it is logged without
-    a traceback, which would look like a crash in the log. Everything else
-    is logged with its traceback."""
-    if isinstance(error, (ValueError, LookupError)):
+    a traceback, which would look like a crash in the log. Everything else,
+    also KeyError and IndexError, is logged with its traceback."""
+    if refusals.is_invalid_input(error):
         current_app.logger.warning('%s refused: %s', what, error)
         current_app.logger.debug('%s refused', what, exc_info=True)
     else:
         current_app.logger.exception(error)
+
+
+PRINTER_MODELS = [model.identifier for model in ALL_MODELS]
 
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
@@ -1136,12 +1173,15 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
     if device not in (configured, 'simulation', '?', *listed) and \
             not any(pattern.fullmatch(device) for pattern in PRINTER_DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
-    model = next((m for m, d in printers if d == device), model)
-    return device, requested_model or model
+    model = requested_model or next((m for m, d in printers if d == device), model)
+    if model not in PRINTER_MODELS:
+        # brother_ql refuses it without a message
+        raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")
+    return device, model
 
 
 def create_printer_from_request(request: Request):
-    label_size = request.values.get('label_size', '62')
+    label_size = request.values.get('label_size', DEFAULT_LABEL_SIZE)
     # Allow overriding the device specifier via the request (frontend selection)
     device, model = _printer(request.values.get('printer'), request.values.get('model'))
     return PrinterQueue(
@@ -1166,7 +1206,7 @@ def _label_type(kind: FormFactor) -> LabelType:
 
 
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
-    label_size = d.get('label_size', "62")
+    label_size = d.get('label_size', DEFAULT_LABEL_SIZE)
     kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
     if kind is None:
         raise LookupError("Unknown label_size")
@@ -1375,7 +1415,7 @@ def _blank_values(value) -> dict[str, str]:
     """The values for the blanks ({{blank:<name>}}) of a label by name: an
     object of texts or numbers."""
     values = _json_object(value, lambda v: isinstance(v, (str, int, float)) and not isinstance(v, bool),
-                          'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}')
+                          refusals.BLANKS_MESSAGE)
     return {name: str(v) for name, v in values.items()}
 
 
@@ -1396,9 +1436,7 @@ def _blank_setting(field) -> bool:
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
     "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting,
-                        'fields must be a JSON object with the settings of each blank: a type of text, number or date, '
-                        'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}')
+    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:
@@ -1749,5 +1787,5 @@ def webhook_print():
     }
     if status:
         result['message'] = status
-        return make_response(jsonify(result), 400)
+        return make_response(jsonify(result), PRINTER_FAILED)
     return jsonify(result)

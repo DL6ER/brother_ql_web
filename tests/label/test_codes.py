@@ -2,15 +2,18 @@
 and the cache of codes."""
 
 import json
+import os
 import random
 
+import barcode
 import pytest
 from PIL import Image
 from flask.testing import FlaskClient
 
+from app.labeldesigner.label import CHECK_DIGIT_CODES
 from app.labeldesigner.routes import create_label_from_request
 
-from tests.helpers import _red_square, _upload, EXAMPLE_FORMDATA, make_client, TEXT, verify_image
+from tests.helpers import _red_square, _upload, EXAMPLE_FORMDATA, make_client, pixels, TEXT, verify_image
 
 
 class TestLabelDesignerAPI:
@@ -75,7 +78,7 @@ class TestLabelDesignerAPI:
         assert response.status_code == 400
         assert response.is_json
         data = response.get_json()
-        assert data['message'] == 'EAN must have 12 digits, received 10.'
+        assert data['message'] == 'EAN-13 takes 12 digits, or 13 with the check digit'
 
     def test_generate_ean13_empty(self, client: FlaskClient):
         data = EXAMPLE_FORMDATA.copy()
@@ -109,6 +112,74 @@ def test_barcode_length_is_limited(tmp_path):
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 400
     assert response.get_json()['message'] == 'Barcode value must not exceed 1000 characters'
+
+
+# Numbers with their right check digit, as printed on products and books
+CHECK_DIGIT_NUMBERS = [
+    ('EAN13', '4006381333931'), ('EAN13-GUARD', '4006381333931'), ('EAN8', '96385074'), ('EAN14', '10012345678902'),
+    ('GTIN', '00012345600012'), ('JAN', '4901234567894'), ('UPCA', '036000291452'), ('ISBN13', '978-3-16-148410-0'),
+    ('ISBN10', '0-8044-2957-X'), ('ISSN', '0317-8471'), ('PZN', '4908802'),
+]
+
+
+@pytest.mark.parametrize('barcode_type, number', CHECK_DIGIT_NUMBERS)
+def test_a_code_takes_its_number_with_or_without_the_check_digit(tmp_path, barcode_type, number):
+    client = make_client(tmp_path)
+
+    def preview(code):
+        data = dict(EXAMPLE_FORMDATA, print_type='qrcode', barcode_type=barcode_type, code_text=code, text='[]')
+        response = client.post('/labeldesigner/api/preview', data=data)
+        assert response.status_code == 200, response.get_json()
+        return pixels(response.data)
+    assert preview(number) == preview(number[:-1])
+
+
+@pytest.mark.parametrize('barcode_type, code, message', [
+    # The right check digit was printed instead of a wrong one, and what
+    # followed the digits was left out: a typo made another valid code
+    ('EAN13', '4006381333932', 'The check digit of EAN-13 must be 1'),
+    ('EAN13', '400638133393x', 'EAN-13 takes 12 digits, or 13 with the check digit'),
+    ('EAN13', '40063813339310', 'EAN-13 takes 12 digits, or 13 with the check digit'),
+    ('EAN8', '96385075', 'The check digit of EAN-8 must be 4'),
+    ('EAN14', '10012345678903', 'The check digit of EAN-14 must be 2'),
+    ('UPCA', '036000291453', 'The check digit of UPC-A must be 2'),
+    ('ISBN13', '978-3-16-148410-9', 'The check digit of ISBN-13 must be 0'),
+    ('ISBN10', '0-8044-2957-1', 'The check digit of ISBN-10 must be X'),
+    ('ISBN10', '08044295Y', 'ISBN-10 takes 9 digits, or 10 with the check digit, which may be an X'),
+    ('ISSN', '0317-8479', 'The check digit of ISSN must be 1'),
+    ('PZN', '4908809', 'The check digit of PZN must be 2'),
+    # Digits of other scripts are none of the code
+    ('EAN13', '٤٠٠638133393', 'EAN-13 takes 12 digits, or 13 with the check digit'),
+])
+def test_a_code_with_a_wrong_check_digit_is_refused(tmp_path, barcode_type, code, message):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, print_type='qrcode', barcode_type=barcode_type, code_text=code, text='[]')
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400 and response.get_json()['message'] == message
+
+
+def test_a_code_with_a_wrong_check_digit_is_not_printed(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='EAN13', code_text='4006381333932')
+    response = client.post('/labeldesigner/api/print', data=data)
+    assert response.status_code == 400 and response.get_json()['message'] == 'The check digit of EAN-13 must be 1'
+    assert not os.path.isdir(printer.SIMULATED_LABELS_DIR) or not os.listdir(printer.SIMULATED_LABELS_DIR)
+
+
+def test_every_code_with_a_check_digit_is_checked():
+    # A type python-barcode calculates a check digit for
+    for name in barcode.PROVIDED_BARCODES:
+        if getattr(barcode.get_barcode_class(name), 'digits', 0):
+            assert name in CHECK_DIGIT_CODES
+
+
+@pytest.mark.parametrize('barcode_type, number', CHECK_DIGIT_NUMBERS)
+def test_check_digits_are_those_of_python_barcode(barcode_type, number):
+    name, length, check_digit, hyphens = CHECK_DIGIT_CODES[barcode_type.lower()]
+    digits = number.replace('-', '')[:length]
+    assert check_digit(digits) == number[-1]
+    assert str(barcode.get(barcode_type.lower(), digits)).endswith(number[-1])
 
 
 def test_qr_code_has_no_byte_order_mark(tmp_path, monkeypatch):

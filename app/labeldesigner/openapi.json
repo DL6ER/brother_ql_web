@@ -343,7 +343,17 @@
             }
           },
           "400": {
-            "description": "Not printed, `message` says why, e.g. \"The printer reports: Replace media error\".",
+            "description": "The request was refused, `message` says why, e.g. an unknown label size.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
             "content": {
               "application/json": {
                 "schema": {
@@ -436,7 +446,7 @@
     "/labeldesigner/api/repository/save": {
       "post": {
         "summary": "Save a label",
-        "description": "Saves the label parameters under `name`, replacing a label saved under it unless `replace` is false. An image is sent as base64 in `image_data`.",
+        "description": "Saves the label parameters under `name`, replacing a label saved under it unless `replace` is false. An image is sent as base64 in `image_data`. Settings that printing would refuse, e.g. an unknown `label_size`, are refused. A `label_size` sent as a number, e.g. `62`, is saved as the size it names.",
         "operationId": "repositorySave",
         "requestBody": {
           "required": true,
@@ -1056,6 +1066,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later. Also when another label was being saved or deleted for longer than 10 seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -1452,6 +1472,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -1575,6 +1605,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Not printed, the printer could not print the label, `message` says why, e.g. \"The printer reports: Replace media error\". The same request may succeed later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
           }
         }
       }
@@ -1637,7 +1677,8 @@
         "properties": {
           "text": {
             "type": "string",
-            "maxLength": 10000
+            "maxLength": 10000,
+            "description": "A line break, also in the value of a blank, starts another line with the same settings."
           },
           "font": {
             "type": "string",
@@ -1785,7 +1826,7 @@
           "barcode_type": {
             "type": "string",
             "default": "QR",
-            "description": "One of `/labeldesigner/api/barcodes`."
+            "description": "One of `/labeldesigner/api/barcodes`. Of a code with a check digit, e.g. EAN13, ISBN10 or UPCA, give the digits without it, which calculates it, or with the right one. A wrong one is refused."
           },
           "qrcode_size": {
             "type": "integer",

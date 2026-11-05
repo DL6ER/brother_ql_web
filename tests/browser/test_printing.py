@@ -25,6 +25,17 @@ def test_ctrl_enter_prints(designer, monkeypatch, tmp_path):
     assert printed(designer) == ['printed']
 
 
+def test_printer_failure_is_shown(designer, monkeypatch):
+    # The server answers 503 for a print the printer did not do, the message
+    # is shown as for a refused request
+    monkeypatch.setattr('app.labeldesigner.printer.PrinterQueue.process_queue', lambda self, batch_size=0: 'The printer reports: Replace media error')
+    type_line(designer, 0, 'Hello')
+    designer.click('#edPrint')
+    assert printed(designer) == ['failed']
+    designer.wait_for_selector('#layer h2:has-text("Not printed")')
+    assert 'The printer reports: Replace media error' in designer.inner_text('#layer')
+
+
 def test_copies_buttons(designer, monkeypatch, tmp_path):
     # Never fewer than one copy, each copy prints as a label of its own
     monkeypatch.setattr('app.labeldesigner.printer.SIMULATED_LABELS_DIR', str(tmp_path))
@@ -128,7 +139,7 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     wait_for_preview(designer)
     designer.click('#printerChip')
     assert designer.eval_on_selector_all('.plist [data-printer]', 'rows => rows.map(r => r.dataset.printer)') == ['simulation', other]
-    assert 'does not answer' in designer.inner_text(f'[data-printer="{other}"]')
+    assert 'switched off or not connected' in designer.inner_text(f'[data-printer="{other}"]')
     designer.click(f'[data-printer="{other}"]')
     designer.keyboard.press('Escape')
     wait_for_preview(designer)

@@ -81,6 +81,97 @@ def check_image_size(width: int, height: int) -> None:
         raise ValueError(f"Label is too large ({int(width)} x {int(height)} pixels)")
 
 
+def _gtin_check_digit(digits: str) -> str:
+    """Check digit of EAN, UPC, GTIN and ISBN-13: the digits weighted 3 and
+    1 from the right."""
+    total = sum(int(digit) * (3 if i % 2 == 0 else 1) for i, digit in enumerate(reversed(digits)))
+    return str(-total % 10)
+
+
+def _isbn10_check_digit(digits: str) -> str:
+    check = sum(weight * int(digit) for weight, digit in enumerate(digits, start=1)) % 11
+    return 'X' if check == 10 else str(check)
+
+
+def _issn_check_digit(digits: str) -> str:
+    check = -sum(weight * int(digit) for weight, digit in zip(range(8, 1, -1), digits)) % 11
+    return 'X' if check == 10 else str(check)
+
+
+def _pzn_check_digit(digits: str) -> str:
+    # 10 is none, python-barcode refuses such a number
+    return str(sum(weight * int(digit) for weight, digit in enumerate(digits, start=2)) % 11)
+
+
+# The codes with a check digit, by type: their name, the number of digits
+# without it, how it is calculated and whether hyphens may separate the
+# digits (python-barcode leaves them out). python-barcode calculates the
+# check digit itself and ignores what follows the digits it needs, so a wrong
+# check digit or a typo at the end made another valid code.
+CHECK_DIGIT_CODES = {
+    'ean': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean13': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean13-guard': ('EAN-13', 12, _gtin_check_digit, False),
+    'ean8': ('EAN-8', 7, _gtin_check_digit, False),
+    'ean8-guard': ('EAN-8', 7, _gtin_check_digit, False),
+    'ean14': ('EAN-14', 13, _gtin_check_digit, False),
+    'gtin': ('GTIN', 13, _gtin_check_digit, False),
+    'jan': ('JAN', 12, _gtin_check_digit, False),
+    'upc': ('UPC-A', 11, _gtin_check_digit, False),
+    'upca': ('UPC-A', 11, _gtin_check_digit, False),
+    'gs1': ('GS1', 12, _gtin_check_digit, True),
+    'isbn': ('ISBN-13', 12, _gtin_check_digit, True),
+    'isbn13': ('ISBN-13', 12, _gtin_check_digit, True),
+    'isbn10': ('ISBN-10', 9, _isbn10_check_digit, True),
+    'issn': ('ISSN', 7, _issn_check_digit, True),
+    'pzn': ('PZN', 6, _pzn_check_digit, False),
+}
+
+
+def check_check_digit(barcode_type: str, value: str) -> None:
+    """ValueError if value is no number of the type: the digits without the
+    check digit, which is calculated, or with the right one."""
+    if barcode_type.lower() not in CHECK_DIGIT_CODES:
+        return
+    name, length, check_digit, hyphens = CHECK_DIGIT_CODES[barcode_type.lower()]
+    number = value.replace('-', '') if hyphens else value
+    digits, given = number[:length], number[length:].upper()
+    may_be_x = _may_be_x(check_digit)
+    if not (len(digits) == length and _is_digits(digits)
+            and (given == '' or len(given) == 1 and (_is_digits(given) or may_be_x and given == 'X'))):
+        raise ValueError(_length_problem(name, length, may_be_x))
+    expected = check_digit(digits)
+    if given and given != expected and expected != '10':
+        raise ValueError(_check_digit_problem(name, expected))
+
+
+def check_digit_problems() -> list[str]:
+    """Every message check_check_digit can refuse a value with."""
+    problems = []
+    for name, length, check_digit, _ in CHECK_DIGIT_CODES.values():
+        may_be_x = _may_be_x(check_digit)
+        problems.append(_length_problem(name, length, may_be_x))
+        problems += [_check_digit_problem(name, digit) for digit in '0123456789X' if digit != 'X' or may_be_x]
+    return list(dict.fromkeys(problems))
+
+
+def _may_be_x(check_digit) -> bool:
+    return check_digit in (_isbn10_check_digit, _issn_check_digit)
+
+
+def _length_problem(name: str, length: int, may_be_x: bool) -> str:
+    return f"{name} takes {length} digits, or {length + 1} with the check digit{', which may be an X' if may_be_x else ''}"
+
+
+def _check_digit_problem(name: str, expected: str) -> str:
+    # Without the value, which the designer shows next to it anyway
+    return f"The check digit of {name} must be {expected}"
+
+
+def _is_digits(text: str) -> bool:
+    return text.isascii() and text.isdigit()
+
+
 def _iso_date(value: str) -> datetime.date | None:
     """value as a date if it is one like 2026-11-03."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII):
@@ -301,10 +392,12 @@ class SimpleLabel:
         self._label_type = value
 
     def process_templates(self) -> None:
-        """Process and replace templates in the text lines and the code."""
-        self.text = copy.deepcopy(self.input_text)
+        """Process and replace templates in the text lines and the code. A
+        line with line breaks, e.g. from the value of a blank, becomes as many
+        lines with its settings."""
+        self.text = []
         total_length = 0
-        for line in self.text:
+        for line in copy.deepcopy(self.input_text):
             # Only the templates set it, not the request
             line.pop('unmarked', None)
             text_val = line.get('text', '')
@@ -319,6 +412,7 @@ class SimpleLabel:
             if len(text_val) > MAX_TEXT_LENGTH or total_length > MAX_TOTAL_TEXT_LENGTH:
                 raise TextTooLong("Text is too long")
             line['text'] = text_val
+            self.text.extend(self._split_line(line))
         # The code with the same counter and date as the text, so that e.g.
         # each copy has its own number in the code as well. Icons are drawn
         # with their font, a code keeps their name. Only labels that draw a
@@ -423,8 +517,23 @@ class SimpleLabel:
         # The same pieces, e.g. with the same random text: a code that takes
         # the text gets it as printed
         line['unmarked'] = text
-        shown = [value if value != '' else f'{name}?' for name, value in zip(names, values)]
+        # A name with a line break makes no more lines than the values
+        shown = [value if value != '' else re.sub(r'[\r\n]', ' ', name) + '?' for name, value in zip(names, values)]
         return ''.join(piece + value for piece, value in zip(pieces, shown + ['']))
+
+    @staticmethod
+    def _split_line(line: dict) -> list:
+        """The lines a line shows, one for each of its line breaks, all with
+        its settings. A line break failed the label, Pillow cannot place
+        several lines by the top of the letters, and a carriage return was
+        drawn as a box."""
+        def lines(text):
+            return text.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        texts = lines(line['text'])
+        if 'unmarked' not in line:
+            return [dict(line, text=text) for text in texts]
+        # The marks of the blanks in a preview have no line breaks
+        return [dict(line, text=text, unmarked=unmarked) for text, unmarked in zip(texts, lines(line['unmarked']))]
 
     def _now(self) -> datetime.datetime:
         """The time the label is made for: its timestamp, or else now."""
@@ -761,6 +870,9 @@ class SimpleLabel:
             raise ValueError("The barcode is empty")
         if len(value) > MAX_BARCODE_LENGTH:
             raise ValueError(f"Barcode value must not exceed {MAX_BARCODE_LENGTH} characters")
+        # The marks of blanks are said to be no code below
+        if not self._code_of_marks:
+            check_check_digit(self.barcode_type, value)
         try:
             return _barcode_image(barcode_class, self.barcode_type, value)
         except BarcodeError:
@@ -851,9 +963,9 @@ class SimpleLabel:
                 elif anchor == "rt":
                     max_bbox_x = text_offset[0] + max(bbox[0][2] for bbox in bboxes)
                     min_bbox_x = max_bbox_x - (bboxes[i][0][2] - bboxes[i][0][0])
-                shift = 0.1 * self._line_size(line)
-                y_min = bboxes[i][0][1] + text_offset[1] - shift
-                y_max = bboxes[i][0][3] + text_offset[1] - shift
+                # As high as the line was measured, see below
+                y_min = bboxes[i][0][1] + text_offset[1]
+                y_max = bboxes[i][0][3] + text_offset[1]
                 draw.rectangle((min_bbox_x, y_min, max_bbox_x, y_max), fill=color)
                 # Overwrite font color with white on colored background
                 color = (255, 255, 255)
@@ -870,11 +982,25 @@ class SimpleLabel:
                     bbox = (0, bbox[1], bbox[2], bbox[3])
 
                 # Ensure consistent line heights for each line except the last
-                # one (where it is not needed). We still need this when
-                # inverting text to ensure the inversion box is large enough to
-                # hold the entire text
+                # one (where it is not needed)
                 IS_LAST_LINE = i == last or (i == last_shown and last_shown >= last - 1)
-                if not IS_LAST_LINE or INVERT_LINE:
+                # Where the top of the letters is drawn
+                text_y = y
+                if INVERT_LINE:
+                    # White on black: the box reaches from the ascender of
+                    # the font to its descender, the same for all lines of a
+                    # size, and holds what reaches further, e.g. an icon. It
+                    # held only the letters of ASCII and was drawn higher
+                    # than them, those reaching below the line like a "g"
+                    # were white on white. The letters are drawn from their
+                    # top, so they move down by the room above them.
+                    ascent, descent = font.getmetrics()
+                    baseline = self._baseline(draw, line['text'], font)
+                    top = min(bbox[1] - y, baseline - ascent)
+                    bottom = max(bbox[3] - y, baseline + descent)
+                    text_y = y - top
+                    bbox = (bbox[0], y, bbox[2], y + bottom - top)
+                elif not IS_LAST_LINE:
                     # Some characters may need special height
                     all_characters = ''.join(string.ascii_letters + string.digits + string.punctuation)
                     Ag = draw.textbbox((0, y), all_characters, font, anchor="lt")
@@ -883,8 +1009,8 @@ class SimpleLabel:
                 # The box is drawn from the top of the line, its lower edge
                 # included, also where the text is lower or there is none
                 if checkbox:
-                    bbox = (bbox[0], bbox[1], bbox[2], max(bbox[3], y + 8 * self._line_size(line) // 10 + 1))
-                bboxes.append((bbox, y))
+                    bbox = (bbox[0], bbox[1], bbox[2], max(bbox[3], text_y + 8 * self._line_size(line) // 10 + 1))
+                bboxes.append((bbox, text_y))
                 y += bbox[3] - bbox[1] + (spacing if i < spaced else 0)
             else:
                 bbox = bboxes[i][0]
@@ -948,10 +1074,8 @@ class SimpleLabel:
         width = sum(run_font.getlength(run) for run, run_font in runs)
         # Anchors are "lt", "mt" or "rt": left, middle or right, top of the text font
         x = xy[0] - {'l': 0, 'm': width / 2, 'r': width}[anchor[0]]
-        # The top anchor of Pillow is the ascender of the font, the runs share
-        # the baseline below it
-        ascender = draw.textbbox((0, 0), 'H', font=font, anchor='lt')[1] - draw.textbbox((0, 0), 'H', font=font, anchor='ls')[1]
-        baseline = xy[1] + ascender
+        # The runs share the baseline below the top of an "H"
+        baseline = xy[1] + self._baseline(draw, text, font)
         boxes = []
         for run, run_font in runs:
             if fill is not None:
@@ -959,6 +1083,14 @@ class SimpleLabel:
             boxes.append(draw.textbbox((x, baseline), run, font=run_font, anchor='ls'))
             x += run_font.getlength(run)
         return (min(b[0] for b in boxes), min(b[1] for b in boxes), max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+    @staticmethod
+    def _baseline(draw, text, font) -> int:
+        """How far below xy _draw_line puts the baseline of text: Pillow's
+        top anchor is the top of the letters, with icons that of an "H"."""
+        if any(icons.is_icon(char) for char in text):
+            text = 'H'
+        return -draw.textbbox((0, 0), text, font=font, anchor='ls')[1]
 
     def _line_size(self, line) -> int:
         """Font size of a line, made smaller when the text is shrunk to fit."""

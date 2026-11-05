@@ -11,6 +11,7 @@ from PIL import Image
 from flask.testing import FlaskClient
 from werkzeug.datastructures import FileStorage
 
+from app.labeldesigner import refusals
 from tests.helpers import _red_square, _upload, EXAMPLE_FORMDATA, make_client, pixels, TEXT, verify_image
 
 
@@ -216,6 +217,59 @@ def test_invalid_input_is_logged_without_traceback(tmp_path, caplog):
     assert [(r.levelname, r.getMessage(), r.exc_info) for r in refused if r.levelname != 'DEBUG'] == [
         ('WARNING', 'Preview refused: Font size is required', None)]
     assert not any(r.levelname == 'ERROR' for r in caplog.records)
+
+
+@pytest.mark.parametrize('url, key, fallback', [
+    ('/labeldesigner/api/preview', 'message', refusals.PREVIEW_FAILED),
+    ('/labeldesigner/api/print', 'message', refusals.PRINT_FAILED),
+])
+def test_refused_requests_get_fixed_messages_and_the_log_the_details(tmp_path, monkeypatch, caplog, url, key, fallback):
+    # The text of an error may name paths or values, only the log has it
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Test', 'size': '40'}]))
+    for error, message in ((RuntimeError('/app/instance/secret.json is gone'), fallback),
+                           (ValueError('/app/instance/secret.json is invalid'), refusals.INVALID_INPUT),
+                           (ValueError('Font size is required'), 'Font size is required')):
+        def refuse(*args, **kwargs):
+            raise error
+        monkeypatch.setattr('app.labeldesigner.routes.create_label_from_request', refuse)
+        caplog.clear()
+        response = client.post(url, data=data)
+        assert response.status_code == 400
+        assert response.get_json()[key] == message
+        assert any(str(error) in record.getMessage() for record in caplog.records)
+    # An unexpected error is logged with its traceback
+    caplog.clear()
+    monkeypatch.setattr('app.labeldesigner.routes.create_label_from_request', lambda *args, **kwargs: {}['missing'])
+    client.post(url, data=data)
+    assert any(record.exc_info and record.exc_info[0] is KeyError for record in caplog.records)
+
+
+def test_fixed_messages_of_refusals():
+    # Details are left out, unknown errors get the fallback
+    assert refusals.message(ValueError('Label is too large (9000 x 9000 pixels)'), '-') == 'Label is too large'
+    assert refusals.message(ValueError('"x" is not a page selection, give pages like 1-3, 5 or all'), '-') == \
+        'Not a page selection, give pages like 1-3, 5 or all'
+    assert refusals.message(ValueError('Unknown printer model: /app/instance'), '-') == 'Unknown printer model'
+    assert refusals.message(ValueError('Unsupported printer: /app/instance\n'), '-') == 'Unsupported printer'
+    assert refusals.message(FileNotFoundError('/app/instance/labels/x.png'), '-') == 'The image cannot be read'
+    assert refusals.message(LookupError('Unknown font family: Secret'), '-') == 'Unknown font'
+    assert refusals.message(KeyError('secret'), 'Fallback') == 'Fallback'
+    # Errors with one of the fixed messages keep it, also those made of the
+    # types of codes and the printer models
+    assert all(refusals.message(ValueError(text), '-') == text for text in refusals.MESSAGES)
+    assert 'The check digit of ISBN-10 must be X' in refusals.MESSAGES
+    assert 'The PT-P750W cannot print at 600 dpi, turn off 600 dpi printing' in refusals.MESSAGES
+    assert 'The label size 62 mm endless, black/red/white (DK-22251 / DK-2251) cannot be printed on a QL-500' in refusals.MESSAGES
+
+
+def test_fixed_messages_of_the_configured_limits(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['PRINT_MAX_COUNT'] = 7
+    with client.application.app_context():
+        assert refusals.message(ValueError('print_count must not exceed 7'), '-') == 'print_count must not exceed 7'
+        assert refusals.message(ValueError('A print job must not have more than 7 labels, 3 pages and 4 copies would be 12'), '-') == \
+            'A print job must not have more than 7 labels'
 
 
 def test_flags_are_read_alike_by_all_that_take_them(tmp_path, monkeypatch):

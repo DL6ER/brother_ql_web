@@ -1,3 +1,4 @@
+import errno
 import logging
 import os
 import stat
@@ -32,6 +33,16 @@ SIMULATED_LABELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirn
 # Number of simulated labels kept in SIMULATED_LABELS_DIR, older ones are
 # deleted so that printing to the simulator cannot fill up the disk
 MAX_SIMULATED_LABELS = 100
+
+# How long a USB printer may stay silent after a job was sent and between
+# its status messages: as long as a page of the job takes to print at the
+# slowest printers, about 10 mm/s, at least STATUS_WAIT seconds.
+STATUS_WAIT = 10
+SLOWEST_PRINT_SPEED = 10
+# A job is written in pieces: pyusb gives up on a single write after 15 s,
+# a long label that the printer prints while it receives it takes longer
+WRITE_CHUNK = 16384
+STATUS_HEADER = b'\x80\x20\x42'
 
 # Default maximum number of labels to rasterize and send in a single batch.
 # Sending too many labels at once can cause printer timeouts/failures.
@@ -300,6 +311,9 @@ class PrinterQueue:
         qlr = _Raster(self.model)
         ptouch = self.model.startswith('PT-')
         generated_images = []
+        # The length of each page in mm, at most: how long the printer may
+        # take to print it
+        qlr.page_lengths = []
         simulation = is_simulation(self.device_specifier)
         jobs = []
         for entry in entries:
@@ -311,6 +325,7 @@ class PrinterQueue:
             img = label.generate()
             if simulation:
                 generated_images.append(img)
+            qlr.page_lengths.append(max(img.size) / (180 if ptouch else 300) * 25.4)
             dither = label.label_content != LabelContent.IMAGE_BW
             # The labels of a PT printer are one job. As jobs of their own, a
             # PT-E550W fed, half cut and cut the tape for each, also when it
@@ -382,15 +397,17 @@ class PrinterQueue:
                     return problem + batch
             logger.info("Sending %d bytes to printer at %s (batch %d)",
                         len(qlr.data), self.device_specifier, batch_index)
-            info = send(qlr.data, self.device_specifier)
-            logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
             if network_printer:
+                send(qlr.data, self.device_specifier)
+                logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
                 # Port 9100 gives no answer, IPP tells how the job ended
                 message = _network_job_result(self.device_specifier, self.model)
                 if message:
                     logger.warning('Printing failed: %s', message)
                     return message + batch
                 return ""
+            info = send_job(qlr.data, self.device_specifier, qlr.page_lengths)
+            logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
             logger.info('Printer response: %s', str(info))
             if info.get('did_print') and info.get('ready_for_next_job'):
                 logger.info('Label printed successfully and printer is ready for next job')
@@ -400,7 +417,10 @@ class PrinterQueue:
             return message
         except Exception as e:
             logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
-            return f"Could not send the label to the printer{batch}: {e}"
+            reason = _unanswered_reason(e)
+            if reason:
+                return f"Could not send the label to the printer{batch}: {reason}"
+            return f"Could not send the label to the printer{batch}, the log of the server names the reason"
 
     def process_queue(self, batch_size: int = 0) -> str:
         if not self._print_queue:
@@ -482,12 +502,91 @@ def _network_job_result(device_specifier: str, model: str) -> str:
             return 'The printer did not report that it finished the label, check whether it was printed'
 
 
+def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
+    """Send a print job to a USB printer and read its status messages until
+    it reports every page printed and that it is ready for the next job, an
+    error, or until it stays silent for longer than a page takes to print.
+
+    brother_ql's send() stopped reading 10 s after it began to write: a long
+    label, which the printer prints while it receives it, was not confirmed
+    and the batches after it were not printed. It also stopped at the first
+    page, the messages of the other pages were left for the next job.
+
+    page_lengths: the length of each page in mm. Returns, as _print_failure()
+    reads it: did_print, ready_for_next_job, the last printer_state, and the
+    pages of the job and how many the printer confirmed."""
+    info = {'did_print': False, 'ready_for_next_job': False, 'printer_state': None,
+            'pages': len(page_lengths), 'confirmed': 0}
+    printer = get_printer(device_specifier)
+    try:
+        _drain(printer)
+        for start in range(0, len(data), WRITE_CHUNK):
+            printer.write(data[start:start + WRITE_CHUNK])
+        # A page may take as long as the longest one, the whole job as long
+        # as all its pages
+        page_wait = STATUS_WAIT + max(page_lengths, default=0) / SLOWEST_PRINT_SPEED
+        give_up = time.monotonic() + sum(STATUS_WAIT + length / SLOWEST_PRINT_SPEED for length in page_lengths)
+        deadline = min(time.monotonic() + page_wait, give_up)
+        received = b''
+        while time.monotonic() < deadline:
+            states, received = _status_messages(received + (printer.read(32) or b''))
+            if not states:
+                time.sleep(0.02)
+                continue
+            deadline = min(time.monotonic() + page_wait, give_up)
+            for state in states:
+                info['printer_state'] = state
+                if state['errors']:
+                    return info
+                if state['status_type'] == 'Printing completed':
+                    info['confirmed'] += 1
+                elif state['status_type'] == 'Phase change':
+                    # "Printing" before each page, "waiting to receive" after it
+                    info['ready_for_next_job'] = state['phase_type'] == 'Waiting to receive'
+            info['did_print'] = info['confirmed'] >= info['pages']
+            if info['did_print'] and info['ready_for_next_job']:
+                return info
+        return info
+    finally:
+        _release(printer)
+
+
+def _drain(printer):
+    """Read what the printer still has to say, e.g. the status messages of an
+    earlier job, so that they are not taken for those of this one."""
+    for _ in range(10):
+        if not printer.read(32):
+            return
+
+
+def _status_messages(received: bytes) -> tuple[list, bytes]:
+    """The status messages in what was read from the printer, and the rest,
+    which may be the beginning of the next one. Anything before a message is
+    skipped."""
+    states = []
+    while True:
+        start = received.find(STATUS_HEADER)
+        if start < 0:
+            # The end may be the beginning of a header
+            return states, received[-(len(STATUS_HEADER) - 1):]
+        received = received[start:]
+        if len(received) < 32:
+            return states, received
+        try:
+            states.append(interpret_response(received[:32]))
+        except Exception:
+            logger.warning('Could not read a status message of the printer: %s', received[:32].hex())
+        received = received[32:]
+
+
 def _print_failure(info: dict) -> str:
-    """Why a print job was not confirmed, from the status brother_ql read back
-    from the printer while printing."""
+    """Why a print job was not confirmed, from the status read back from the
+    printer while printing."""
     state = info.get('printer_state') or {}
     if state.get('errors'):
         return 'The printer reports: ' + ', '.join(state['errors'])
+    if 0 < info.get('confirmed', 0) < info.get('pages', 0):
+        return f"The printer confirmed {info['confirmed']} of {info['pages']} labels, check whether the others were printed"
     if info.get('did_print'):
         return 'The label was printed, but the printer did not report that it is ready for the next one'
     if state:
@@ -580,6 +679,36 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     return state
 
 
+# Why a printer did not answer, in the words of those who use it. The error
+# itself is logged where it is caught.
+_UNANSWERED = (
+    ((errno.ENOENT, errno.ENODEV, errno.ENXIO), 'The printer is switched off or not connected'),
+    ((errno.EACCES, errno.EPERM), 'No permission to use the printer'),
+    ((errno.EBUSY,), 'The printer is in use by another program'),
+    ((errno.ETIMEDOUT,), 'The printer does not answer'),
+    ((errno.ECONNREFUSED,), 'The printer refuses the connection'),
+    ((errno.EHOSTUNREACH, errno.ENETUNREACH, errno.EHOSTDOWN), 'The printer cannot be reached'),
+)
+
+
+def _unanswered_reason(error: Exception) -> str:
+    """Why a printer did not answer, one of _UNANSWERED, or an empty string.
+    Never the text of the error, which may show paths and other details of
+    the server."""
+    if isinstance(error, TimeoutError):
+        return 'The printer does not answer'
+    for numbers, text in _UNANSWERED:
+        if getattr(error, 'errno', None) in numbers:
+            return text
+    return ''
+
+
+def unanswered(error: Exception) -> str:
+    """Why a printer did not answer the status query, e.g. 'The printer is
+    switched off or not connected' for a device file that is gone."""
+    return _unanswered_reason(error) or 'The printer does not answer the status query, the log of the server names the reason'
+
+
 def _failed_printer_state(device_specifier: str, error: Exception, model: str = 'Unknown') -> dict:
     """Status of a printer that did not answer the status query: model and
     media from its last answer, if there was one, and the error."""
@@ -590,7 +719,7 @@ def _failed_printer_state(device_specifier: str, error: Exception, model: str = 
         'media_width': known.get('media_width'),
         'media_length': known.get('media_length', 0),
         'media_type': known.get('media_type'),
-        'errors': [f'The printer does not answer the status query ({error})'],
+        'errors': [unanswered(error)],
         'status_type': 'Error',
         'phase_type': 'Unknown',
     }
@@ -1014,5 +1143,5 @@ def get_ptr_status(config: Config):
         }
     except Exception as e:
         logger.exception("Printer status error: %s", e)
-        status['errors'] = [str(e)]
+        status['errors'] = ['The status of the printer could not be read, the log of the server names the reason']
         return status

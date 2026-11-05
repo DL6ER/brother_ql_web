@@ -436,3 +436,16 @@ def test_thumbnails_do_not_pile_up(designer):
         designer.fill('#wzText', text)
         designer.wait_for_timeout(700)
     assert designer.evaluate('() => LAZY.size') < 20
+
+
+def test_a_wrong_check_digit_is_told(designer):
+    # It was replaced by the right one: a typo printed another valid code
+    designer.click('[data-lay="code"]')
+    designer.select_option('#edBarcode', 'EAN13')
+    designer.fill('#edCode', '4006381333932')
+    wait_for_preview(designer)
+    assert 'The check digit of EAN-13 must be 1' in designer.inner_text('#edStage')
+    assert designer.is_disabled('#edPrint')
+    designer.fill('#edCode', '4006381333931')
+    wait_for_preview(designer)
+    assert designer.is_enabled('#edPrint')

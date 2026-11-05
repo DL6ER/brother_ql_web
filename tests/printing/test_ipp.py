@@ -207,7 +207,7 @@ def test_network_printer_that_does_not_answer_keeps_its_last_status(fake_printer
     app = create_app()
     app.config['PRINTER_PRINTER'] = 'tcp://127.0.0.1'
     status = app.test_client().get('/labeldesigner/api/printer_status').get_json()
-    assert status['errors'] == ['The printer does not answer the status query (timed out)']
+    assert status['errors'] == ['The printer does not answer']
     assert (status['model'], status['media_width'], status['media_length']) == ('QL-810W', 62, 29)
 
 
@@ -248,7 +248,7 @@ def test_network_printer_error_after_the_job_is_reported(network_job):
     answer, sent, print_label = network_job
     answer['bodies'] = [READY, PRINTING, fixture('ql810w-stopped-other-error.bin')]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: See the lights or display of the printer'
 
 
@@ -256,7 +256,7 @@ def test_job_is_not_sent_to_a_network_printer_with_an_error(network_job):
     answer, sent, print_label = network_job
     answer['bodies'] = [COVER_OPEN]
     response = print_label()
-    assert response.status_code == 400
+    assert response.status_code == 503
     assert response.get_json()['message'] == 'The printer reports: The cover is open'
     assert sent == []
 
