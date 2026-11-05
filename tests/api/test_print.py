@@ -296,7 +296,7 @@ def test_unknown_cut_is_refused(tmp_path):
     client = make_client(tmp_path)
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, cut='twice'))
     assert response.status_code == 400
-    assert response.get_json()['message'] == 'cut is one of each, last, none, not twice'
+    assert response.get_json()['message'] == 'cut must be each, last or none'
 
 
 def test_ptouch_tape_is_endless(tmp_path):

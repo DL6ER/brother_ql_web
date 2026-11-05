@@ -783,7 +783,7 @@ def _cutting(get) -> tuple[str, bool, bool]:
     if cut in (None, ''):
         cut = 'last' if _whole(get('cut_once', 0)) == 1 else 'each'
     if cut not in CUTS:
-        raise ValueError(f'cut is one of {", ".join(CUTS)}, not {cut}')
+        raise ValueError('cut must be each, last or none')
     return cut, _whole(get('half_cut', 1)) != 0, _whole(get('chain', 0)) != 0
 
 
