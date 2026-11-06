@@ -24,7 +24,7 @@ from werkzeug.exceptions import HTTPException
 from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
 from brother_ql.models import ALL_MODELS
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -544,6 +544,7 @@ def repo_save():
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
         check_image_position(data.get('image_position'))
+        check_vertical_align(data.get('vertical_align'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
             data['label_size'] = stored_label_size(data['label_size'])
@@ -1229,6 +1230,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
+        # Left out or empty: in the middle of a label with room to spare
+        'vertical_align': check_vertical_align(d.get('vertical_align')),
         'blanks': _blank_values(d.get('blanks')),
         # The settings of the blanks, saved with a label or sent with it
         'blank_fields': _blank_fields(d.get('fields')),
@@ -1338,6 +1341,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
+        vertical_align=context['vertical_align'],
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
             and context['image_fit'] and not label.has_lines()):

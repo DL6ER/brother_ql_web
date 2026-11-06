@@ -45,6 +45,8 @@ MAX_FILL_SIZE = 2000
 MAX_FILLED_RATIO = 16
 # Where an image or code can be next to the text
 IMAGE_POSITIONS = ('above', 'below', 'left', 'right')
+# Where the content is on a label that has room to spare above and below it
+VERTICAL_ALIGNMENTS = ('top', 'center', 'bottom')
 # The date format of a blank, e.g. %d.%m.%Y. A long one would make a long
 # date of every blank.
 MAX_DATE_FORMAT_LENGTH = 100
@@ -72,6 +74,16 @@ def check_image_position(value) -> str | None:
     value = value or None
     if value is not None and value not in IMAGE_POSITIONS:
         raise ValueError("image_position must be above, below, left or right")
+    return value
+
+
+def check_vertical_align(value) -> str:
+    """Where the content is placed between the top and bottom margins: top,
+    center or bottom. Left out or empty: in the middle."""
+    if value is None or value == '':
+        return 'center'
+    if value not in VERTICAL_ALIGNMENTS:
+        raise ValueError("vertical_align must be top, center or bottom")
     return value
 
 
@@ -230,6 +242,7 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        vertical_align: str = 'center',
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -238,7 +251,8 @@ class SimpleLabel:
         "default": "1"}} or {"Frozen on": {"type": "date", "format":
         "%d.%m.%Y"}}. With mark_blanks the text shows blanks without a value
         as their name and a question mark, as the label designer previews
-        them."""
+        them. vertical_align places the content at the top, in the center or
+        at the bottom of a label that does not grow with it in height."""
         # Input validation
         if width < 0 or height < 0:
             raise ValueError("Width and height must be non-negative.")
@@ -304,6 +318,7 @@ class SimpleLabel:
         self._image_text_gap = image_text_gap
         # Where an image or code is next to the text, see _image_side()
         self._image_position = check_image_position(image_position)
+        self._vertical_align = check_vertical_align(vertical_align)
         # How much the image or code was enlarged or shrunk to fit the label
         self._image_scale = 1.0
         # The distance used, known once the label is generated
@@ -754,9 +769,13 @@ class SimpleLabel:
             # the text is wider
             room = width - margin_left - margin_right - img_width - gap
             start = margin_left + max((room - text_width)//2, 0) + bearing
-            # From its top, e.g. of an icon reaching above the first line
-            vertical_offset_text = (height - textsize[3] - textsize[1])//2 + (margin_top - margin_bottom)//2
-            vertical_offset_image = (height - img_height)//2 + (margin_top - margin_bottom)//2
+            # From its top, e.g., of an icon reaching above the first line.
+            # Text and image share their middle, at the top or bottom the
+            # higher of them is at the margin.
+            block = max(img_height, text_height)
+            shift = self._vertical_start(height, block) - ((height - block)//2 + (margin_top - margin_bottom)//2)
+            vertical_offset_text = (height - textsize[3] - textsize[1])//2 + (margin_top - margin_bottom)//2 + shift
+            vertical_offset_image = (height - img_height)//2 + (margin_top - margin_bottom)//2 + shift
             if side == 'left':
                 horizontal_offset_image = margin_left
                 horizontal_offset_text = start + img_width + gap
@@ -764,11 +783,19 @@ class SimpleLabel:
                 horizontal_offset_image = width - margin_right - img_width
                 horizontal_offset_text = start
         else:
-            start = margin_top if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
+            start = margin_top if grows_high else self._vertical_start(height, img_height + gap + text_height)
             # Across, in the middle between the margins
             horizontal_offset_text = max((width - text_width)//2 + (margin_left - margin_right)//2, 0) + bearing
             horizontal_offset_image = (width - img_width)//2 + (margin_left - margin_right)//2
-            if side == 'above':
+            if self._placed() != 'center':
+                # At the top or bottom, image and text at their distance
+                if side == 'above':
+                    vertical_offset_image = start
+                    vertical_offset_text = start + img_height + gap - textsize[1]
+                else:
+                    vertical_offset_text = start - textsize[1]
+                    vertical_offset_image = start + text_height + gap
+            elif side == 'above':
                 vertical_offset_image = margin_top
                 vertical_offset_text = start + img_height + gap - textsize[1]
             else:
@@ -1120,6 +1147,22 @@ class SimpleLabel:
         if self._image_text_gap is None:
             return self.auto_image_text_gap
         return self._image_text_gap
+
+    def _vertical_start(self, height: int, extent: int) -> int:
+        """Where content of extent dots begins on a label of height dots: in the
+        middle between the top and bottom margins or at one of them, in the
+        middle on a label that grows with its content."""
+        margin_top, margin_bottom = self._label_margin[2:]
+        if self._placed() == 'top':
+            return margin_top
+        if self._placed() == 'bottom':
+            return height - margin_bottom - extent
+        return (height - extent)//2 + (margin_top - margin_bottom)//2
+
+    def _placed(self) -> str:
+        """Where the content is placed: as given, in the middle on a label
+        growing in height."""
+        return 'center' if self._grows()[1] else self._vertical_align
 
     def _image_side(self, with_text: bool = True) -> str:
         """Where the image or code is next to the text: as given, else
