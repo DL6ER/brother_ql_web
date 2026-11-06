@@ -16,7 +16,7 @@ A web interface and REST API for Brother QL label printers. Design labels with t
 | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
 | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
 
-USB printers are detected automatically, network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
+USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
 
 ## Features
 
