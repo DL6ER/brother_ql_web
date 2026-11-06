@@ -340,7 +340,8 @@ function cutStrip(c, pt) {
     const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     const end = chain ? 'chain' : c.cut === 'none' ? 'none' : 'full';
-    const lab = '<span class="lab"></span>', mark = k => `<span class="cm ${k}"></span>`;
+    // Copies of the same label, all A
+    const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, pt));
     const waste = pt && !chain ? `<span class="waste"></span>${mark(c.cut === 'none' ? 'none' : 'full')}` : '';
     return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${waste}${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
