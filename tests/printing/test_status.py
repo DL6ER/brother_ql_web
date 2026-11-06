@@ -77,3 +77,34 @@ def test_ptouch_models_are_told_apart(code, model):
     packet[3], packet[4] = 0x30, code
     packet[10], packet[11], packet[24], packet[25] = 12, 0x01, 0x01, 0x08  # 12 mm laminated, white, black text
     assert get_status(FakeSlowPrinter(empty_reads=0, response=bytes(packet)))['model'] == model
+
+
+# Read from a QL-800 by the author of the fork mfwarren/brother_ql_web, who
+# swapped the rolls, and the same from another QL-800 with a DK-22205 and a
+# DK-22251: byte 25 is 0x01 for black rolls, 0x81 for black and red
+QL800_62_BLACK = bytes.fromhex('802042343830000000003e0a0000150000000000000000000001000000000000')
+QL800_62_RED = bytes.fromhex('802042343830000000003e0a0000230000000000000000000081000000000000')
+QL800_29x90 = bytes.fromhex('802042343830000000001d0b00000100005a0000000000000001000000000000')
+
+
+def _with(frame: bytes, index: int, value: int) -> bytes:
+    return frame[:index] + bytes([value]) + frame[index + 1:]
+
+
+@pytest.mark.parametrize('frame, red_roll', [
+    (QL800_62_RED, True),
+    (QL800_62_BLACK, False),
+    (QL800_29x90, False),
+    # Other values tell nothing
+    (_with(QL800_62_BLACK, 25, 0x00), None),
+    # A QL-700 prints no red, whatever it reports
+    (_with(QL800_62_RED, 4, 0x35), None),
+    # Nor is there a roll without labels
+    (_with(_with(QL800_62_RED, 10, 0), 11, 0), None),
+    # Red text on white 12 mm TZe tape (bytes 24 and 25) is no black and
+    # red roll
+    (bytes.fromhex('802042' '3068' + '00' * 5 + '0c01' + '00' * 12 + '0104' + '00' * 6), None),
+])
+def test_color_of_the_roll(frame, red_roll):
+    from app.labeldesigner.printer import get_status
+    assert get_status(FakeSlowPrinter(empty_reads=0, response=frame))['red_roll'] is red_roll

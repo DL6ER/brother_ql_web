@@ -278,6 +278,31 @@ def test_black_and_red_roll_is_not_a_mismatch(designer):
     assert designer.evaluate("() => fitsTape('62red')")
 
 
+def test_black_and_red_roll_is_detected(designer):
+    # The QL-800 series tells the color of the roll
+    fake_printer(designer, media_width=62, media_length=0, media_type='Continuous length tape', red_roll=True)
+    assert designer.inner_text('#printerChip .tape') == '62 mm endless, black and red'
+    # Black labels print on it as well
+    assert designer.locator('.tape-note').count() == 0
+    designer.select_option('#edSize', '62red')
+    wait_for_preview(designer)
+    assert 'Matches the tape in the printer' in designer.inner_text('.tape-note')
+
+
+def test_black_roll_is_no_black_and_red_one(designer):
+    fake_printer(designer, media_width=62, media_length=0, media_type='Continuous length tape', red_roll=False)
+    assert designer.input_value('#edSize') == '62'
+    designer.select_option('#edSize', '62red')
+    wait_for_preview(designer)
+    assert designer.inner_text('.tape-note.warn').startswith('The QL-800 has 62 mm endless')
+
+
+def test_tape_with_red_text_is_found(designer):
+    # The color of the text on TZe tape says nothing about black and red rolls
+    fake_printer(designer, model='PT-P750W', media_width=12, media_length=0, media_type='Laminated tape', tape_color='White', text_color='Red')
+    assert designer.evaluate('() => [S.tape, S.tapeUnknown]') == ['pt12', '']
+
+
 def test_loaded_label_that_is_not_offered(designer):
     # The simulator reports no tape, the assumed one matches nothing
     assert designer.locator('.tape-note').count() == 0

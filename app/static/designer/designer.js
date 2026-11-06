@@ -698,11 +698,12 @@ function detectTape() {
     S.tapeManual = false;
     let found = null;
     if (p && p.media_width) {
-        // The width and length of DK and TZe tape can be the same
-        const red = /red/i.test(p.text_color || '') || /red/i.test(p.media_type || '');
+        // The width and length of DK and TZe tape can be the same. The color
+        // of the text on TZe tape is no black and red roll.
+        const red = p.red_roll === true || /red/i.test(p.media_type || '');
         found = C.label_sizes.find(s => printerTakes(s) && s.tape[0] === p.media_width && s.tape[1] === (p.media_length || 0) && !!s.red === red);
-        // QL printers do not tell whether a roll is black and red
-        S.tapeRedUnknown = !!found && !red && !p.text_color;
+        // Only the QL-800 series tells whether a roll is black and red
+        S.tapeRedUnknown = !!found && !red && p.red_roll == null;
         if (!found) S.tapeUnknown = p.media_length ? `${p.media_width} x ${p.media_length} mm` : `${p.media_width} mm`;
     }
     S.tape = found ? found.id : C.default_label_size;
