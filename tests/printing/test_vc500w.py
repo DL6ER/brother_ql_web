@@ -80,14 +80,18 @@ class FakeVC500W:
     usb=True, at 'path' like a printer on USB. 'configs' and 'statuses' are
     the answers to /config.xml and /status.xml one after the other, the last
     one again and again. Received print commands and images are kept. With
-    'lose', the first bytes of each image are lost like on USB. The data is
-    confirmed after 'receive_delay' seconds."""
+    'lose', the first bytes of each image are lost like on USB. A string in
+    'refuse_print' refuses every print command, a list the next ones. The
+    status questions counted in 'unanswered' (from 1) get no answer, as on a
+    weak Wi-Fi. The data is confirmed after 'receive_delay' seconds."""
 
     def __init__(self, usb=False):
         self.configs = [CONFIG]
         self.statuses = [status_xml()]
         self.refuse_print = ''
         self.lose = 0
+        self.unanswered = set()
+        self.status_reads = 0
         self.receive_delay = 0
         self.commands = []
         self.images = []
@@ -137,11 +141,17 @@ class FakeVC500W:
                 config = self.configs.pop(0) if len(self.configs) > 1 else self.configs[0]
                 connection.sendall(answer(config))
             elif '<path>/status.xml</path>' in command:
+                self.status_reads += 1
+                if self.status_reads in self.unanswered:
+                    continue
                 status = self.statuses.pop(0) if len(self.statuses) > 1 else self.statuses[0]
                 connection.sendall(answer(status))
             elif '<print>' in command:
-                if self.refuse_print:
-                    connection.sendall(answer(code=1, comment=self.refuse_print))
+                refusal = self.refuse_print
+                if isinstance(refusal, list):
+                    refusal = refusal.pop(0) if refusal else ''
+                if refusal:
+                    connection.sendall(answer(code=1, comment=refusal))
                     continue
                 connection.sendall(answer(comment='ready to receive'))
                 self.ready_at.append(time.monotonic())
@@ -332,6 +342,42 @@ def test_refused_command(fake):
     fake.refuse_print = 'busy'
     with pytest.raises(vc500w.VC500WError, match='The printer refused the command: busy'):
         vc500w.print_image(fake.target, IMAGE, port=fake.port)
+
+
+def test_printer_receiving_another_job_is_waited_for(fake):
+    # It refuses the command while another app sends a job, although idle
+    fake.refuse_print = [vc500w.PRINTER_IS_BUSY, vc500w.PRINTER_IS_BUSY]
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == ''
+    assert fake.images == [IMAGE.tobytes()]
+    assert sum('<print>' in c for c in fake.commands) == 3
+
+
+def test_printer_that_never_gets_the_other_job(fake, monkeypatch):
+    # A job whose data stopped coming blocks it until it is switched off
+    monkeypatch.setattr(vc500w, 'BUSY_TIMEOUT', 0.1)
+    fake.refuse_print = vc500w.PRINTER_IS_BUSY
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.BLOCKED
+    assert fake.images == []
+
+
+def test_lost_status_answer_does_not_fail_the_job(fake, monkeypatch):
+    # The printer goes on with the label, the next question goes on a new
+    # connection
+    monkeypatch.setattr(vc500w, 'TIMEOUT', 0.2)
+    fake.statuses = [status_xml('IDLE', 'SUCCESS'), status_xml('BUSY', 'PRINTING', line=16),
+                     status_xml('BUSY', 'PRINTING', line=32), status_xml('IDLE', 'SUCCESS')]
+    fake.unanswered = {2, 3}
+    stages = []
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port,
+                              progress=lambda stage, line: stages.append((stage, line))) == ''
+    assert stages == [('Printing', 16), ('Printing', 32)]
+
+
+def test_printer_that_stops_answering_during_the_job(fake, monkeypatch):
+    monkeypatch.setattr(vc500w, 'TIMEOUT', 0.1)
+    monkeypatch.setattr(vc500w, 'STALL_TIMEOUT', 0.5)
+    fake.unanswered = set(range(2, 1000))
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.UNFINISHED
 
 
 def test_label_too_long_for_the_printer(fake):

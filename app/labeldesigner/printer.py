@@ -723,7 +723,7 @@ def _vc500w_error(error: str) -> str:
         # A label lies in the output, also the tape a new cassette feeds
         return vc500w.TAKE_OUT
     if error in (vc500w.TAKE_OUT, vc500w.DAMAGED, vc500w.NO_ANSWER, vc500w.UNFINISHED, vc500w.NO_CASSETTE, vc500w.BUSY,
-                 vc500w.TOO_LONG):
+                 vc500w.BLOCKED, vc500w.TOO_LONG):
         return error
     return f'The printer reports: {error.replace("_", " ").capitalize()}'
 
