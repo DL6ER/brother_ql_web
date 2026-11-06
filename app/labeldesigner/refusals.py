@@ -79,6 +79,9 @@ PATTERNS = (
     (re.compile(r'(?s)".*" is not a page selection, give pages like 1-3, 5 or all'),
      'Not a page selection, give pages like 1-3, 5 or all'),
     (re.compile(r'(?s)The PDF has .*, there is no page .*'), 'The PDF has no such page'),
+    (re.compile(r'(?s)A date offset is a sign, a number and d, w, m or y, e\.g\., \+5d, not .*'),
+     'A date offset is a sign, a number and d, w, m or y, e.g., +5d'),
+    (re.compile(r'(?s)A date offset is at most a hundred years, not .*'), 'A date offset is at most a hundred years'),
 )
 
 # Errors by their kind, the first that applies

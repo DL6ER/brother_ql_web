@@ -710,3 +710,18 @@ def test_undo_history_keeps_an_image_once(designer):
     designer.reload()
     wait_for_preview(designer)
     assert designer.evaluate('() => S.edit.design.image.data.length') == data
+
+
+def test_dates_moved_from_today_are_typed_and_shown(designer):
+    # Written [today+5d], [today + 2 weeks] or [Today-1Y], they are dates of
+    # the server moved from today, shown as typed in the short form
+    fmt = designer.evaluate('() => dateFormat()')
+    type_line(designer, 0, 'Use by [today+5d], [today + 2 weeks], [Today-1Y]')
+    assert designer.evaluate('() => S.edit.design.text[0].text') == f'Use by {{{{datetime+5d:{fmt}}}}}, {{{{datetime+2w:{fmt}}}}}, {{{{datetime-1y:{fmt}}}}}'
+    assert 'Everything fits.' in fits_note(designer)
+    designer.evaluate('() => renderEditor()')
+    assert designer.input_value('[data-row="0"] .tx') == 'Use by [today+5d], [today+2w], [today-1y]'
+    # Each keeps its format, also where the wizard puts in its lines
+    assert designer.evaluate("() => fromDisplay('[today+6m] x', '{{datetime+5d:%d.%m.}} x', null, true)") == '{{datetime+6m:%d.%m.}} x'
+    # Not a blank of that name
+    assert designer.evaluate("() => ['today+5d', 'Today - 1 month', 'counter:3', 'id', 'today 5d'].map(isVariable)") == [True, True, True, True, False]

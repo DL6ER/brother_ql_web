@@ -10,6 +10,7 @@ import secrets
 import barcode
 import threading
 import contextlib
+import datetime
 from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
@@ -24,7 +25,7 @@ from werkzeug.exceptions import HTTPException
 from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
 from brother_ql.models import ALL_MODELS
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, shift_date
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -1421,8 +1422,15 @@ def _blank_setting(field) -> bool:
 
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
-    "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    "date", "format": "%d.%m.%Y"}}. A date may start at a day moved from
+    today, e.g., {"Best before": {"type": "date", "default": "+5d"}}."""
+    fields = _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    # A date moved from today must be one it can be moved by
+    for field in fields.values():
+        default = field.get('default')
+        if field.get('type') == 'date' and isinstance(default, str) and default.strip()[:1] in ('+', '-'):
+            shift_date(datetime.date.today(), default.strip())
+    return fields
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:

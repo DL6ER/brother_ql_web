@@ -102,6 +102,52 @@ def test_dates_of_blanks_are_written_in_their_format(tmp_path):
         assert label.text[0]['text'].split('|')[1] == today
 
 
+def test_dates_of_blanks_start_at_a_day_moved_from_today(tmp_path):
+    # A best-before date as a default, e.g., 5 days or 6 months from today.
+    # Given values may be moved as well, also through the API.
+    client = make_client(tmp_path)
+    timestamp = int(datetime(2024, 1, 31, 12).timestamp())
+    fields = {'Use by': {'type': 'date', 'format': '%d.%m.%Y', 'default': '+5d'}, 'Made on': {'type': 'date', 'default': '-1w'},
+              'Note': {'type': 'text', 'default': '+5d'}}
+    data = {'timestamp': str(timestamp), 'fields': json.dumps(fields),
+            'text': json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': '{{blank:Use by}}|{{blank:Made on}}|{{blank:Note}}'}])}
+    expected = {
+        json.dumps({}): '05.02.2024|2024-01-24|+5d',
+        json.dumps({'Use by': '+1m', 'Made on': ' +1y '}): '29.02.2024|2025-01-31|+5d',
+        json.dumps({'Use by': '2024-03-01', 'Made on': '', 'Note': '+1d'}): '01.03.2024||+1d',
+        # Not an offset, stays as given like any value that is no date
+        json.dumps({'Use by': '+5', 'Made on': 'in 5d'}): '+5|in 5d|+5d',
+    }
+    with client.application.test_request_context():
+        for blanks, text in expected.items():
+            label = create_label_from_request(dict(data, blanks=blanks))
+            label.process_templates()
+            assert label.text[0]['text'] == text
+    response = client.post('/labeldesigner/api/preview', data=dict(EXAMPLE_FORMDATA, **data, blanks=json.dumps({'Use by': '+101y'})))
+    assert response.status_code == 400 and response.get_json()['message'] == 'A date offset is at most a hundred years'
+
+
+@pytest.mark.parametrize('default, message', [
+    ('+5x', 'A date offset is a sign, a number and d, w, m or y, e.g., +5d'),
+    ('-5', 'A date offset is a sign, a number and d, w, m or y, e.g., +5d'),
+    (' +101y', 'A date offset is at most a hundred years'),
+])
+def test_dates_of_blanks_moved_by_another_offset_are_refused(tmp_path, default, message):
+    # Refused when saved, not only when printed
+    client = make_client(tmp_path, empty_repo=True)
+    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': '{{blank:Use by}}', 'size': '40'}])
+    fields = {'Use by': {'type': 'date', 'default': default}}
+    response = client.post('/labeldesigner/api/preview', data=dict(EXAMPLE_FORMDATA, text=text, fields=json.dumps(fields)))
+    assert response.status_code == 400 and response.get_json()['message'] == message
+    response = client.post('/labeldesigner/api/repository/save', json={'name': 'Use by.json', 'label_size': '62', 'text': text, 'fields': fields})
+    assert response.status_code == 400 and response.get_json()['message'] == message
+    assert os.listdir(client.application.config['LABEL_REPOSITORY_DIR']) == []
+    # Text may look like it
+    fields['Use by']['type'] = 'text'
+    response = client.post('/labeldesigner/api/repository/save', json={'name': 'Use by.json', 'label_size': '62', 'text': text, 'fields': fields})
+    assert response.status_code == 200
+
+
 @pytest.mark.parametrize('fields', ['Due', '["Due"]', '{"Due": "date"}',
                                     # What is in them as well: a format that is
                                     # no text was written as its Python text

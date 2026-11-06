@@ -56,8 +56,8 @@
       "align": "center",
       "line_spacing": "100",
       "color": "black",
-      "text": "Use within 5 days"
+      "text": "Use by {{datetime+5d:%Y-%m-%d}}"
     }
   ],
-  "label_text": "Homemade pesto\nMade {{datetime:%Y-%m-%d}}\nUse within 5 days"
+  "label_text": "Homemade pesto\nMade {{datetime:%Y-%m-%d}}\nUse by {{datetime+5d:%Y-%m-%d}}"
 }
