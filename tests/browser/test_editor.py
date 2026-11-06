@@ -8,7 +8,7 @@ import os
 import pytest
 from PIL import Image
 
-from tests.browser.helpers import fits_note, kept, png, preview_size, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, png, preview_size, save_as, type_line, wait_for_preview
 
 
 def edit_saved_label(page, title):
@@ -34,10 +34,67 @@ def test_text_that_does_not_fit_can_be_shrunk(designer):
     designer.select_option('#edSize', '62x29')
     wait_for_preview(designer)
     assert 'does not fit' in fits_note(designer)
-    designer.click('#edFits button')
+    designer.click('#edFits [data-fix="shrink"]')
     wait_for_preview(designer)
     assert 'Everything fits.' in fits_note(designer)
     assert 'on' in designer.get_attribute('[data-tfit="shrink"]', 'class')
+
+
+def test_long_lines_can_wrap(designer, server):
+    # Offered where the text does not fit, it keeps its size
+    designer.click('[data-tfit="none"]')
+    type_line(designer, 0, 'Store in a cool and dry place away from direct sunlight')
+    designer.fill('[data-row="0"] input.mini', '40')
+    designer.select_option('#edSize', '62x29')
+    wait_for_preview(designer)
+    kept(designer)
+    assert 'does not fit' in fits_note(designer)
+    designer.click('#edFits [data-fix="wrap"]')
+    wait_for_preview(designer)
+    assert 'Everything fits.' in fits_note(designer)
+    assert designer.get_attribute('#edWrap', 'aria-pressed') == 'true'
+    assert designer.evaluate("() => [formFor(S.edit.design).get('text_wrap'), formFor(S.edit.design).get('text_fit')]") == ['1', 'none']
+    # A step to undo
+    kept(designer)
+    designer.click('#edUndo')
+    wait_for_preview(designer)
+    assert designer.get_attribute('#edWrap', 'aria-pressed') == 'false' and 'does not fit' in fits_note(designer)
+    designer.click('#edWrap')
+    wait_for_preview(designer)
+    assert designer.evaluate("() => S.edit.design.text_wrap") == '1'
+    # Saved with the label and opened with it
+    save_as(designer, 'Wrapped')
+    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Wrapped\" is now one of your saved labels')")
+    try:
+        designer.click('#edNew')
+        wait_for_preview(designer)
+        assert designer.get_attribute('#edWrap', 'aria-pressed') == 'false'
+        edit_saved_label(designer, 'Wrapped')
+        assert designer.get_attribute('#edWrap', 'aria-pressed') == 'true'
+    finally:
+        designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Wrapped.json'})
+    assert designer.evaluate("() => [normalize({ text_wrap: '1' }).text_wrap, normalize({}).text_wrap]") == ['1', '0']
+
+
+def test_lines_wrap_only_where_the_label_limits_them(designer):
+    # Disabled with the reason
+    def why():
+        return designer.get_attribute('.seg.tog:has(#edWrap)', 'title') if designer.is_disabled('#edWrap') else ''
+    type_line(designer, 0, 'Pantry')
+    assert why() == ''
+    designer.click('[data-along="1"]')
+    wait_for_preview(designer)
+    assert why() == 'Lines along endless tape have room to grow'
+    designer.click('[data-along="0"]')
+    designer.click('[data-tfit="fill"]')
+    wait_for_preview(designer)
+    assert why() == 'Filled, each line is as wide as the tape'
+    designer.select_option('#edSize', '62x29')
+    wait_for_preview(designer)
+    assert why() == ''
+    designer.click('[data-lay="code"]')
+    wait_for_preview(designer)
+    assert why() == 'Only with text'
 
 
 def test_text_next_to_a_code_on_a_small_die_cut_label(designer):
