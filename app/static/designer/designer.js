@@ -323,7 +323,8 @@ function cutText(c, pt) {
     const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
-    return text + (chain ? '. The last label stays in the printer, the next print cuts it off.' : '.');
+    return text + (chain ? '. The last label stays in the printer, the next print cuts it off.'
+        : pt ? '. The tape fed before the first label is waste.' : '.');
 }
 
 // The same in a few words, next to the preview
@@ -333,14 +334,16 @@ function cutShort(c, pt) {
 }
 
 // Three copies leaving the printer, as the display of a P-touch printer
-// shows them: cuts, half cuts and the last label left in the printer
+// shows them: the waste fed before the first label, cuts, half cuts and the
+// last label left in the printer
 function cutStrip(c, pt) {
     const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     const end = chain ? 'chain' : c.cut === 'none' ? 'none' : 'full';
     const lab = '<span class="lab"></span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, pt));
-    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
+    const waste = pt && !chain ? `<span class="waste"></span>${mark(c.cut === 'none' ? 'none' : 'full')}` : '';
+    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${waste}${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
 }
 
 // marks: a preview shows the blanks still to fill in. blanks: those of
@@ -2119,7 +2122,7 @@ function cutSettings(attr, c, pt, withCut = true) {
     const seg = (k, opts) => `<div class="seg wrap">${opts.map(([v, n]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${c[k] === v ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     return (withCut ? `<span class="label-s">Cutting</span>${seg('cut', CUTS)}` : '')
         + (pt ? `<span class="label-s">Half cut between labels</span>${seg('half_cut', [['1', 'On'], ['0', 'Off']])}
-            <span class="label-s">Chain printing, the last label stays in the printer</span>${seg('chain', [['0', 'Off'], ['1', 'On']])}` : '');
+            <span class="label-s">Chain printing, the last label stays in the printer</span>${seg('chain', [['1', 'On'], ['0', 'Off']])}` : '');
 }
 
 // A label can keep its own way of cutting, else it is cut as set for the printer

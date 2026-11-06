@@ -208,6 +208,10 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .cut-strip { display: inline-flex; align-items: center; flex: none; }
 .cut-strip .lab { width: 20px; height: 12px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3); }
 .cut-strip .cm.full { width: 6px; }
+/* Tape fed before the first label, crossed out */
+.cut-strip .waste { width: 12px; height: 12px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .3);
+    background: linear-gradient(to top right, transparent calc(50% - 1px), #6b747d, transparent calc(50% + 1px)),
+                linear-gradient(to bottom right, transparent calc(50% - 1px), #6b747d, transparent calc(50% + 1px)), #fff; }
 .cut-strip .cm.half { width: 0; height: 12px; border-left: 2px dotted #6b747d; margin: 0 -1px; position: relative; z-index: 1; }
 .cut-strip .cm.none, .cut-strip .cm.chain { width: 0; }
 .cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); margin-left: 4px; }
