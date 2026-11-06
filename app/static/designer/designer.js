@@ -196,14 +196,19 @@ function formatDate(iso, fmt = dateFormat()) {
 }
 
 // Templates as text fields show them: [Name] for a blank, [today], [counter]
-// and [id]
-const TEMPLATE_RE = /\{\{(?:blank:([^}]+)|(datetime):[^}]+|counter(:\d+)?|short-uuid)\}\}/g;
+// (also with a start and step, e.g., [counter:001:5]) and [id]
+const TEMPLATE_RE = /\{\{(?:blank:([^}]+)|(datetime):[^}]+|counter(:[0-9A-Za-z]+(?::-?\d+)?)?|short-uuid)\}\}/g;
 function shownAs(m) {
     if (m[1] !== undefined) return `[${m[1]}]`;
     if (m[2]) return '[today]';
     if (m[0].startsWith('{{counter')) return `[counter${m[3] || ''}]`;
     return '[id]';
 }
+// [counter], or one with a start and a step as typed, e.g., [counter:001:5]
+// or [Counter : A]
+const COUNTER_RE = /^counter(?:\s*:\s*([0-9A-Za-z]+)(?:\s*:\s*(-?\d+))?)?$/i;
+// Names of variables, a blank cannot have them
+const isVariable = n => /^(today|id)$/i.test(n) || COUNTER_RE.test(n);
 // The text as its field shows it, and where each template is shown
 function displayed(text) {
     text = String(text || '');
@@ -247,8 +252,8 @@ function fromDisplay(text, previous = '', caret = null, inOrder = false) {
         if (own) return own.template;
         const n = name.trim();
         if (n.toLowerCase() === 'today') return `{{datetime:${formats.length ? formats[Math.min(k++, formats.length - 1)] : dateFormat()}}}`;
-        const counter = n.match(/^counter(:\d+)?$/i);
-        if (counter) return `{{counter${counter[1] || ''}}}`;
+        const counter = n.match(COUNTER_RE);
+        if (counter) return `{{counter${counter[1] ? ':' + counter[1] : ''}${counter[2] ? ':' + counter[2] : ''}}}`;
         if (n.toLowerCase() === 'id') return '{{short-uuid}}';
         return `{{blank:${n}}}`;
     });
@@ -1333,13 +1338,13 @@ function varsHelpHTML() {
         <ul>
             <li><code>[Name]</code> - a blank: whoever prints the label fills it in, in the editor or in the wizard. A name ending in "on" or containing "date" (like <code>[Frozen on]</code>) asks for a date, <code>[Box]</code>, <code>[Number]</code>, <code>[Portions]</code> and <code>[Count]</code> ask for a number, every other name for text.</li>
             <li><code>[today]</code> - today's date, in the date format chosen in the printer settings (like the browser by default).</li>
-            <li><code>[counter]</code> - a number that counts up, each copy gets the next one.</li>
+            <li><code>[counter]</code> - a number that counts up, each copy gets the next one. Written with a start, it counts as the start looks: <code>[counter:001]</code> 001, 002, ..., <code>[counter:A]</code> A, B, C, and with a step <code>[counter:10:5]</code> 10, 15, 20.</li>
             <li><code>[id]</code> - a short random ID.</li>
         </ul>
         <p>The variables of the server work as well:</p>
         <ul>
             <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <a href="https://strftime.org/" target="_blank" rel="noopener">strftime</a> codes, e.g. <code>%H:%M:%S %d.%m.%Y</code>.</li>
-            <li><code>{{counter[:&lt;start&gt;]}}</code> - a number that counts up, starting at &lt;start&gt; (default 1). When you print several labels at once, each gets the next number.</li>
+            <li><code>{{counter[:&lt;start&gt;[:&lt;step&gt;]]}}</code> - a number that counts up, starting at &lt;start&gt; (default 1) in steps of &lt;step&gt; (default 1), like <code>[counter]</code>. When you print several labels at once, each gets the next number.</li>
             <li><code>{{uuid}}</code> - a random UUID, <code>{{short-uuid}}</code> - a shorter random UUID.</li>
             <li><code>{{mdi:&lt;name&gt;}}</code> - the <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icon</a> &lt;name&gt;, e.g. <code>{{mdi:lightbulb}}</code>. The Symbol button finds the names.</li>
             <li><code>{{env:&lt;var&gt;}}</code> - the environment variable &lt;var&gt;, if it is listed in <code>LABEL_TEMPLATE_ENV_VARS</code>.</li>
@@ -2543,7 +2548,7 @@ function openBlankDialog(d, target) {
         e.preventDefault();
         const n = name.value.trim();
         const err = !n ? 'Give the blank a name.' : /[\[\]{}\n]/.test(n) ? 'Brackets cannot be part of the name.'
-            : ['today', 'counter', 'id'].includes(n.toLowerCase()) ? `[${n}] is a variable already, choose another name.` : '';
+            : isVariable(n) ? `[${n}] is a variable already, choose another name.` : '';
         if (err) { $('#bErr').textContent = err; $('#bErr').hidden = false; return; }
         d.fields = d.fields || {};
         d.fields[n] = Object.assign({ type: kind }, kind !== 'date' && def.value.trim() ? { default: def.value.trim() } : {});
