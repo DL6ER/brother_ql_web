@@ -1237,14 +1237,6 @@ def _printable_color(value: str, palette: str) -> str:
     return 'black'
 
 
-def _min_length(label_size: str) -> int:
-    """Labels on the tape of the VC-500W are at least as long as they are
-    wide: the printer turns images that are higher than wide."""
-    if _palette(label_size) != 'color':
-        return 0
-    return next(label.dots_printable[0] for label in LABELS if label.identifier == label_size)
-
-
 def _image_mode(d: dict) -> str:
     """Images stay in color on the tapes of the VC-500W."""
     mode = check_image_mode(d.get('image_mode'))
@@ -1398,7 +1390,6 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         fill_text=context['text_fit'] == 'fill',
         image_text_gap=context['image_text_gap'],
         image_position=context['image_position'],
-        min_length=_min_length(label_size),
         blanks=context['blanks'],
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
@@ -1829,7 +1820,6 @@ def webhook_print():
                 label_content=label_content,
                 label_orientation=image_orientation,
                 label_type=label_type,
-                min_length=_min_length(label_size),
                 image=img,
                 image_fit=True,
                 text=[],

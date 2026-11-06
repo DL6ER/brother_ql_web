@@ -15,11 +15,12 @@ import time
 import tty
 
 import pytest
-from PIL import Image, JpegImagePlugin
+from PIL import Image
 
 from app import create_app
 from app.labeldesigner import printer, vc500w
 from app.labeldesigner.label import LabelOrientation
+from app.labeldesigner.label_names import LABELS
 from tests.helpers import make_client
 
 CONFIG = b'''<?xml version="1.0" encoding="UTF-8"?>
@@ -36,6 +37,8 @@ CONFIG = b'''<?xml version="1.0" encoding="UTF-8"?>
 </config>
 '''
 TEXT = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'X', 'size': '40'}])
+# What the print flow tests send: two pixels of a row
+IMAGE = Image.new('RGB', (2, 1), (255, 0, 0))
 
 
 def status_xml(state='IDLE', stage='READY FOR PRINT', error='NONE', remain='180.96', line=0):
@@ -79,13 +82,15 @@ class FakeVC500W:
     usb=True, at 'path' like a printer on USB. 'configs' and 'statuses' are
     the answers to /config.xml and /status.xml one after the other, the last
     one again and again. Received print commands and images are kept. With
-    'lose', the first bytes of each image are lost like on USB."""
+    'lose', the first bytes of each image are lost like on USB. The data is
+    confirmed after 'receive_delay' seconds."""
 
     def __init__(self, usb=False):
         self.configs = [CONFIG]
         self.statuses = [status_xml()]
         self.refuse_print = ''
         self.lose = 0
+        self.receive_delay = 0
         self.commands = []
         self.images = []
         # When each "ready to receive" was sent and the first byte of the
@@ -157,6 +162,7 @@ class FakeVC500W:
                     buffer += data
                 self.images.append(buffer[lost:size + lost])
                 buffer = buffer[size + lost:]
+                time.sleep(self.receive_delay)
                 connection.sendall(answer(comment='print data received'))
 
     def close(self):
@@ -211,7 +217,7 @@ def test_no_cassette():
 
 def test_print_without_cassette(fake):
     fake.statuses = [no_cassette_status()]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', 'quality', 'full', fake.port) == vc500w.NO_CASSETTE
+    assert vc500w.print_image(fake.target, IMAGE, 'quality', 'full', fake.port) == vc500w.NO_CASSETTE
     assert not [c for c in fake.commands if '<print>' in c]
 
 
@@ -221,12 +227,15 @@ def test_print_waits_until_the_printer_is_idle(fake, monkeypatch):
     fake.statuses = [status_xml('IDLE', 'SUCCESS'), status_xml('IDLE', 'SUCCESS'), status_xml('BUSY', 'PROCESSING'),
                      status_xml('BUSY', 'PRINTING', line=16), status_xml('IDLE', 'SUCCESS')]
     stages = []
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8 jpeg data', 'fast', 'half', fake.port,
-                             lambda stage, line: stages.append((stage, line))) == ''
-    assert fake.images == [b'\xff\xd8 jpeg data']
+    image = Image.new('RGB', (3, 2), (0, 128, 255))
+    assert vc500w.print_image(fake.target, image, 'fast', 'half', fake.port,
+                              lambda stage, line: stages.append((stage, line))) == ''
+    assert fake.images == [image.tobytes()]
     assert stages == [('Processing', 0), ('Printing', 16)]
+    # Raw RGB, three bytes per pixel, as wide as the image across the tape
     command = next(c for c in fake.commands if '<print>' in c)
-    for part in ('<mode>color</mode>', '<lpi>264</lpi>', '<datasize>12</datasize>', '<cutmode>half</cutmode>', '<autofit>1</autofit>'):
+    for part in ('<mode>color</mode>', '<lpi>264</lpi>', '<width>3</width>\n<height>2</height>',
+                 '<dataformat>rawrgb</dataformat>', '<datasize>18</datasize>', '<cutmode>half</cutmode>'):
         assert part in command
 
 
@@ -236,7 +245,7 @@ def test_print_waits_while_the_cassette_is_read(fake):
                      status_xml('IDLE', 'READY FOR PRINT', remain='153.00'), status_xml('BUSY', 'PRINTING'),
                      status_xml('IDLE', 'SUCCESS')]
     stages = []
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port,
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port,
                              progress=lambda stage, line: stages.append(stage)) == ''
     assert stages == ['Reading the cassette', 'Feeding the tape', 'Printing']
     assert len(fake.images) == 1
@@ -245,19 +254,19 @@ def test_print_waits_while_the_cassette_is_read(fake):
 def test_printer_that_stays_busy(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'BUSY_TIMEOUT', 0.1)
     fake.statuses = [status_xml('BUSY', 'PRINTING')]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == vc500w.BUSY
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.BUSY
     assert not [c for c in fake.commands if '<print>' in c]
 
 
 def test_image_follows_ready_to_receive_after_a_pause(fake):
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == ''
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == ''
     assert fake.data_at[0] - fake.ready_at[0] >= vc500w.DATA_DELAY
 
 
 def test_lost_data_is_filled_up(fake):
     # The printer waits for the bytes it lost, zeros make up for them
     fake.lose = 700
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8' * 100, port=fake.port) == vc500w.DAMAGED
+    assert vc500w.print_image(fake.target, Image.new('RGB', (100, 1), (255, 216, 0)), port=fake.port) == vc500w.DAMAGED
     assert fake.images[0][-200:] == bytes(200)
 
 
@@ -265,7 +274,7 @@ def test_printer_that_takes_no_data(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'DATA_TIMEOUT', 0.1)
     monkeypatch.setattr(vc500w, 'FILL_LIMIT', 1024)
     fake.lose = 4096
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == vc500w.NO_ANSWER
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.NO_ANSWER
 
 
 def test_label_still_in_the_printer_is_waited_for(fake):
@@ -276,30 +285,30 @@ def test_label_still_in_the_printer_is_waited_for(fake):
                      status_xml('IDLE', 'SUCCESS'), status_xml('IDLE', 'SUCCESS'), status_xml('BUSY', 'PRINTING'),
                      status_xml('IDLE', 'SUCCESS')]
     stages = []
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port,
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port,
                              progress=lambda stage, line: stages.append(stage)) == ''
-    assert fake.images == [b'\xff\xd8', b'\xff\xd8']
+    assert fake.images == [IMAGE.tobytes(), IMAGE.tobytes()]
     assert stages == ['Processing', vc500w.TAKE_OUT, 'Printing']
 
 
 def test_label_in_the_printer_before_the_job(fake):
     fake.statuses = [status_xml('ERROR', 'SUCCESS', 'EJECT JAM'), status_xml('IDLE', 'SUCCESS'),
                      status_xml('BUSY', 'PRINTING'), status_xml('IDLE', 'SUCCESS')]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == ''
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == ''
     assert len(fake.images) == 1
 
 
 def test_label_that_is_not_taken_out(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'TAKE_OUT_TIMEOUT', 0.1)
     fake.statuses = [status_xml('ERROR', 'SUCCESS', 'EJECT JAM')]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == vc500w.TAKE_OUT
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.TAKE_OUT
     assert fake.images == []
 
 
 def test_printer_without_progress(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'STALL_TIMEOUT', 0.1)
     fake.statuses = [status_xml('IDLE', 'SUCCESS'), status_xml('BUSY', 'PRINTING', line=32)]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == vc500w.UNFINISHED
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.UNFINISHED
 
 
 def test_long_label_is_not_given_up(fake, monkeypatch):
@@ -307,24 +316,40 @@ def test_long_label_is_not_given_up(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'STALL_TIMEOUT', 0.2)
     fake.statuses = ([status_xml('IDLE', 'SUCCESS')] + [status_xml('BUSY', 'PRINTING', line=line) for line in range(0, 640, 16)]
                      + [status_xml('IDLE', 'SUCCESS')])
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == ''
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == ''
 
 
 def test_printer_that_never_reports_busy(fake):
     # A label it finished between two questions: done after START_TIMEOUT
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == ''
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == ''
     assert sum('/status.xml' in c for c in fake.commands) > 1
 
 
 def test_print_error_is_reported(fake):
     fake.statuses = [status_xml(), status_xml('BUSY', 'PRINTING'), status_xml('ERROR', 'PRINTING', 'COVER OPEN')]
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port) == 'COVER OPEN'
+    assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == 'COVER OPEN'
 
 
 def test_refused_command(fake):
     fake.refuse_print = 'busy'
     with pytest.raises(vc500w.VC500WError, match='The printer refused the command: busy'):
-        vc500w.print_jpeg(fake.target, b'\xff\xd8', port=fake.port)
+        vc500w.print_image(fake.target, IMAGE, port=fake.port)
+
+
+def test_label_too_long_for_the_printer(fake):
+    # maxprintsize of /config.xml, in bytes of the image
+    fake.configs = [CONFIG.replace(b'13056000', b'100')]
+    assert vc500w.print_image(fake.target, Image.new('RGB', (34, 1)), port=fake.port) == vc500w.TOO_LONG
+    assert not [c for c in fake.commands if '<print>' in c]
+    assert vc500w.print_image(fake.target, Image.new('RGB', (33, 1)), port=fake.port) == ''
+
+
+def test_more_data_gets_more_time(fake, monkeypatch):
+    # Over a weak Wi-Fi the printer takes the data slowly
+    monkeypatch.setattr(vc500w, 'DATA_TIMEOUT', 0.1)
+    monkeypatch.setattr(vc500w, 'DATA_RATE', 1000)
+    fake.receive_delay = 0.3
+    assert vc500w.print_image(fake.target, Image.new('RGB', (200, 1)), port=fake.port) == ''
 
 
 def test_stale_answer_on_usb_is_discarded(monkeypatch):
@@ -381,80 +406,111 @@ def _image(width, height):
     return image
 
 
+def _printed(image, orientation, label_size='vc25', mode='quality'):
+    return printer._vc500w_image(_Label(image, orientation), label_size, mode)
+
+
+def _is(pixel, color):
+    return all(abs(a - b) < 60 for a, b in zip(pixel, color))
+
+
+RED, BLUE, WHITE = (255, 0, 0), (0, 0, 255), (255, 255, 255)
+
+
 def test_standard_label_comes_out_top_first():
-    # 25 mm tape: 290 dots printable across, 327 across what it prints. Along
-    # the tape 600 dots at 320 dpi are 587 lines at 313 lpi.
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(_image(290, 600), LabelOrientation.STANDARD), 'vc25')))
-    assert JpegImagePlugin.get_sampling(jpeg) == 2
-    assert jpeg.height == 327
-    # Along the tape with white at both ends, the top on the right, which
-    # comes out first, the left edge at the top of the tape
-    assert jpeg.width == 587 + 2 * printer.VC500W_END_MARGIN
-    rgb = jpeg.convert('RGB')
-    middle = jpeg.height // 2
-    assert rgb.getpixel((2, middle)) == (255, 255, 255)
-    r, g, b = rgb.getpixel((jpeg.width - printer.VC500W_END_MARGIN - 4, middle))
-    assert r > 200 and g < 60 and b < 60
-    r, g, b = rgb.getpixel((jpeg.width // 2, (327 - 290) // 2 + 4))
-    assert b > 200 and r < 60 and g < 60
+    # Rows are the lines along the tape, the first comes out first. 25 mm
+    # tape: 313 dots across it, 333 sent. 600 dots at 320 dpi are 594 lines
+    # at 317 lpi, and 10 more at each end where the cuts land.
+    image = _printed(_image(313, 600), LabelOrientation.STANDARD)
+    assert image.size == (333, 614)
+    middle = image.width // 2
+    for row in (0, 15):
+        assert _is(image.getpixel((middle, row)), RED)
+    assert _is(image.getpixel((middle, image.height - 1)), WHITE)
+    # The left edge reaches beyond the tape at the first pixels of the rows
+    for column in (0, 20):
+        assert _is(image.getpixel((column, image.height // 2)), BLUE)
+    assert _is(image.getpixel((40, image.height // 2)), WHITE)
 
 
 def test_rotated_label_is_sent_as_drawn():
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(_image(600, 290), LabelOrientation.ROTATED), 'vc25')))
-    assert jpeg.size == (587 + 2 * printer.VC500W_END_MARGIN, 327)
-    r, g, b = jpeg.convert('RGB').getpixel((300, (327 - 290) // 2 + 4))
-    assert r > 200 and g < 60 and b < 60
+    # Its top at the first pixels, its end comes out first
+    image = _printed(_image(600, 313), LabelOrientation.ROTATED)
+    assert image.size == (333, 614)
+    assert _is(image.getpixel((5, image.height // 2)), RED)
+    assert _is(image.getpixel((image.width // 2, image.height - 1)), BLUE)
+    assert _is(image.getpixel((image.width // 2, 0)), WHITE)
 
 
-@pytest.mark.parametrize('orientation', ['standard', 'rotated'])
-def test_labels_on_color_tape_are_as_long_as_wide(tmp_path, orientation):
-    # As printed: the printer would turn a shorter one, the preview shows
-    # the content in the middle of it
-    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Hi', 'size': '30', 'color': '#c00000'}])
-    response = make_client(tmp_path).post('/labeldesigner/api/preview', data={
-        'label_size': 'vc25', 'print_type': 'text', 'orientation': orientation, 'text': text})
-    image = Image.open(io.BytesIO(response.data)).convert('RGB')
-    assert image.size == (290, 290)
-    red = [(x, y) for y in range(image.height) for x in range(image.width) if image.getpixel((x, y))[0] > 150 > image.getpixel((x, y))[1]]
-    along = [y for _, y in red] if orientation == 'standard' else [x for x, _ in red]
-    assert abs(min(along) - (290 - 1 - max(along))) < 12
-    # Longer content makes it longer
-    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'A long text along the tape', 'size': '30'}])
-    response = make_client(tmp_path).post('/labeldesigner/api/preview', data={
-        'label_size': 'vc25', 'print_type': 'text', 'orientation': 'rotated', 'text': text})
-    assert Image.open(io.BytesIO(response.data)).width > 290
+def test_edges_are_repeated_beyond_the_tape_and_the_cuts():
+    # The printer places a row 3 dots toward its first pixel: 13 dots
+    # beyond that edge of the tape, 7 beyond the other, 10 dots each
+    # printed beyond the tape
+    label = Image.new('RGB', (640, 313), 'white')
+    label.paste(RED, (0, 0, 640, 1))
+    label.paste(BLUE, (0, 312, 640, 313))
+    image = _printed(label, LabelOrientation.ROTATED)
+    row = image.height // 2
+    assert [image.getpixel((column, row)) for column in (0, 13, 14, 324, 325, 332)] == [RED, RED, WHITE, WHITE, BLUE, BLUE]
+    # The cuts take off 0.8 mm of each end: 10 lines in quality, 8 in fast
+    label = Image.new('RGB', (640, 313), 'white')
+    label.paste((0, 255, 0), (0, 0, 20, 313))
+    label.paste((255, 0, 255), (620, 0, 640, 313))
+    for mode, lines, ends in (('quality', 634, 10), ('fast', 528, 8)):
+        image = _printed(label, LabelOrientation.ROTATED, mode=mode)
+        assert image.height == lines + 2 * ends
+        assert _is(image.getpixel((166, 0)), (255, 0, 255)) and _is(image.getpixel((166, ends + 15)), (255, 0, 255))
+        assert _is(image.getpixel((166, image.height - 1)), (0, 255, 0))
 
 
 def test_colors_are_saturated_for_the_paper():
-    image = Image.new('RGB', (600, 290), 'white')
-    image.paste((192, 0, 0), (0, 0, 300, 290))
-    image.paste((128, 128, 128), (300, 0, 600, 290))
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(image, LabelOrientation.ROTATED), 'vc25'))).convert('RGB')
-    # Dark red prints as bright red, gray and white stay
-    r, g, b = jpeg.getpixel((150, 164))
+    image = Image.new('RGB', (600, 313), 'white')
+    image.paste((192, 0, 0), (0, 0, 200, 313))
+    image.paste((128, 128, 128), (200, 0, 400, 313))
+    printed = _printed(image, LabelOrientation.ROTATED)
+    # The white end comes out first, the dark red, which prints as bright
+    # red, last; gray stays
+    r, g, b = printed.getpixel((166, printed.height - 110))
     assert r > 245 and g < 15 and b < 15
-    r, g, b = jpeg.getpixel((450, 164))
+    r, g, b = printed.getpixel((166, printed.height // 2))
     assert max(r, g, b) - min(r, g, b) < 6
-    assert jpeg.getpixel((5, 5)) == (255, 255, 255)
+    assert printed.getpixel((166, 110)) == WHITE
 
 
-def test_short_label_is_made_wider_than_high():
-    # The printer turns an image that is not wider than high, also a square one
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(_image(290, 100), LabelOrientation.STANDARD), 'vc25')))
-    assert jpeg.size == (328, 327)
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(_image(290, 290), LabelOrientation.STANDARD), 'vc25')))
-    assert jpeg.size == (328, 327)
+@pytest.mark.parametrize('label_size, media_inches', [('vc9', 0.367), ('vc12', 0.489), ('vc19', 0.734), ('vc25', 0.978),
+                                                      ('vc50', 1.927)])
+def test_labels_are_borderless(label_size, media_inches):
+    # As wide as the tape (width_inches_media), the colors at their edges go
+    # on 20 dots further, at most to the 640 the printer has
+    label = next(label for label in LABELS if label.identifier == label_size)
+    dots = label.dots_printable[0]
+    assert dots == round(media_inches * 320) and label.dots_total[0] == dots + 20 <= 640
+    image = _printed(Image.new('RGB', (100, dots), BLUE), LabelOrientation.ROTATED, label_size)
+    assert image.width == dots + 20
+    for x in (0, image.width // 2, image.width - 1):
+        for y in (0, image.height // 2, image.height - 1):
+            assert _is(image.getpixel((x, y)), BLUE)
 
 
-@pytest.mark.parametrize('label_size, width_inches, lpi', [('vc9', 0.413, 313), ('vc12', 0.535, 313), ('vc19', 0.779, 313),
-                                                           ('vc25', 1.022, 313), ('vc50', 2.0, 308.5)])
-def test_labels_print_at_their_length(label_size, width_inches, lpi):
-    # The printer prints a JPEG as high as width_inches of the cassette at 320
-    # dpi unscaled, at most its 640 dots, and its lines at the lpi measured on
-    # the tape: 2 inches of label, a 60 mm frame measured 60.0 mm on each
-    jpeg = Image.open(io.BytesIO(printer._vc500w_jpeg(_Label(_image(640, 80), LabelOrientation.ROTATED), label_size)))
-    assert jpeg.height == round(width_inches * 320) <= 640
-    assert (jpeg.width - 2 * printer.VC500W_END_MARGIN) / lpi == pytest.approx(2, abs=1 / lpi)
+@pytest.mark.parametrize('mode, lpi', [('quality', 317), ('fast', 264)])
+@pytest.mark.parametrize('label_size', ['vc9', 'vc25', 'vc50'])
+def test_labels_print_at_their_length(label_size, mode, lpi):
+    # A line per row at the lines per inch of the mode: 3 inches of label
+    # without the ends the cuts take off
+    image = _printed(_image(960, 80), LabelOrientation.ROTATED, label_size, mode)
+    ends = round(0.8 / 25.4 * lpi)
+    assert (image.height - 2 * ends) / lpi == pytest.approx(3, abs=1 / lpi)
+
+
+@pytest.mark.parametrize('orientation', ['standard', 'rotated'])
+def test_short_labels_stay_short(tmp_path, orientation):
+    # The printer prints any length, the label is as long as its content
+    text = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Hi', 'size': '30', 'color': '#c00000'}])
+    response = make_client(tmp_path).post('/labeldesigner/api/preview', data={
+        'label_size': 'vc25', 'print_type': 'text', 'orientation': orientation, 'text': text})
+    image = Image.open(io.BytesIO(response.data))
+    along = image.height if orientation == 'standard' else image.width
+    assert along < 313
 
 
 @pytest.fixture
@@ -573,17 +629,23 @@ except OSError as e:
     assert result.stdout.strip() == 'ENXIO', result.stderr
 
 
-def test_color_label_is_printed_as_jpeg(client, fake):
+def _sent(fake):
+    """The images the printer received, rows along the tape."""
+    sizes = [tuple(int(re.search(f'<{part}>(\\d+)</{part}>', c).group(1)) for part in ('width', 'height'))
+             for c in fake.commands if '<print>' in c]
+    return [Image.frombytes('RGB', size, data) for size, data in zip(sizes, fake.images)]
+
+
+def test_color_label_is_printed_as_raw_rgb(client, fake):
     text = [{'font': 'DejaVu Sans,Book', 'text': 'Color', 'size': '60', 'color': '#1e90ff'}]
     response = client.post('/labeldesigner/api/print', data={
         'label_size': 'vc25', 'model': 'VC-500W', 'print_type': 'text', 'text': json.dumps(text),
         'print_count': '2', 'cut_once': '1'})
     assert response.get_json() == {'success': True}
     assert len(fake.images) == 2
-    image = Image.open(io.BytesIO(fake.images[0]))
-    assert image.format == 'JPEG' and image.mode == 'RGB' and JpegImagePlugin.get_sampling(image) == 2
-    # Across what it prints on 25 mm tape, the text in its color
-    assert image.height == 327 and image.width >= 327
+    image = _sent(fake)[0]
+    # Across 25 mm tape and beyond its edges, the text in its color
+    assert image.width == 333
     assert any(abs(r - 0x1e) < 40 and abs(g - 0x90) < 40 and b > 200 for r, g, b in image.get_flattened_data())
     # Cut only after the last label, the others stay together on a strip
     cuts = [re.search(r'<cutmode>(\w+)</cutmode>', c).group(1) for c in fake.commands if '<print>' in c]
@@ -646,10 +708,10 @@ def test_webhook_prints_fast_in_color(client, fake):
                'fast_printing': 1, 'images': [base64.b64encode(image.getvalue()).decode('ascii')]}
     assert client.post('/labeldesigner/api/webhook/print', json=payload).get_json() == {'success': True, 'count': 1}
     assert _print_commands(fake, 'mode') == ['color'] and _print_commands(fake, 'cutmode') == ['full']
-    # In color whatever image mode is asked, across what it prints
-    jpeg = Image.open(io.BytesIO(fake.images[0]))
-    assert jpeg.height == 327
-    r, g, b = jpeg.convert('RGB').getpixel((jpeg.width // 2, jpeg.height // 2))
+    # In color whatever image mode is asked, across the tape
+    image = _sent(fake)[0]
+    assert image.width == 333
+    r, g, b = image.getpixel((image.width // 2, image.height // 2))
     assert b > 200 and r < 80
 
 
@@ -775,6 +837,6 @@ def test_watch_of_a_printer_that_does_not_answer():
 
 
 def test_quality_is_the_vivid_mode_of_the_printer(fake):
-    assert vc500w.print_jpeg(fake.target, b'\xff\xd8', 'quality', 'none', fake.port) == ''
+    assert vc500w.print_image(fake.target, IMAGE, 'quality', 'none', fake.port) == ''
     command = next(c for c in fake.commands if '<print>' in c)
     assert '<mode>vivid</mode>\n<speed>0</speed>\n<lpi>317</lpi>' in command and '<cutmode>none</cutmode>' in command
