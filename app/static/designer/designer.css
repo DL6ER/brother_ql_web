@@ -105,6 +105,8 @@ main { min-height: 0; overflow: auto; }
 .chip-printer { display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); border-radius: 9px; padding: .3rem .7rem; font-size: .9rem; background: var(--surface); white-space: nowrap; cursor: pointer; }
 .chip-printer:hover { border-color: var(--muted); }
 .chip-printer .tape { color: var(--muted); }
+/* A long name of the printer, given in PRINTERS */
+.chip-printer b { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; }
 .dot { width: .55rem; height: .55rem; border-radius: 50%; background: var(--ok); flex: none; display: inline-block; }
 .dot.off { background: #8d96a0; }
 .dot.bad { background: var(--bad); }
@@ -175,6 +177,7 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .printer { position: relative; z-index: 2; flex: none; display: flex; align-items: center; gap: .45rem; color: var(--printer-ink); font-size: .7rem; font-weight: 650; letter-spacing: .03em; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 18px rgba(0, 0, 0, .22); }
 .stage .printer.top { height: 58px; padding: .55rem .9rem 0; align-items: flex-start; border-radius: 14px 14px 6px 6px; background: linear-gradient(180deg, var(--printer-top), var(--printer-bottom)); max-width: 100%; }
 .stage .printer.side { width: 58px; padding: .8rem 0 0; flex-direction: column; border-radius: 14px 6px 6px 14px; background: linear-gradient(90deg, var(--printer-top), var(--printer-bottom)); align-self: center; }
+.stage .printer .model { min-width: 0; min-height: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stage .printer.side .model { writing-mode: vertical-rl; transform: rotate(180deg); }
 .stage .printer .led { width: .5rem; height: .5rem; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); flex: none; margin-top: .1rem; }
 .stage .printer .led.bad { background: var(--bad); box-shadow: 0 0 6px var(--bad); }
@@ -469,6 +472,7 @@ select.mini.lsp { max-width: 4rem; }
     .cmd { width: auto; flex: 1; min-width: 0; }
     .cmd .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cmd .kbd, .chip-printer .tape { display: none; }
+    .chip-printer b { max-width: 7rem; }
     .stage { padding: 1.4rem 2.6rem 2.6rem 1rem; }
     /* Nothing in the column may shrink, the chip row least of all */
     .lib { display: flex; flex-direction: column; gap: .9rem; height: auto; padding: 1rem 1rem 2rem; }

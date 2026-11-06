@@ -4,6 +4,8 @@ copies."""
 import base64
 import json
 
+import pytest
+
 from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
 
 
@@ -148,6 +150,34 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     assert designer.inner_text('#printerChip b') == 'QL-1100'
     offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
     assert '103x164' in offered and '62red' not in offered
+
+
+def test_configured_printers_are_shown_by_their_names(designer, app, monkeypatch):
+    other = 'file:///nonexistent/lp0'
+    monkeypatch.setitem(app.config, 'PRINTERS', [('QL-800', 'simulation', 'Desk'), ('QL-1100', other, 'Shelf'), ('QL-700', 'file:///nonexistent/lp1')])
+    designer.reload()
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip b') == 'Desk'
+    assert designer.inner_text('#edStage .printer .model') == 'Desk'
+    designer.click('#printerChip')
+    rows = designer.eval_on_selector_all('.plist [data-printer] .grow', 'rows => rows.map(r => [r.querySelector("b").textContent, r.querySelector(".sm").textContent])')
+    # The model next to the name, a printer without one shows its model
+    assert [name for name, _ in rows] == ['Desk', 'Shelf', 'QL-700']
+    assert rows[0][1].startswith('QL-800, ') and rows[1][1].startswith('QL-1100, ')
+    assert not rows[2][1].startswith('QL-700')
+    designer.click(f'[data-printer="{other}"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip b') == 'Shelf'
+
+
+@pytest.mark.parametrize('name, called', [('Kitchen', 'Kitchen'), ('', 'The QL-800')])
+def test_sentences_call_a_printer_by_its_name(designer, name, called):
+    # "the" before a model, not before a name
+    fake_printer(designer, name=name, media_width=29, media_length=90)
+    designer.select_option('#edSize', '62')
+    wait_for_preview(designer)
+    assert designer.inner_text('.tape-note').startswith(f'{called} has 29 x 90 mm')
 
 
 def test_no_600_dpi_on_the_ql1100(designer):
