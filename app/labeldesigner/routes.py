@@ -24,7 +24,7 @@ from werkzeug.exceptions import HTTPException
 from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
 from brother_ql.labels import ALL_LABELS, FormFactor
 from brother_ql.models import ALL_MODELS
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_blank_choices, check_image_position, check_image_size
 from .label_names import label_name, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -1405,24 +1405,30 @@ def _blank_values(value) -> dict[str, str]:
     return {name: str(v) for name, v in values.items()}
 
 
-BLANK_TYPES = ('text', 'number', 'date')
+BLANK_TYPES = ('text', 'number', 'date', 'choice')
 
 
 def _blank_setting(field) -> bool:
     """Whether field is the settings of a blank: an object, its type one of
-    BLANK_TYPES, its format a text and its default a text or number, each
-    where given."""
+    BLANK_TYPES, its format a text, its default a text or number and its
+    choices a list, each where given."""
     if not isinstance(field, dict):
         return False
     default = field.get('default')
     return (field.get('type') in (None, *BLANK_TYPES) and isinstance(field.get('format'), (str, type(None)))
-            and (default is None or (isinstance(default, (str, int, float)) and not isinstance(default, bool))))
+            and (default is None or (isinstance(default, (str, int, float)) and not isinstance(default, bool)))
+            and isinstance(field.get('choices'), (list, type(None))))
 
 
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
     "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    fields = _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    # A blank with a fixed list of choices
+    for name, field in fields.items():
+        if field.get('type') == 'choice':
+            check_blank_choices(name, field)
+    return fields
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:

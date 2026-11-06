@@ -15,7 +15,7 @@ from pdf2image.exceptions import PDFInfoNotInstalledError, PDFPageCountError, PD
 from PIL import Image
 from qrcode.exceptions import DataOverflowError
 
-from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
+from .label import MAX_BARCODE_LENGTH, MAX_BLANK_CHOICE_LENGTH, MAX_BLANK_CHOICES, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
 from .label_names import label_size_problems
 from .printer import MODELS_WITHOUT_600_DPI, resolution_problem
 
@@ -23,8 +23,8 @@ IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_bla
 # A detected printer whose status names no model brother_ql knows
 UNKNOWN_MODEL = 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'
 BLANKS_MESSAGE = 'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}'
-FIELDS_MESSAGE = ('fields must be a JSON object with the settings of each blank: a type of text, number or date, '
-                  'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}')
+FIELDS_MESSAGE = ('fields must be a JSON object with the settings of each blank: a type of text, number, date or choice, '
+                  'a format as text, a default as text or number and choices as a list, e.g., {"Frozen on": {"type": "date"}}')
 
 # Errors whose text is sent as it is
 MESSAGES = (
@@ -79,6 +79,11 @@ PATTERNS = (
     (re.compile(r'(?s)".*" is not a page selection, give pages like 1-3, 5 or all'),
      'Not a page selection, give pages like 1-3, 5 or all'),
     (re.compile(r'(?s)The PDF has .*, there is no page .*'), 'The PDF has no such page'),
+    (re.compile(r'(?s)The blank .* needs 1 to \d+ choices, each a text of at most \d+ characters'),
+     f'A choice blank needs 1 to {MAX_BLANK_CHOICES} choices, each a text of at most {MAX_BLANK_CHOICE_LENGTH} characters'),
+    (re.compile(r'(?s)The blank .* has a choice twice'), 'A choice blank has a choice twice'),
+    (re.compile(r'(?s)The default of the blank .* is none of its choices'), 'The default of a choice blank is none of its choices'),
+    (re.compile(r'(?s)".*" is none of the choices of the blank .*'), 'A value is none of the choices of its blank'),
 )
 
 # Errors by their kind, the first that applies
