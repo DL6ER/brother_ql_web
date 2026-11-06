@@ -82,13 +82,22 @@ NO_ANSWER = 'The printer does not answer, switch it off and on again'
 UNFINISHED = 'The printer did not report that it finished the label, check whether it was printed'
 NO_CASSETTE = 'There is no cassette in the printer'
 BUSY = 'The printer is busy, print again once it is ready'
+BLOCKED = 'The printer still waits for the data of another job, switch it off and on again'
 TOO_LONG = 'The label is too long for the printer'
+# Its answer to a print command while it receives another job, also of
+# another app, although /status.xml shows it idle
+PRINTER_IS_BUSY = 'printer is busy'
 
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
 
 
 class VC500WError(Exception):
-    """The printer refused a command or reported an error."""
+    """The printer refused a command or reported an error. comment is its
+    own words for a refused command."""
+
+    def __init__(self, message: str, comment: str = ''):
+        super().__init__(message)
+        self.comment = comment
 
 
 def _element(xml: bytes) -> ET.Element:
@@ -169,21 +178,33 @@ class Connection:
     """One connection to the printer, for one or a few commands: on the
     network to a host, on USB to the path of the printer."""
 
-    def __init__(self, target: str, port: int = PORT, timeout: float = TIMEOUT):
-        if is_device(target):
-            self._socket = _Device(target, timeout)
-        else:
-            self._socket = socket.create_connection((target, port), timeout=timeout)
-        self._timeout = timeout
+    def __init__(self, target: str, port: int = PORT, timeout: float | None = None):
+        self._target, self._port = target, port
+        self._timeout = TIMEOUT if timeout is None else timeout
+        self._socket = None
+        self.reopen()
+
+    def reopen(self):
+        """Start over on a new connection, e.g., after an answer got lost."""
+        if self._socket is not None:
+            self._socket.close()
+            self._socket = None
         self._buffer = b''
+        if is_device(self._target):
+            self._socket = _Device(self._target, self._timeout)
+        else:
+            self._socket = socket.create_connection((self._target, self._port), timeout=self._timeout)
 
     def __enter__(self):
         return self
 
     def __exit__(self, *args):
-        self._socket.close()
+        if self._socket is not None:
+            self._socket.close()
 
     def _receive(self, timeout: float | None = None):
+        if self._socket is None:
+            raise VC500WError('The connection to the printer is closed')
         self._socket.settimeout(self._timeout if timeout is None else timeout)
         data = self._socket.recv(65536)
         if not data:
@@ -203,7 +224,7 @@ class Connection:
         code = _text(status, 'code', '0')
         if code != '0':
             comment = _text(status, 'comment')
-            raise VC500WError(f'The printer refused the command: {comment or "code " + code}')
+            raise VC500WError(f'The printer refused the command: {comment or "code " + code}', comment)
         size = int(_text(status, 'datasize', '0') or 0)
         data = b''
         if size > 0:
@@ -216,6 +237,8 @@ class Connection:
         return status, data
 
     def send(self, data: bytes):
+        if self._socket is None:
+            raise VC500WError('The connection to the printer is closed')
         self._socket.settimeout(self._timeout)
         self._socket.sendall(data)
 
@@ -301,6 +324,19 @@ def _no_progress(stage: str, line: int):
     pass
 
 
+def _poll(connection: Connection) -> dict | None:
+    """The status of the printer during a job, None if its answer got lost,
+    e.g., on a weak Wi-Fi: the next one is asked on a new connection."""
+    try:
+        return parse_status(connection.read('/status.xml'))
+    except (OSError, VC500WError):
+        try:
+            connection.reopen()
+        except OSError:
+            pass
+        return None
+
+
 def _take_out(connection: Connection, progress) -> str:
     """Wait until the label before is taken out of the printer: '' or why
     not."""
@@ -308,7 +344,8 @@ def _take_out(connection: Connection, progress) -> str:
     deadline = time.monotonic() + TAKE_OUT_TIMEOUT
     while time.monotonic() < deadline:
         time.sleep(POLL_INTERVAL)
-        if print_error(parse_status(connection.read('/status.xml'))) != EJECT_JAM:
+        status = _poll(connection)
+        if status is not None and print_error(status) != EJECT_JAM:
             return ''
     return TAKE_OUT
 
@@ -339,6 +376,23 @@ def _fill(connection: Connection) -> bool:
     return False
 
 
+def _start(connection: Connection, command: str) -> str:
+    """Send a print command: '' once the printer waits for the data, BLOCKED
+    if it still receives another job after BUSY_TIMEOUT."""
+    deadline = time.monotonic() + BUSY_TIMEOUT
+    while True:
+        try:
+            connection.command(command)
+            return ''
+        except VC500WError as e:
+            if e.comment != PRINTER_IS_BUSY:
+                raise
+        if time.monotonic() > deadline:
+            return BLOCKED
+        time.sleep(POLL_INTERVAL)
+        connection.reopen()
+
+
 def print_image(target: str, image, mode: str = DEFAULT_MODE, cut: str = 'full', port: int = PORT,
                 progress=_no_progress) -> str:
     """Print an RGB image whose rows are the lines along the tape, the first
@@ -363,7 +417,9 @@ def print_image(target: str, image, mode: str = DEFAULT_MODE, cut: str = 'full',
                 error = _take_out(connection, progress)
             if error:
                 return error
-            connection.command(command)
+            error = _start(connection, command)
+            if error:
+                return error
             time.sleep(DATA_DELAY)
             connection.send(data)
             try:
@@ -388,11 +444,16 @@ def _follow(connection: Connection, progress) -> str:
     busy = False
     last = None
     while True:
-        status = parse_status(connection.read('/status.xml'))
+        status = _poll(connection)
+        now = time.monotonic()
+        if status is None:
+            if now - last_change > STALL_TIMEOUT:
+                return UNFINISHED
+            time.sleep(POLL_INTERVAL)
+            continue
         error = print_error(status)
         if error:
             return error
-        now = time.monotonic()
         if (status['stage'], status['line']) != last:
             last = (status['stage'], status['line'])
             last_change = now
