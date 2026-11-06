@@ -70,6 +70,9 @@ class _Terminal:
         while data:
             data = data[os.write(self._fd, data):]
 
+    def close(self):
+        os.close(self._fd)
+
 
 class FakeVC500W:
     """Answers the commands of the label designer, on localhost or, with
@@ -94,7 +97,8 @@ class FakeVC500W:
             tty.setraw(self._slave)
             self.path = os.ttyname(self._slave)
             self.target, self.port = self.path, vc500w.PORT
-            threading.Thread(target=self._handle, args=(_Terminal(self._master),), daemon=True).start()
+            self._thread = threading.Thread(target=self._handle, args=(_Terminal(self._master),), daemon=True)
+            self._thread.start()
         else:
             self.server = socket.create_server(('127.0.0.1', 0))
             self.target, self.port = '127.0.0.1', self.server.getsockname()[1]
@@ -109,6 +113,12 @@ class FakeVC500W:
             threading.Thread(target=self._handle, args=(connection,), daemon=True).start()
 
     def _handle(self, connection):
+        try:
+            self._answer(connection)
+        finally:
+            connection.close()
+
+    def _answer(self, connection):
         buffer = b''
         while True:
             end = re.search(rb'</(read|print|lock)>', buffer)
@@ -134,7 +144,10 @@ class FakeVC500W:
                 self.ready_at.append(time.monotonic())
                 size = int(re.search(r'<datasize>(\d+)</datasize>', command).group(1))
                 while not buffer:
-                    buffer += connection.recv(65536)
+                    data = connection.recv(65536)
+                    if not data:
+                        return
+                    buffer += data
                 self.data_at.append(time.monotonic())
                 lost = self.lose
                 while len(buffer) < size + lost:
@@ -149,10 +162,12 @@ class FakeVC500W:
     def close(self):
         if hasattr(self, 'server'):
             self.server.close()
-        elif self._master >= 0:
+        elif self._slave >= 0:
+            # That hangs up the pty: its thread stops reading and closes the
+            # other end itself, a later fake may get the descriptor only then
             os.close(self._slave)
-            os.close(self._master)
-            self._master = -1
+            self._slave = -1
+            self._thread.join(5)
 
 
 @pytest.fixture(params=['network', 'usb'])
@@ -321,6 +336,32 @@ def test_stale_answer_on_usb_is_discarded(monkeypatch):
         assert vc500w.get_state(printer_.path)[1]['state'] == 'IDLE'
     finally:
         printer_.close()
+
+
+def test_closed_fake_leaves_the_next_one_alone(monkeypatch):
+    # The next fake on USB may get the same descriptor, a thread of the
+    # closed one that reads once more would answer for it
+    late = threading.Event()
+    recv = _Terminal.recv
+
+    def slow_recv(self, size):
+        if late.is_set():
+            time.sleep(0.2)
+        return recv(self, size)
+    monkeypatch.setattr(_Terminal, 'recv', slow_recv)
+    closed = FakeVC500W(usb=True)
+    closed.statuses = [status_xml('BUSY', 'PRINTING')]
+    late.set()
+    assert vc500w.get_state(closed.path)[1]['state'] == 'BUSY'
+    closed.close()
+    assert not [t for t in threading.enumerate() if getattr(t, '_target', None) == closed._handle]
+    late.clear()
+    following = FakeVC500W(usb=True)
+    try:
+        assert vc500w.get_state(following.path)[1]['state'] == 'IDLE'
+        assert len(closed.commands) == 2
+    finally:
+        following.close()
 
 
 class _Label:
