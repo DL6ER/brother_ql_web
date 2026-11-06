@@ -26,7 +26,7 @@ USB printers are detected automatically, network printers with some limits. The 
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 500 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges and price tags
 - **Printers:** several printers at once, and a simulator to try everything without a printer
-- **Printing:** copies with a cut after every label or only after the last one, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
+- **Printing:** copies with a cut after every label or only after the last one, endless labels of a fixed length, borders, round labels, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** an editor with the preview of the label leaving the printer, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 

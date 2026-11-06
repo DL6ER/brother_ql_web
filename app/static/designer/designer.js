@@ -129,7 +129,10 @@ function baseDesign(size) {
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
         // Empty: above the text across the tape, left of it along the tape
-        image_position: ''
+        image_position: '',
+        // Empty: an endless label is as long as its content, else its
+        // length in millimeters as cut
+        label_length: ''
     };
 }
 
@@ -1168,7 +1171,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const w = img.naturalWidth, h = img.naturalHeight, span = size.dots[0] * scale;
     const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
-    const lengthMm = isEndless(size) ? along : size.tape[1];
+    // An endless label of a given length is as long as that when cut
+    const lengthMm = !isEndless(size) ? size.tape[1] : +design.label_length > 0 ? +design.label_length : along;
     // Fit the label into the stage
     const box = el.getBoundingClientRect();
     // The printer takes room on top, or on the left for labels that leave it sideways
@@ -1976,7 +1980,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>` : ''}
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
+                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
                     <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
@@ -2034,6 +2038,18 @@ function tapeNote(d) {
     if (fitsTape(d.label_size)) return '';
     const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
     return `<span class="tape-note warn">The ${model} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
+}
+
+// The length of an endless label as cut, next to the tape. Die-cut labels
+// have their own, it shows as the hint.
+const LENGTH_TITLE = 'The label as cut, with the margin the printer leaves before and after the print. Empty: as long as its content.';
+const DIE_CUT_LENGTH = 'Die-cut labels have their own length';
+const hasLength = d => !!SIZES[d.label_size] && isEndless(SIZES[d.label_size]);
+const lengthLabel = d => `<label class="label-s${hasLength(d) ? '' : ' off'}" for="edLength" title="${hasLength(d) ? LENGTH_TITLE : DIE_CUT_LENGTH}">Length, mm</label>`;
+function lengthInput(d) {
+    const on = hasLength(d), s = SIZES[d.label_size];
+    return `<input class="field" type="number" min="1" max="1000" step="0.5" id="edLength" value="${on ? esc(d.label_length) : ''}" placeholder="${on ? 'Automatic' : esc(s ? s.tape[1] : '')}"
+        title="${on ? LENGTH_TITLE : DIE_CUT_LENGTH}"${on ? '' : ' disabled'}>`;
 }
 
 function imageBlock(d) {
@@ -2439,6 +2455,13 @@ function bindEditor() {
     });
     if ($('#edUseTape')) $('#edUseTape').onclick = () => { setSize(d, S.tape); renderEditor(); };
     $('#edSize').onchange = e => { setSize(d, e.target.value); renderEditor(); };
+    // Taken once typed, a length on the way to another may be too short
+    $('#edLength').addEventListener('change', e => {
+        const v = e.target.value.trim();
+        if (v !== '' && !(+v > 0)) return;
+        d.label_length = v;
+        redrawEditor();
+    });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });

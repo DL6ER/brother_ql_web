@@ -1636,6 +1636,12 @@
             ],
             "default": "standard"
           },
+          "label_length": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 1000,
+            "description": "Length of an endless label as cut, in millimeters, with the margin the printer feeds before and after the print: 3 mm each on QL printers, 2 mm on TZe tape. The content is laid out in it as on a die-cut label. At least 12.7 mm (TZe tape: 4.4 mm) and these margins. Empty or left out, the label is as long as its content. Die-cut labels have their own length and do not use it."
+          },
           "high_res": {
             "type": "integer",
             "enum": [
