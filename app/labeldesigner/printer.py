@@ -496,28 +496,25 @@ class PrinterQueue:
         return ""
 
     def _print_vc500w(self, entries) -> str:
-        """Print on a VC-500W: one JPEG per label. With "cut only after the
+        """Print on a VC-500W: one image per label. With "cut only after the
         last label" the labels before it get a half cut, they stay together
         on a strip."""
-        jpegs = [_vc500w_jpeg(entry['label'], self.label_size) for entry in entries]
+        modes = ['fast' if entry['fast'] else 'quality' for entry in entries]
+        images = [_vc500w_image(entry['label'], self.label_size, mode) for entry, mode in zip(entries, modes)]
         if is_simulation(self.device_specifier):
             os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
             ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S_%f')
-            for i, jpeg in enumerate(jpegs):
-                with open(os.path.join(SIMULATED_LABELS_DIR, f'{ts}_vc500w_{i}.jpg'), 'wb') as file:
-                    file.write(jpeg)
+            for i, image in enumerate(images):
+                image.save(os.path.join(SIMULATED_LABELS_DIR, f'{ts}_vc500w_{i}.png'))
             _prune_simulated_labels()
             return ''
         target, port = _vc500w_target(self.device_specifier)
         key = _lock_key(self.device_specifier)
         try:
-            for i, (entry, jpeg) in enumerate(zip(entries, jpegs)):
+            for i, (entry, mode, image) in enumerate(zip(entries, modes, images)):
                 cut = self.cut_mode if entry['cut'] or self.cut_mode != 'full' else 'half'
-                mode = 'fast' if entry['fast'] else 'quality'
-                # A line per pixel in quality, fewer in fast
-                lines = Image.open(io.BytesIO(jpeg)).width * vc500w.MODES[mode][2] / vc500w.MODES['quality'][2]
 
-                def progress(stage, line, i=i, lines=lines):
+                def progress(stage, line, i=i, lines=image.height):
                     job = {'stage': stage, 'label': i + 1, 'labels': len(entries)}
                     if stage == vc500w.stage_name('PRINTING'):
                         job['percent'] = min(99, round(100 * line / lines))
@@ -525,7 +522,7 @@ class PrinterQueue:
                 progress(vc500w.stage_name('PROCESSING'), 0)
                 label = f' (label {i + 1} of {len(entries)})' if len(entries) > 1 else ''
                 try:
-                    error = vc500w.print_jpeg(target, jpeg, mode, cut, port, progress)
+                    error = vc500w.print_image(target, image, mode, cut, port, progress)
                 except vc500w.VC500WError as e:
                     # Its own words name paths of the printer, e.g. "please check /dev/tmp/lutgen.out"
                     logger.warning('Printing on %s failed: %s', self.device_specifier, e)
@@ -671,41 +668,53 @@ def _status_messages(received: bytes) -> tuple[list, bytes]:
         received = received[32:]
 
 
-# What the VC-500W prints on each tape: the inches across it, as the cassette
-# reports them (width_inches), and the measured lines per inch along it in
-# every mode. A JPEG that high is printed unscaled.
-VC500W_PRINT = {9: (0.413, 313), 12: (0.535, 313), 19: (0.779, 313), 25: (1.022, 313), 50: (2.0, 308.5)}
-# White at both ends, 18 lines are about 1.5 mm: the cuts are about 1 mm off
-VC500W_END_MARGIN = 18
 # ZINK paper prints colors duller than a screen shows them. Of 1, 1.5 and 2
 # times the saturation, 2 printed red best, darker colors gain the most.
 VC500W_SATURATION = 2.0
 
 
-def _vc500w_jpeg(label, label_size: str) -> bytes:
-    """A label as the JPEG the VC-500W prints: its width runs along the tape
-    and its right edge comes out first, so standard labels come out top
-    first, rotated ones with the end of their text, as on QL printers. The
-    printable width is centered on the tape. It is as high as the printer
-    prints across the tape, so it is not scaled, and resampled to the lines
-    it prints along the tape. The printer turns images that are not wider
-    than high, so those are made a line wider. Colors are saturated for the
-    paper."""
+# The printer places an image this many dots off the middle of the tape,
+# toward its first pixel, and its cuts take off this many millimeters of
+# both ends (docs/vc500w.md)
+VC500W_OFFSET = 3
+VC500W_CUT_MM = 0.8
+
+
+def _repeat_rows(img: Image.Image, before: int, after: int) -> Image.Image:
+    """img with its first row repeated before times above it and its last
+    row after times below it."""
+    out = Image.new(img.mode, (img.width, img.height + before + after))
+    if before:
+        out.paste(img.crop((0, 0, img.width, 1)).resize((img.width, before), Image.Resampling.NEAREST), (0, 0))
+    if after:
+        last = img.crop((0, img.height - 1, img.width, img.height))
+        out.paste(last.resize((img.width, after), Image.Resampling.NEAREST), (0, before + img.height))
+    out.paste(img, (0, before))
+    return out
+
+
+def _vc500w_image(label, label_size: str, mode: str) -> Image.Image:
+    """A label as the image the VC-500W prints: each row is a line along the
+    tape at the lines per inch of the mode, the first row comes out first,
+    so standard labels come out top first, rotated ones with the end of
+    their text, as on QL printers. The label is as wide as the tape, its
+    edges are repeated beyond those of the tape and beyond both cuts, so a
+    color at an edge reaches it. Colors are saturated for the paper."""
     img = label.generate().convert('RGB')
     if label.label_orientation == LabelOrientation.STANDARD:
         img = img.rotate(-90, expand=True)
-    width = next(tape.tape_size[0] for tape in VC500W_LABELS if tape.identifier == label_size)
-    inches, lpi = VC500W_PRINT[width]
+    # Now along the tape: its right end comes out first, its top becomes
+    # the first pixels of the rows
+    tape = next(tape for tape in VC500W_LABELS if tape.identifier == label_size)
+    lpi = vc500w.MODES[mode][2]
     img = img.resize((round(img.width * lpi / vc500w.DPI), img.height), Image.Resampling.LANCZOS)
-    total = round(inches * vc500w.DPI)
-    length = max(img.width + 2 * VC500W_END_MARGIN, total + 1)
-    jpeg = Image.new('RGB', (length, max(total, img.height)), 'white')
-    jpeg.paste(img, ((length - img.width) // 2, (jpeg.height - img.height) // 2))
-    jpeg = ImageEnhance.Color(jpeg).enhance(VC500W_SATURATION)
-    buffer = io.BytesIO()
-    # The color resolution the printer was tested with
-    jpeg.save(buffer, format='JPEG', quality=95, subsampling='4:2:0')
-    return buffer.getvalue()
+    extra = max(tape.dots_total[0] - img.height, 0)
+    top = min(extra // 2 + VC500W_OFFSET, extra)
+    img = _repeat_rows(img, top, extra - top).transpose(Image.Transpose.TRANSPOSE)
+    ends = round(VC500W_CUT_MM / 25.4 * lpi)
+    img = _repeat_rows(img, ends, ends).transpose(Image.Transpose.TRANSPOSE)
+    img = ImageEnhance.Color(img).enhance(VC500W_SATURATION)
+    return img.transpose(Image.Transpose.ROTATE_90)
 
 
 def _vc500w_error(error: str) -> str:
@@ -713,7 +722,8 @@ def _vc500w_error(error: str) -> str:
     if error == vc500w.EJECT_JAM:
         # A label lies in the output, also the tape a new cassette feeds
         return vc500w.TAKE_OUT
-    if error in (vc500w.TAKE_OUT, vc500w.DAMAGED, vc500w.NO_ANSWER, vc500w.UNFINISHED, vc500w.NO_CASSETTE, vc500w.BUSY):
+    if error in (vc500w.TAKE_OUT, vc500w.DAMAGED, vc500w.NO_ANSWER, vc500w.UNFINISHED, vc500w.NO_CASSETTE, vc500w.BUSY,
+                 vc500w.TOO_LONG):
         return error
     return f'The printer reports: {error.replace("_", " ").capitalize()}'
 

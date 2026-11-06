@@ -20,19 +20,21 @@ from brother_ql.models import ALL_MODELS, Model
 from . import vc500w
 
 
-def _dots(mm: float) -> int:
-    return round(mm / 25.4 * vc500w.DPI)
+def _dots(inches: float) -> int:
+    return round(inches * vc500w.DPI)
 
 
 # The Brother VC-500W prints in color on ZINK tape over its own protocol
-# (vc500w.py). It prints a little beyond both edges of the tape, labels are
-# drawn 1 mm inside them.
+# (vc500w.py). Per tape: its width in inches as the cassette reports it
+# (width_inches_media). Labels are as wide as the tape, the printer gets them
+# VC500W_BLEED dots wider, their edges repeated beyond those of the tape.
 VC500W = 'VC-500W'
-VC500W_TAPES = (9, 12, 19, 25, 50)
+VC500W_TAPES = {9: 0.367, 12: 0.489, 19: 0.734, 25: 0.978, 50: 1.927}
+VC500W_BLEED = 20
 VC500W_LABELS = tuple(
-    Label(f'vc{width}', (width, 0), FormFactor.ENDLESS, (_dots(width + 1), 0), (_dots(width - 2), 0), 0,
+    Label(f'vc{width}', (width, 0), FormFactor.ENDLESS, (_dots(tape) + VC500W_BLEED, 0), (_dots(tape), 0), 0,
           restricted_to_models=[VC500W])
-    for width in VC500W_TAPES)
+    for width, tape in VC500W_TAPES.items())
 VC500W_MODEL = Model(VC500W, (1, 20000), (0, 0), number_bytes_per_row=81, mode_setting=False,
                      expanded_mode=False, compression_support=False, num_invalidate_bytes=0)
 

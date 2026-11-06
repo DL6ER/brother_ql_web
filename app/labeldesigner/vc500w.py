@@ -4,7 +4,8 @@ or on USB.
 It takes short XML commands on TCP port 9100 or on its USB printer interface
 (usblp, e.g., /dev/usb/lp0): reading /config.xml (model, resolution, the tape
 in the cassette) and /status.xml (state, stage of the job, remaining tape),
-and printing a JPEG that it scales to the tape. Every answer starts with a
+and printing an image as raw RGB, each row a line along the tape. Every
+answer starts with a
 <status> element with the result code and the size of the data that follows.
 Lengths of tape are in inches. The protocol was worked out by Andrea
 Micheloni for labelprinter
@@ -42,7 +43,10 @@ TIMEOUT = 5
 # Data that arrives right after "ready to receive" is partly lost on USB when
 # the job follows another one, the printer then waits for it forever
 DATA_DELAY = 2.0
+# How long the printer may take for the data: a few seconds and the bytes
+# per second it took at least over a weak Wi-Fi
 DATA_TIMEOUT = 15
+DATA_RATE = 20000
 # A job fails when the printer reports no progress for this long. It
 # prepares a label for about 12 s without a change.
 STALL_TIMEOUT = 60
@@ -54,7 +58,7 @@ TAKE_OUT_TIMEOUT = 300
 # cassette just put in
 BUSY_TIMEOUT = 120
 # A printer that lost data waits for it: zeros are sent until it answers.
-# About 2.5 KB were lost of an 8 KB JPEG.
+# About 2.5 KB of 8 KB were lost.
 FILL_LIMIT = 32768
 FILL_WAIT = 0.5
 POLL_INTERVAL = 0.5
@@ -78,6 +82,7 @@ NO_ANSWER = 'The printer does not answer, switch it off and on again'
 UNFINISHED = 'The printer did not report that it finished the label, check whether it was printed'
 NO_CASSETTE = 'There is no cassette in the printer'
 BUSY = 'The printer is busy, print again once it is ready'
+TOO_LONG = 'The label is too long for the printer'
 
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
 
@@ -330,19 +335,24 @@ def _fill(connection: Connection) -> bool:
     return False
 
 
-def print_jpeg(target: str, jpeg: bytes, mode: str = DEFAULT_MODE, cut: str = 'full', port: int = PORT,
-               progress=_no_progress) -> str:
-    """Print a JPEG and wait until the printer is idle again. A printed label
-    still in the printer is waited for, then the job is sent again. progress
-    is called with each stage and the line printed. Returns the error the
-    printer reports, or an empty string."""
+def print_image(target: str, image, mode: str = DEFAULT_MODE, cut: str = 'full', port: int = PORT,
+                progress=_no_progress) -> str:
+    """Print an RGB image whose rows are the lines along the tape, the first
+    row comes out first, and wait until the printer is idle again. A printed
+    label still in the printer is waited for, then the job is sent again.
+    progress is called with each stage and the line printed. Returns the
+    error the printer reports, or an empty string."""
     name, speed, lpi = MODES[mode]
     if cut not in CUT_MODES:
         raise ValueError(f'Unknown cut mode: {cut}')
+    data = image.tobytes()
     command = (f'<print>\n<mode>{name}</mode>\n<speed>{speed}</speed>\n<lpi>{lpi}</lpi>\n'
-               f'<width>0</width>\n<height>0</height>\n<dataformat>jpeg</dataformat>\n'
-               f'<autofit>1</autofit>\n<datasize>{len(jpeg)}</datasize>\n<cutmode>{cut}</cutmode>\n</print>')
+               f'<width>{image.width}</width>\n<height>{image.height}</height>\n<dataformat>rawrgb</dataformat>\n'
+               f'<datasize>{len(data)}</datasize>\n<cutmode>{cut}</cutmode>\n</print>')
     with Connection(target, port) as connection:
+        limit = parse_config(connection.read('/config.xml'))['max_print_size']
+        if limit and len(data) > limit:
+            return TOO_LONG
         for attempt in range(2):
             error = _ready(connection, progress)
             if error == EJECT_JAM:
@@ -351,9 +361,9 @@ def print_jpeg(target: str, jpeg: bytes, mode: str = DEFAULT_MODE, cut: str = 'f
                 return error
             connection.command(command)
             time.sleep(DATA_DELAY)
-            connection.send(jpeg)
+            connection.send(data)
             try:
-                connection.answer(timeout=DATA_TIMEOUT)
+                connection.answer(timeout=DATA_TIMEOUT + len(data) / DATA_RATE)
             except TimeoutError:
                 # Otherwise it waits until it is switched off
                 return DAMAGED if _fill(connection) else NO_ANSWER

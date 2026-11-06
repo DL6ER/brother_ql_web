@@ -243,7 +243,6 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
-        min_length: int = 0,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -268,8 +267,6 @@ class SimpleLabel:
             raise ValueError("Image rotation must be between 0 and 360 inclusive.")
         self._width = width
         self._height = height
-        # Of an endless label along the tape, in dots
-        self._min_length = min_length
         self.label_content = label_content
         self.label_orientation = label_orientation
         self.label_type = label_type
@@ -760,14 +757,10 @@ class SimpleLabel:
         # the text takes room for it: a label that grows in width makes it
         text_width = self._text_width(textsize)
         bearing = -min(textsize[0], 0)
-        # A label longer than its content has it in the middle
-        longer = 0
         if grows_high:
             height = (max(img_height, text_height) if beside else img_height + gap + text_height) + margin_top + margin_bottom
-            longer = max(self._min_length - height, 0)
-            height += longer
         if grows_wide:
-            width = max((img_width + gap + text_width if beside else max(img_width, text_width)) + margin_left + margin_right, self._min_length)
+            width = (img_width + gap + text_width if beside else max(img_width, text_width)) + margin_left + margin_right
 
         if beside:
             # In the middle of the room between the margins, at its start if
@@ -784,7 +777,7 @@ class SimpleLabel:
                 horizontal_offset_image = width - margin_right - img_width
                 horizontal_offset_text = start
         else:
-            start = margin_top + longer // 2 if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
+            start = margin_top if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
             # Across, in the middle between the margins
             horizontal_offset_text = max((width - text_width)//2 + (margin_left - margin_right)//2, 0) + bearing
             horizontal_offset_image = (width - img_width)//2 + (margin_left - margin_right)//2
