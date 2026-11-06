@@ -212,10 +212,11 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .cut-strip .waste { width: 12px; height: 12px; box-shadow: 0 0 0 1px #b3b3b3;
     background: linear-gradient(to top right, transparent calc(50% - 1px), #6b747d, transparent calc(50% + 1px)),
                 linear-gradient(to bottom right, transparent calc(50% - 1px), #6b747d, transparent calc(50% + 1px)), #fff; }
-/* Not cut: covers the edges of the labels beside it, the tape goes on.
-   Half cut: a dashed line across it. */
+/* Not cut: covers the edges of the labels beside it, the tape goes on with
+   a thin line between them. Half cut: a dashed line. */
 .cut-strip .cm.none, .cut-strip .cm.half { width: 4px; height: 12px; margin: 0 -2px; position: relative; z-index: 1;
     background: #fff; box-shadow: 0 -1px 0 #b3b3b3, 0 1px 0 #b3b3b3; }
+.cut-strip .cm.none { background: linear-gradient(#b3b3b3, #b3b3b3) center / 1px 100% no-repeat, #fff; }
 .cut-strip .cm.half { background: linear-gradient(#333 50%, transparent 0) center / 2px 3px repeat-y, #fff; }
 .cut-strip .cm.chain { width: 0; }
 .cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); margin-left: 4px; }
