@@ -7,7 +7,9 @@ from brother_ql.conversion import convert
 from brother_ql.labels import ALL_LABELS
 from brother_ql.raster import BrotherQLRaster
 
-from app.labeldesigner.label_names import LABEL_NAMES, LABELS, PTOUCH_LABELS, check_label_size, label_printers
+from app.labeldesigner import drivers
+from app.labeldesigner.drivers.brother.labels import PTOUCH_LABELS
+from app.labeldesigner.label_names import LABELS, check_label_size, label_printers
 from tests.helpers import make_client
 
 
@@ -17,11 +19,13 @@ def _label(identifier):
 
 def test_every_label_size_has_a_name():
     # A new label size in brother_ql needs a name with its Brother code
-    assert {label.identifier for label in LABELS} == set(LABEL_NAMES)
+    for driver in drivers.DRIVERS:
+        assert {label.identifier for label in driver.labels} == set(driver.label_names)
 
 
 def test_names_are_unique():
-    assert len(set(LABEL_NAMES.values())) == len(LABEL_NAMES)
+    names = [name for driver in drivers.DRIVERS for name in driver.label_names.values()]
+    assert len(set(names)) == len(names) == len(LABELS)
 
 
 def test_label_printers():

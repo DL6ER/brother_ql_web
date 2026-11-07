@@ -7,11 +7,12 @@ import threading
 import pytest
 
 from app import create_app
-from app.labeldesigner import printer, snmp
+from app.labeldesigner import snmp
+from app.labeldesigner.drivers.brother import network
 from tests.printing.test_ipp import fake_printer, fixture as ipp_fixture, network_job  # noqa: F401
 
 FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'snmp')
-STATUS, PRINTER_STATUS = printer.SNMP_STATUS_OID, printer.SNMP_PRINTER_STATUS_OID
+STATUS, PRINTER_STATUS = network.SNMP_STATUS_OID, network.SNMP_PRINTER_STATUS_OID
 OTHER, IDLE, PRINTING = 1, 3, 4
 
 
@@ -69,8 +70,8 @@ def agent(fake_printer, monkeypatch):
             sock.sendto(snmp.encode_message(snmp.GET_RESPONSE, request_id, values, error=state['error']), address)
 
     threading.Thread(target=serve, daemon=True).start()
-    monkeypatch.setattr(printer, 'SNMP_PORT', sock.getsockname()[1])
-    monkeypatch.setattr(printer, '_snmp_unavailable', {})
+    monkeypatch.setattr(network, 'SNMP_PORT', sock.getsockname()[1])
+    monkeypatch.setattr(network, '_snmp_unavailable', {})
     state['port'] = sock.getsockname()[1]
     yield state
     sock.close()
@@ -134,7 +135,7 @@ def test_device_without_snmp():
 
 def query(agent, block: bytes, printer_status: int = IDLE, model: str = 'QL-810W') -> dict:
     agent['answers'] = [printer_state(block, printer_status)]
-    return printer.query_network_status('tcp://127.0.0.1', model)
+    return network.query_network_status('tcp://127.0.0.1', model)
 
 
 def test_status_over_snmp(fake_printer, agent):
@@ -148,7 +149,7 @@ def test_status_over_snmp(fake_printer, agent):
 
 
 @pytest.mark.parametrize('block, expected', [
-    (CANNOT_FEED, [printer.FEED_ERROR]),
+    (CANNOT_FEED, [network.FEED_ERROR]),
     (COVER_OPEN, ['The cover is open']),
     (REPLACE_MEDIA, ['The loaded labels do not fit the job']),
 ])
@@ -182,13 +183,13 @@ def test_ipp_for_a_printer_without_snmp(fake_printer, agent, monkeypatch):
     fake_printer['body'] = ipp_fixture('ql810w-ready-62x29.bin')
     agent['error'] = snmp.NO_SUCH_NAME
     for _ in range(3):
-        state = printer.query_network_status('tcp://127.0.0.1', 'QL-810W')
+        state = network.query_network_status('tcp://127.0.0.1', 'QL-810W')
         assert (state['media_width'], state['media_length']) == (62, 29)
     # Not asked again for a while
     assert (agent['requests'], fake_printer['requests']) == (1, 3)
     agent['error'], agent['answers'] = 0, [printer_state(READY_29x90)]
-    monkeypatch.setattr(printer, 'SNMP_RETRY', 0)
-    state = printer.query_network_status('tcp://127.0.0.1', 'QL-810W')
+    monkeypatch.setattr(network, 'SNMP_RETRY', 0)
+    state = network.query_network_status('tcp://127.0.0.1', 'QL-810W')
     assert (state['media_width'], state['media_length']) == (29, 90)
 
 
@@ -196,7 +197,7 @@ def test_ipp_for_a_device_without_the_status(fake_printer, agent):
     # e.g. an office printer of Brother
     fake_printer['body'] = ipp_fixture('ql810w-ready-62x29.bin')
     agent['answers'] = [{PRINTER_STATUS: IDLE}]
-    assert printer.query_network_status('tcp://127.0.0.1', 'QL-810W')['media_width'] == 62
+    assert network.query_network_status('tcp://127.0.0.1', 'QL-810W')['media_width'] == 62
 
 
 def test_job_waits_until_the_printer_finished(network_job, agent):
@@ -215,7 +216,7 @@ def test_job_with_labels_that_cannot_be_fed(network_job, agent):
     response = print_label()
     assert response.status_code == 503
     # The printer prints the label once the labels are fed
-    assert response.get_json()['message'] == 'The printer reports: ' + printer.FEED_ERROR
+    assert response.get_json()['message'] == 'The printer reports: ' + network.FEED_ERROR
     assert 'Do not print it again' in response.get_json()['message']
 
 

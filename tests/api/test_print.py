@@ -10,7 +10,7 @@ import pytest
 from PIL import Image
 from flask.testing import FlaskClient
 
-from tests.helpers import _pdf, _red_square, _upload, EXAMPLE_FORMDATA, make_client
+from tests.helpers import _pdf, _red_square, _upload, EXAMPLE_FORMDATA, make_client, sent_raster
 
 
 class TestLabelDesignerAPI:
@@ -192,9 +192,7 @@ def test_several_files_count_against_the_print_limit(tmp_path):
 def test_fast_printing(tmp_path, monkeypatch, route, fast):
     # Unless printing fast, the printer gives priority to print quality, bit
     # 6 of the media and quality command (ESC i z), which makes it slower
-    from app.labeldesigner import printer
-    sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
+    sent = sent_raster(monkeypatch)
     client = make_client(tmp_path)
     options = {} if fast is None else {'fast_printing': fast}
     if route == 'print':
@@ -215,9 +213,7 @@ def test_fast_printing(tmp_path, monkeypatch, route, fast):
 def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkeypatch, model, label_size, ptouch):
     # A PT-E550W hung after the half cut with uncompressed raster lines over
     # Wi-Fi, and with media type 0x00 ("no tape") also over USB
-    from app.labeldesigner import printer
-    sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
+    sent = sent_raster(monkeypatch)
     client = make_client(tmp_path, model=model)
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size=label_size, orientation='rotated'))
     assert response.get_json()['success'] is True
@@ -232,9 +228,7 @@ def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkey
 def test_copies_on_ptouch_printers_are_one_job(tmp_path, monkeypatch, cut_once):
     # As jobs of their own, a PT-E550W fed, half cut and cut the tape for
     # every copy, also with cut_once
-    from app.labeldesigner import printer
-    sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
+    sent = sent_raster(monkeypatch)
     client = make_client(tmp_path, model='PT-E550W')
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='12', cut_once=cut_once))
     assert response.get_json()['success'] is True
@@ -265,9 +259,7 @@ def test_copies_on_ptouch_printers_are_one_job(tmp_path, monkeypatch, cut_once):
     ({'cut': 'none', 'half_cut': '0', 'chain': '1'}, 0x00, [], 0x00),
 ])
 def test_cutting_on_ptouch_printers(tmp_path, monkeypatch, options, autocut, cut_every, advanced):
-    from app.labeldesigner import printer
-    sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    sent = sent_raster(monkeypatch)
     client = make_client(tmp_path, model='PT-E550W')
     data = dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='3', **options)
     assert client.post('/labeldesigner/api/print', data=data).get_json()['success'] is True

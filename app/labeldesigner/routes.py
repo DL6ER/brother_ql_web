@@ -21,11 +21,13 @@ from app.fonts import FontNotFound
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
-from . import vc500w
-from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
+from . import drivers
+from .drivers import DEVICE_PATTERNS, resolution_problem
+from .drivers.devices import flock_within
+from .printer import PrinterQueue, get_ptr_status
 from brother_ql.labels import FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, parse_color
-from .label_names import LABELS, MODELS, VC500W, check_cut, label_name, label_palette, label_printers, label_size_problem
+from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -34,11 +36,9 @@ from app.utils import (
     pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
 )
 
-DEFAULT_DPI = 300
 # The label size of a request or a saved label that names none, the same for
 # the label and the printer
 DEFAULT_LABEL_SIZE = '62'
-HIGH_RES_DPI = 600
 
 # Image types the repository stores next to the label JSON files
 REPO_IMAGE_EXTENSIONS = {
@@ -56,14 +56,6 @@ REPO_IMAGE_MIME_TYPES = {
     '.pdf': 'application/pdf'
 }
 
-# Printers a request may select besides the configured one. The backend opens
-# and writes to whatever it is given, so arbitrary paths must not get through.
-PRINTER_DEVICE_PATTERNS = (
-    re.compile(r'(file://)?/dev/usb/lp\d+'),
-    re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
-    re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
-    re.compile(r'vc500w://[A-Za-z0-9.-]+(:9100)?'),
-)
 
 @bp.errorhandler(ValueError)
 def handle_value_error(e):
@@ -242,7 +234,7 @@ def index():
                 'image_mode': current_app.config['IMAGE_DEFAULT_MODE'],
                 'image_bw_threshold': current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
             },
-            'models_without_600_dpi': sorted(MODELS_WITHOUT_600_DPI),
+            'models_without_600_dpi': sorted(model for model in MODELS if resolution_problem(model, True)),
             'preview_parallel': max(1, min(16, cpus - 1)),
         },
         version=_asset_version(),
@@ -1112,7 +1104,8 @@ def get_printer_status():
     status = get_ptr_status(current_app.config)
     # The VC-500W prints in color, the label designer then offers colors
     for printer in [status] + status.get('printers', []):
-        printer['color_support'] = printer.get('model') == VC500W
+        model = printer.get('model')
+        printer['color_support'] = drivers.for_model(model).colors(model) == 'color'
     return status
 
 
@@ -1172,7 +1165,7 @@ def _log_refused_request(what: str, error: Exception):
         current_app.logger.exception(error)
 
 
-PRINTER_MODELS = [model.identifier for model in MODELS]
+PRINTER_MODELS = list(MODELS)
 
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
@@ -1186,7 +1179,7 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
     device = requested_device or configured
     listed = [d for _, d in printers]
     if device not in (configured, 'simulation', '?', *listed) and \
-            not any(pattern.fullmatch(device) for pattern in PRINTER_DEVICE_PATTERNS):
+            not any(pattern.fullmatch(device) for pattern in DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
     model = requested_model or next((m for m, d in printers if d == device), model)
     if model not in PRINTER_MODELS:
@@ -1512,10 +1505,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     image_mode = _image_mode(d)
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
-    if _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color':
-        dpi = vc500w.DPI
-    else:
-        dpi = HIGH_RES_DPI if _whole_or(d.get('high_res'), 0) != 0 else DEFAULT_DPI
+    dpi = label_dpi(d.get('label_size', DEFAULT_LABEL_SIZE), _whole_or(d.get('high_res'), 0) != 0)
     pdf_pages = str(d.get('pdf_pages') or '')
     # Pages only make several labels of an image label
     first_only = first_only or d.get('print_type', 'text') != 'image'
@@ -1787,7 +1777,7 @@ def webhook_print():
         return _scale_image_to_label(img, label_size, image_orientation_name, high_res), image_width, image_height, image_orientation
 
     pil_images = []
-    dpi = vc500w.DPI if color else HIGH_RES_DPI if high_res else DEFAULT_DPI
+    dpi = label_dpi(label_size, high_res)
     try:
         for f in uploaded_files:
             pil_images.append(prepare(open_image(f, f.filename, dpi)))

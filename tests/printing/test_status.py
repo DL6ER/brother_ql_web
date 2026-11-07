@@ -47,7 +47,7 @@ def make_status_packet() -> bytes:
 
 class TestPrinterStatus:
     def test_get_status_waits_for_delayed_response(self):
-        from app.labeldesigner.printer import get_status
+        from app.labeldesigner.drivers.brother.usb import get_status
         printer = FakeSlowPrinter(empty_reads=5, response=make_status_packet())
         status = get_status(printer)
         assert printer.written == b'\x1b\x69\x53'
@@ -55,14 +55,14 @@ class TestPrinterStatus:
         assert status['errors'] == []
 
     def test_get_status_resets_a_printer_that_does_not_answer(self):
-        from app.labeldesigner.printer import get_status
+        from app.labeldesigner.drivers.brother.usb import get_status
         printer = FakeResetPrinter(make_status_packet())
         status = get_status(printer, timeout=0.1)
         assert printer.written == b'\x1b\x69\x53' + b'\x00' * 200 + b'\x1b\x40\x1b\x69\x53'
         assert status['media_width'] == 62
 
     def test_get_status_times_out_without_response(self):
-        from app.labeldesigner.printer import get_status
+        from app.labeldesigner.drivers.brother.usb import get_status
         printer = FakeSlowPrinter(empty_reads=10**6, response=b'')
         with pytest.raises(TimeoutError):
             get_status(printer, timeout=0.1)
@@ -72,7 +72,7 @@ class TestPrinterStatus:
 def test_ptouch_models_are_told_apart(code, model):
     # brother_ql gave the PT-E550W the code of the PT-P750W, a PT-E550W was
     # an unknown printer and a PT-P750W was taken for a PT-E550W
-    from app.labeldesigner.printer import get_status
+    from app.labeldesigner.drivers.brother.usb import get_status
     packet = bytearray(make_status_packet())
     packet[3], packet[4] = 0x30, code
     packet[10], packet[11], packet[24], packet[25] = 12, 0x01, 0x01, 0x08  # 12 mm laminated, white, black text
