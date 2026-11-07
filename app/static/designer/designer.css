@@ -457,6 +457,7 @@ select.mini.lsp { max-width: 4rem; }
 .plist { display: flex; flex-direction: column; gap: .3rem; }
 .prow { display: flex; align-items: center; gap: .7rem; border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: .55rem .75rem; text-align: left; cursor: pointer; width: 100%; }
 .prow .sm { display: block; font-size: .8rem; color: var(--muted); word-break: break-all; }
+.prow .sm.warn { color: var(--warn); word-break: normal; }
 .prow.on { border-color: var(--select); box-shadow: 0 0 0 1px var(--select); }
 .prow > i { color: var(--select); }
 .settings { display: flex; flex-direction: column; gap: 1rem; }

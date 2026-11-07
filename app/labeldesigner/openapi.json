@@ -1986,6 +1986,10 @@
             "type": ["integer", "null"],
             "description": "VC-500W: tape left in the cassette, in millimeters."
           },
+          "weak_connection": {
+            "type": "boolean",
+            "description": "VC-500W on Wi-Fi: some of the last 20 status questions of the server got no answer, moving the printer closer to the Wi-Fi router may help."
+          },
           "job": {
             "type": "object",
             "description": "VC-500W: what it does while it prints a label, which takes about 40 s.",

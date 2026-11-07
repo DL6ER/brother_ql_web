@@ -141,6 +141,14 @@ def test_tape_left_in_the_printer_panel(designer):
     designer.click('#printerChip')
     designer.wait_for_selector('.plist')
     assert '4.6 m of 5.0 m left' in designer.inner_text('.plist')
+    assert 'Wi-Fi' not in designer.inner_text('.plist')
+
+
+def test_connection_in_the_printer_panel(designer):
+    fake_vc500w(designer, weak_connection=True)
+    designer.click('#printerChip')
+    designer.wait_for_selector('.plist')
+    assert 'The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.' in designer.inner_text('.plist')
 
 
 def test_stages_are_shown_while_printing(designer):

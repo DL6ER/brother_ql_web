@@ -3,6 +3,7 @@ a real one (an XML <status>, a line break, a NUL byte and the announced
 data), on the network and through a pseudo terminal in place of usblp, and
 printing and status through the label designer."""
 import base64
+import collections
 import io
 import json
 import os
@@ -192,6 +193,7 @@ def fake(request, monkeypatch):
     for name, value in (('POLL_INTERVAL', 0.01), ('DATA_DELAY', 0.05), ('FILL_WAIT', 0.05), ('START_TIMEOUT', 0.05)):
         monkeypatch.setattr(vc500w, name, value)
     monkeypatch.setattr(printer, '_status_cache', {})
+    monkeypatch.setattr(vc500w, '_answers', {})
     yield printer_
     printer_.close()
 
@@ -380,6 +382,38 @@ def test_printer_that_stops_answering_during_the_job(fake, monkeypatch):
     monkeypatch.setattr(vc500w, 'STALL_TIMEOUT', 0.5)
     fake.unanswered = set(range(2, 1000))
     assert vc500w.print_image(fake.target, IMAGE, port=fake.port) == vc500w.UNFINISHED
+
+
+def test_lost_answers_are_counted(fake, monkeypatch):
+    monkeypatch.setattr(vc500w, 'TIMEOUT', 0.2)
+    fake.unanswered = {1}
+    with pytest.raises(TimeoutError):
+        vc500w.get_state(fake.target, fake.port)
+    vc500w.get_state(fake.target, fake.port)
+    # Each state is a question for /config.xml and one for /status.xml
+    assert len(vc500w._answers[(fake.target, fake.port)]) == 4
+    assert vc500w.lost_answers(fake.target, fake.port) == 1
+
+
+def test_only_the_last_answers_count(fake, monkeypatch):
+    monkeypatch.setattr(vc500w, 'TIMEOUT', 0.2)
+    monkeypatch.setattr(vc500w, 'LINK_ANSWERS', 4)
+    fake.unanswered = {1}
+    with pytest.raises(TimeoutError):
+        vc500w.get_state(fake.target, fake.port)
+    for _ in range(2):
+        vc500w.get_state(fake.target, fake.port)
+    assert vc500w.lost_answers(fake.target, fake.port) == 0
+
+
+def test_printer_not_reached_loses_no_answers(fake):
+    # Switched off, it does not answer at all, which the status tells
+    closed = socket.create_server(('127.0.0.1', 0))
+    port = closed.getsockname()[1]
+    closed.close()
+    with pytest.raises(ConnectionRefusedError):
+        vc500w.get_state('127.0.0.1', port)
+    assert vc500w.lost_answers('127.0.0.1', port) == 0
 
 
 def test_label_too_long_for_the_printer(fake):
@@ -576,8 +610,20 @@ def test_status_through_the_label_designer(client):
     assert (printer_['media_width'], printer_['media_length']) == (25, 0)
     assert printer_['color_support'] is True and printer_['errors'] == []
     assert (printer_['tape_length_mm'], printer_['tape_remaining_mm']) == (5004, 4596)
+    assert printer_.get('weak_connection') is (False if printer_['path'].startswith('vc500w://') else None)
     # The simulator is the configured model, here a VC-500W, too
     assert status['printers'][1]['model'] == 'VC-500W' and status['printers'][1]['color_support'] is True
+
+
+def test_connection_through_the_label_designer(client, fake, monkeypatch):
+    monkeypatch.setattr(vc500w, 'TIMEOUT', 0.2)
+    fake.unanswered = {1}
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert status['printers'][0]['errors'] == ['The printer does not answer']
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    # Only on Wi-Fi does moving the printer help
+    assert status['printers'][0].get('weak_connection') is (True if fake.target == '127.0.0.1' else None)
+    assert 'weak_connection' not in status['printers'][1]
 
 
 def test_stage_of_a_running_job(client, fake):
@@ -585,6 +631,7 @@ def test_stage_of_a_running_job(client, fake):
     key = printer._lock_key(path)
     printer._status_cache[key] = printer._network_printer(path, 'VC-500W')
     printer._vc500w_jobs[key] = {'stage': 'Preheating', 'label': 2, 'labels': 3}
+    vc500w._answers[printer._vc500w_target(path)] = collections.deque([True, False])
     try:
         with printer.device_lock(path):
             # Without waiting for the printer the job holds
@@ -595,6 +642,8 @@ def test_stage_of_a_running_job(client, fake):
         printer._vc500w_jobs.clear()
     assert status['printers'][0]['job'] == {'stage': 'Preheating', 'label': 2, 'labels': 3}
     assert status['printers'][0]['status_type'] == printer.BUSY_STATUS_TYPE
+    # How well it is reached, also while the job holds it
+    assert status['printers'][0].get('weak_connection') is (True if path.startswith('vc500w://') else None)
 
 
 def test_stage_while_another_app_prints(client, fake):

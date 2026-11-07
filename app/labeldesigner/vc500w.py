@@ -12,6 +12,7 @@ Micheloni for labelprinter
 (https://m7i.org/projects/labelprinter-linux-python-for-vc-500w/), this is
 an implementation of our own. Standard library only."""
 
+import collections
 import os
 import select
 import socket
@@ -62,6 +63,8 @@ BUSY_TIMEOUT = 120
 FILL_LIMIT = 32768
 FILL_WAIT = 0.5
 POLL_INTERVAL = 0.5
+# How many answers to status questions show how well the printer is reached
+LINK_ANSWERS = 20
 IDLE = 'IDLE'
 EJECT_JAM = 'EJECT JAM'
 
@@ -89,6 +92,9 @@ TOO_LONG = 'The label is too long for the printer'
 PRINTER_IS_BUSY = 'printer is busy'
 
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
+
+# By (target, port): whether the last status questions got an answer
+_answers: dict = {}
 
 
 class VC500WError(Exception):
@@ -248,7 +254,13 @@ class Connection:
 
     def read(self, path: str) -> ET.Element:
         """A file of the printer, e.g., /config.xml, as XML."""
-        _, data = self.command(f'<read>\n<path>{path}</path>\n</read>')
+        answers = _answers.setdefault((self._target, self._port), collections.deque(maxlen=LINK_ANSWERS))
+        try:
+            _, data = self.command(f'<read>\n<path>{path}</path>\n</read>')
+        except (OSError, VC500WError):
+            answers.append(False)
+            raise
+        answers.append(True)
         return _element(data.rstrip(b'\x00'))
 
 
@@ -298,6 +310,12 @@ def get_state(target: str, port: int = PORT) -> tuple[dict, dict]:
         config = parse_config(connection.read('/config.xml'))
         status = parse_status(connection.read('/status.xml'))
     return config, status
+
+
+def lost_answers(target: str, port: int = PORT) -> int:
+    """How many of the last status questions got no answer, e.g., on a weak
+    Wi-Fi."""
+    return _answers.get((target, port), ()).count(False)
 
 
 def print_error(status: dict) -> str:
