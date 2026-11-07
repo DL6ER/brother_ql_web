@@ -44,11 +44,6 @@ SLOWEST_PRINT_SPEED = 10
 WRITE_CHUNK = 16384
 STATUS_HEADER = b'\x80\x20\x42'
 
-# Default maximum number of labels to rasterize and send in a single batch.
-# Sending too many labels at once can cause printer timeouts/failures.
-# Override via PRINT_BATCH_SIZE environment variable or Flask config.
-DEFAULT_BATCH_SIZE = 5
-
 logger = logging.getLogger(__name__)
 
 # Where printers are looked for when PRINTER_PRINTER is '?'. The tests point
@@ -294,79 +289,84 @@ class PrinterQueue:
         })
 
     def _rasterize_entries(self, entries):
-        """Rasterize a list of queue entries into a BrotherQLRaster and
-        return ``(qlr, generated_images)``."""
+        """Rasterize the queue entries into one BrotherQLRaster. Each label
+        is converted as soon as its job is complete, so that the images of
+        a long job are not all kept in memory; the simulator saves them as
+        PNG instead."""
         qlr = _Raster(self.model)
         ptouch = self.model.startswith('PT-')
-        generated_images = []
         # The length of each page in mm, at most: how long the printer may
         # take to print it
         qlr.page_lengths = []
         simulation = is_simulation(self.device_specifier)
-        jobs = []
-        for entry in entries:
+        if simulation:
+            os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
+            ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S_%f')
+        job = None
+        for i, entry in enumerate(entries):
             label = entry['label']
             if label.label_type == LabelType.ENDLESS_LABEL:
                 rotate = 0 if label.label_orientation == LabelOrientation.STANDARD else 90
             else:
                 rotate = 'auto'
-            img = label.generate()
-            if simulation:
-                generated_images.append(img)
-            qlr.page_lengths.append(max(img.size) / (180 if ptouch else 300) * 25.4)
             dither = label.label_content != LabelContent.IMAGE_BW
             # The labels of a PT printer are one job. As jobs of their own, a
             # PT-E550W fed, half cut and cut the tape for each, also when it
             # was to be cut after the last one only.
             settings = (rotate, dither, entry['high_res'], entry['fast'])
-            if ptouch and jobs and jobs[-1]['settings'] == settings:
-                jobs[-1]['images'].append(img)
-                jobs[-1]['cuts'].append(entry['cut'])
+            if job and not (ptouch and job['settings'] == settings):
+                self._add_job(qlr, job)
+                job = None
+            img = label.generate()
+            if simulation:
+                path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_{i:03d}.png')
+                img.save(path, format='PNG')
+                logger.info('Saved simulated label to %s', path)
+            qlr.page_lengths.append(max(img.size) / (180 if ptouch else 300) * 25.4)
+            if job:
+                job['images'].append(img)
+                job['cuts'].append(entry['cut'])
             else:
-                jobs.append({'settings': settings, 'images': [img], 'cuts': [entry['cut']]})
-        for job in jobs:
-            rotate, dither, high_res, fast = job['settings']
-            if ptouch:
-                # Cut after every label, or with cut_once after the last one
-                # of each batch, the printer half cuts between them
-                qlr.cut_every = 1 if all(job['cuts']) else len(job['images'])
-            # Unless printing fast, the printer gives priority to print
-            # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
-            # 3.0 s instead of 1.8 s with it, a little sharper.
-            # PT printers get compressed raster lines, as from Brother's
-            # apps: a PT-E550W read uncompressed ones wrongly over Wi-Fi,
-            # half cut the tape and hung in the printing state.
-            qlr.page_number = 0
-            create_label(
-                qlr,
-                job['images'],
-                self.label_size,
-                red='red' in str(self.label_size),
-                dither=dither,
-                cut=ptouch or any(job['cuts']),
-                dpi_600=high_res,
-                hq=not fast,
-                rotate=rotate,
-                compress=ptouch
-            )
-        return qlr, generated_images
+                job = {'settings': settings, 'images': [img], 'cuts': [entry['cut']]}
+        if job:
+            self._add_job(qlr, job)
+        return qlr
 
-    def _send_raster(self, qlr, generated_images, batch_index=0, batch_count=1) -> str:
+    def _add_job(self, qlr, job):
+        """Convert the images of a job, labels printed with the same settings."""
+        ptouch = self.model.startswith('PT-')
+        rotate, dither, high_res, fast = job['settings']
+        if ptouch:
+            # Cut after every label, or with cut_once after the last one, the
+            # printer half cuts between them. ESC i A counts up to 255 labels.
+            qlr.cut_every = 1 if all(job['cuts']) else min(len(job['images']), 255)
+        # Unless printing fast, the printer gives priority to print
+        # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
+        # 3.0 s instead of 1.8 s with it, a little sharper.
+        # PT printers get compressed raster lines, as from Brother's
+        # apps: a PT-E550W read uncompressed ones wrongly over Wi-Fi,
+        # half cut the tape and hung in the printing state.
+        qlr.page_number = 0
+        create_label(
+            qlr,
+            job['images'],
+            self.label_size,
+            red='red' in str(self.label_size),
+            dither=dither,
+            cut=ptouch or any(job['cuts']),
+            dpi_600=high_res,
+            hq=not fast,
+            rotate=rotate,
+            compress=ptouch
+        )
+
+    def _send_raster(self, qlr) -> str:
         """Send rasterized data to the printer or simulator.
         Returns an empty string on success, or an error message."""
-        # Only jobs split into several batches name the batch
-        batch = f' (batch {batch_index} of {batch_count})' if batch_count > 1 else ''
         try:
-            # Simulator: pretend we sent data, save labels as PNG, and return success
+            # Simulator: the labels were saved as PNG, pretend we sent them
             if is_simulation(self.device_specifier):
-                logger.info('Simulated sending %d bytes to simulator printer (batch %d)',
-                            len(qlr.data), batch_index)
-                os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
-                ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S_%f')
-                for i, img in enumerate(generated_images):
-                    path = os.path.join(SIMULATED_LABELS_DIR, f'{ts}_b{batch_index}_{i}.png')
-                    img.save(path, format='PNG')
-                    logger.info('Saved simulated label to %s', path)
+                logger.info('Simulated sending %d bytes to simulator printer', len(qlr.data))
                 _prune_simulated_labels()
                 return ""
 
@@ -377,17 +377,16 @@ class PrinterQueue:
                 problem = _network_printer_problem(self.device_specifier, self.model)
                 if problem:
                     logger.warning('Not printing on %s: %s', self.device_specifier, problem)
-                    return problem + batch
-            logger.info("Sending %d bytes to printer at %s (batch %d)",
-                        len(qlr.data), self.device_specifier, batch_index)
+                    return problem
+            logger.info("Sending %d bytes to printer at %s", len(qlr.data), self.device_specifier)
             if network_printer:
                 send(qlr.data, self.device_specifier)
                 logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
                 # Port 9100 gives no answer, IPP tells how the job ended
-                message = _network_job_result(self.device_specifier, self.model)
+                message = _network_job_result(self.device_specifier, self.model, qlr.page_lengths)
                 if message:
                     logger.warning('Printing failed: %s', message)
-                    return message + batch
+                    return message
                 return ""
             info = send_job(qlr.data, self.device_specifier, qlr.page_lengths)
             logger.info('Sent %d bytes to printer %s', len(qlr.data), self.device_specifier)
@@ -395,59 +394,42 @@ class PrinterQueue:
             if info.get('did_print') and info.get('ready_for_next_job'):
                 logger.info('Label printed successfully and printer is ready for next job')
                 return ""
-            message = _print_failure(info) + batch
+            message = _print_failure(info)
             logger.warning('Printing failed: %s', message)
             return message
         except Exception as e:
-            logger.exception("Exception during sending to printer (batch %d): %s", batch_index, e)
+            logger.exception("Exception during sending to printer: %s", e)
             reason = _unanswered_reason(e)
             if reason:
-                return f"Could not send the label to the printer{batch}: {reason}"
-            return f"Could not send the label to the printer{batch}, the log of the server names the reason"
+                return f"Could not send the label to the printer: {reason}"
+            return "Could not send the label to the printer, the log of the server names the reason"
 
-    def process_queue(self, batch_size: int = 0) -> str:
+    def process_queue(self) -> str:
+        """Print the labels of the queue as one job."""
         if not self._print_queue:
             logger.warning("Print queue is empty.")
             return "Print queue is empty."
 
-        if batch_size < 1:
-            batch_size = int(os.environ.get('PRINT_BATCH_SIZE', DEFAULT_BATCH_SIZE))
-        if batch_size < 1:
-            batch_size = DEFAULT_BATCH_SIZE
-
-        total = len(self._print_queue)
         entries = list(self._print_queue)
         self._print_queue.clear()
 
-        batch_count = (total + batch_size - 1) // batch_size
         # Hold the device for the whole job so that neither status queries nor
-        # other jobs get in between the batches
+        # other jobs get in between
         lock = contextlib.nullcontext(True) if is_simulation(self.device_specifier) else device_lock(self.device_specifier)
         with lock as acquired:
             if not acquired:
                 logger.warning('Printer %s is busy with another job', self.device_specifier)
                 return "Printer is busy with another print job, please try again"
-            # Split into batches to avoid printer timeouts on large jobs. Each
-            # batch is rasterized right before it is sent, so only one batch
-            # is kept in memory at a time.
-            for batch_index, start in enumerate(range(0, total, batch_size), start=1):
-                batch = entries[start:start + batch_size]
-                logger.info('Processing batch %d (%d labels, %d/%d)',
-                            batch_index, len(batch), start + len(batch), total)
-                qlr, generated_images = self._rasterize_entries(batch)
-                status = self._send_raster(qlr, generated_images, batch_index, batch_count)
-                if status:
-                    return status
-
-        return ""
+            logger.info('Printing %d labels', len(entries))
+            return self._send_raster(self._rasterize_entries(entries))
 
 
 # A network printer that is stopped without telling why, e.g. a QL-810W
 # briefly at the end of every job
 STOPPED_STATUS_TYPE = 'Stopped'
 
-# How long a job on a network printer may take, and how often its state is
-# asked over IPP meanwhile
+# How long a job on a network printer may take besides printing its labels at
+# the slowest printers, and how often its state is asked over IPP meanwhile
 NETWORK_JOB_TIMEOUT = 120
 NETWORK_JOB_POLL = 0.5
 
@@ -465,11 +447,11 @@ def _network_printer_problem(device_specifier: str, model: str) -> str:
     return ''
 
 
-def _network_job_result(device_specifier: str, model: str) -> str:
+def _network_job_result(device_specifier: str, model: str, page_lengths: list) -> str:
     """After a job was sent to a network printer: the error it reports over
     IPP, or an empty string once it is idle again. Printers without IPP
-    tell nothing."""
-    deadline = time.monotonic() + NETWORK_JOB_TIMEOUT
+    tell nothing. page_lengths: the length of each page in mm."""
+    deadline = time.monotonic() + NETWORK_JOB_TIMEOUT + sum(page_lengths) / SLOWEST_PRINT_SPEED
     while True:
         time.sleep(NETWORK_JOB_POLL)
         try:
@@ -491,8 +473,8 @@ def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
     error, or until it stays silent for longer than a page takes to print.
 
     brother_ql's send() stopped reading 10 s after it began to write: a long
-    label, which the printer prints while it receives it, was not confirmed
-    and the batches after it were not printed. It also stopped at the first
+    label, which the printer prints while it receives it, was not confirmed.
+    It also stopped at the first
     page, the messages of the other pages were left for the next job.
 
     page_lengths: the length of each page in mm. Returns, as _print_failure()

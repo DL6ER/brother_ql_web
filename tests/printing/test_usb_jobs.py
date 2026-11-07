@@ -198,8 +198,8 @@ def test_job_is_written_in_pieces(clock, monkeypatch):
 
 
 def test_long_labels_printed_through_the_api(clock, monkeypatch, tmp_path):
-    # Each job is printed while it is received, which takes 30 s: brother_ql
-    # did not confirm the first one and dropped the second
+    # The job is printed while it is received, which takes 30 s: brother_ql
+    # did not confirm it
     monkeypatch.setattr(helpers, 'time', clock)
     jobs = []
 
@@ -220,4 +220,4 @@ def test_long_labels_printed_through_the_api(clock, monkeypatch, tmp_path):
     client.application.config['PRINTER_PRINTER'] = 'file:///dev/usb/lp0'
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='7'))
     assert response.get_json() == {'success': True}
-    assert [job.written.count(b'\x1biz') for job in jobs] == [5, 2]
+    assert [job.written.count(b'\x1biz') for job in jobs] == [7]

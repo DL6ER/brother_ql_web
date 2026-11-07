@@ -175,7 +175,7 @@ def test_a_label_is_printed_with_the_image_saved_with_it(tmp_path, monkeypatch, 
     import threading
     from app.labeldesigner import printer, routes
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, *args, **kwargs: None)
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     body = {'name': 'Shelf.json', 'label_size': '62', 'print_type': 'image', 'text': TEXT, 'image_data': _png_b64('red'), 'image_mime': 'image/png'}
     assert client.post(SAVE_URL, json=body).status_code == 200
