@@ -530,6 +530,7 @@ def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
         give_up = time.monotonic() + sum(STATUS_WAIT + length / SLOWEST_PRINT_SPEED for length in page_lengths)
         deadline = min(time.monotonic() + page_wait, give_up)
         received = b''
+        printing = False
         while time.monotonic() < deadline:
             states, received = _status_messages(received + (printer.read(32) or b''))
             if not states:
@@ -542,7 +543,15 @@ def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
                     return info
                 if state['status_type'] == 'Printing completed':
                     info['confirmed'] += 1
-                elif state['status_type'] == 'Phase change':
+                    printing = False
+                elif state['phase_type'] == 'Printing state':
+                    printing = True
+                elif printing:
+                    # The QL-800 and QL-1100 report only the last page of a job
+                    # completed, the others end with them waiting to receive again
+                    info['confirmed'] += 1
+                    printing = False
+                if state['status_type'] == 'Phase change':
                     # "Printing" before each page, "waiting to receive" after it
                     info['ready_for_next_job'] = state['phase_type'] == 'Waiting to receive'
             info['did_print'] = info['confirmed'] >= info['pages']
