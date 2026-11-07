@@ -687,6 +687,37 @@ def test_vc500w_on_usb_is_detected_by_its_device_id(tmp_path, monkeypatch):
         printer_.close()
 
 
+def test_vc500w_on_the_network_is_detected_by_its_announcement(tmp_path, monkeypatch):
+    printer_ = FakeVC500W()
+    try:
+        monkeypatch.setattr(vc500w, 'PORT', printer_.port)
+        monkeypatch.setattr(vc500w, 'DATA_DELAY', 0.05)
+        monkeypatch.setattr(vc500w, 'POLL_INTERVAL', 0.01)
+        monkeypatch.setattr(vc500w, 'START_TIMEOUT', 0.05)
+        monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', True)
+        monkeypatch.setattr(printer, '_discovered', None)
+        monkeypatch.setattr(printer, '_last_scan_ts', 0)
+        monkeypatch.setattr(printer, '_status_cache', {})
+        monkeypatch.setattr(printer.mdns, 'discover', lambda: [
+            {'name': 'Brother VC-500W._ipp._tcp.local', 'service': '_ipp._tcp.local', 'address': '127.0.0.1',
+             'port': 631, 'txt': {'ty': 'print', 'product': '(Brother VC-500W)', 'kind': 'roll'}}])
+
+        def ql_query(*args, **kwargs):
+            raise AssertionError('A VC-500W must not get the commands of a QL printer')
+        monkeypatch.setattr(printer, 'query_network_status', ql_query)
+        client = make_client(tmp_path)
+        client.application.config['PRINTER_PRINTER'] = '?'
+        status = client.get('/labeldesigner/api/printer_status').get_json()
+        vc = status['printers'][0]
+        assert (vc['path'], vc['model'], vc['color_support'], vc['tape_remaining_mm']) == ('vc500w://127.0.0.1', 'VC-500W', True, 4596)
+        response = client.post('/labeldesigner/api/print', data={
+            'printer': 'vc500w://127.0.0.1', 'label_size': 'vc25', 'model': 'VC-500W', 'print_type': 'text', 'text': TEXT})
+        assert response.get_json() == {'success': True}
+        assert len(printer_.images) == 1
+    finally:
+        printer_.close()
+
+
 def test_device_id_of_a_usb_printer(tmp_path, monkeypatch):
     (tmp_path / 'lp0').write_text('MFG:Brother;MDL:VC-500W;CMD:LABEL;\n')
     (tmp_path / 'lp1').write_text('MFG:Brother;CMD:PT-CBP;MDL:QL-1100;CLS:PRINTER;\n')

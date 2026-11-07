@@ -1203,9 +1203,16 @@ def _ipp_network_status(device_specifier: str, host: str, default_model: str, la
     return dict(status)
 
 
+def _announces_vc500w(txt: dict) -> bool:
+    # It announces only IPP, its model as product, e.g. "Brother VC-500W"
+    names = (txt.get('usb_mdl'), txt.get('ty'), (txt.get('product') or '').strip('()'))
+    return any((name or '').removeprefix('Brother ').strip() == VC500W for name in names)
+
+
 def _discovered_label_printers() -> list[tuple[str, str]]:
     """Label printers that announce themselves on the network, as
-    (tcp://<address>[:<port>], model). Kept for DISCOVERY_INTERVAL."""
+    (tcp://<address>[:<port>], model), a VC-500W as vc500w://<address>. Kept
+    for DISCOVERY_INTERVAL."""
     global _discovered
     if not NETWORK_DISCOVERY:
         return []
@@ -1214,12 +1221,15 @@ def _discovered_label_printers() -> list[tuple[str, str]]:
     printers = []
     for service in mdns.discover():
         txt = service['txt']
-        model = _label_printer_model(txt.get('usb_mdl') or '') or _label_printer_model(txt.get('ty') or '')
-        if model is None:
-            continue
-        # IPP announces its own port, jobs go to the raw port
-        port = service['port'] if service['service'].startswith('_pdl-datastream.') else None
-        spec = f"tcp://{service['address']}" + (f':{port}' if port and port != 9100 else '')
+        if _announces_vc500w(txt):
+            spec, model = f"vc500w://{service['address']}", VC500W
+        else:
+            model = _label_printer_model(txt.get('usb_mdl') or '') or _label_printer_model(txt.get('ty') or '')
+            if model is None:
+                continue
+            # IPP announces its own port, jobs go to the raw port
+            port = service['port'] if service['service'].startswith('_pdl-datastream.') else None
+            spec = f"tcp://{service['address']}" + (f':{port}' if port and port != 9100 else '')
         if all(urlsplit(known).hostname != service['address'] for known, _ in printers):
             printers.append((spec, model))
     _discovered = (time.monotonic(), printers)
@@ -1337,8 +1347,11 @@ def get_ptr_status(config: Config):
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
                 for spec, model, unconfirmed in candidates:
                     try:
-                        printer = query_network_status(spec, model, label_printers_only=unconfirmed)
-                    except OSError as e:
+                        if is_vc500w(spec):
+                            printer = query_vc500w_status(spec)
+                        else:
+                            printer = query_network_status(spec, model, label_printers_only=unconfirmed)
+                    except (OSError, vc500w.VC500WError) as e:
                         logger.info('Status query of %s failed: %s', spec, e)
                         printer = _failed_printer_state(spec, e, model)
                     if printer is not None:
