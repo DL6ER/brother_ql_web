@@ -122,6 +122,8 @@ def test_gray_preview_is_made_without_looking_at_each_pixel(tmp_path, monkeypatc
     ({}, 'L'),
     # With red or color chosen it stays in color, even with nothing red on it
     ({'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Red', 'size': '40', 'color': 'red'}])}, 'RGB'),
+    # Tape without red prints it black
+    ({'label_size': '62', 'text': json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Red', 'size': '40', 'color': 'red'}])}, 'L'),
     ({'print_color': 'red'}, 'RGB'),
     # A frame is red only where it is drawn
     ({'border_color': 'red', 'border_thickness': '0'}, 'L'),
@@ -133,7 +135,7 @@ def test_gray_preview_is_made_without_looking_at_each_pixel(tmp_path, monkeypatc
 def test_preview_without_red_or_color_is_stored_in_gray(tmp_path, settings, mode):
     # The same pixels in half the bytes, the reference images check them
     client = make_client(tmp_path)
-    data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Gray', 'size': '40'}]))
+    data = dict(EXAMPLE_FORMDATA, label_size='62red', text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Gray', 'size': '40'}]))
     data.update(settings)
     if data.get('print_type') == 'image':
         image = Image.new('L', (200, 100), 255)

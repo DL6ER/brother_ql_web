@@ -14,10 +14,38 @@ brother_ql (tape width x label length) with Brother's official values where
 brother_ql rounds differently.
 """
 
-from brother_ql.labels import ALL_LABELS, Color, Label
+from brother_ql.labels import ALL_LABELS, Color, FormFactor, Label
 from brother_ql.models import ALL_MODELS, Model
 
+from . import vc500w
+
+
+def _dots(inches: float) -> int:
+    return round(inches * vc500w.DPI)
+
+
+# The Brother VC-500W prints in color on ZINK tape over its own protocol
+# (vc500w.py). Per tape: its width in inches as the cassette reports it
+# (width_inches_media). Labels are as wide as the tape, the printer gets them
+# VC500W_BLEED dots wider, their edges repeated beyond those of the tape.
+VC500W = 'VC-500W'
+VC500W_TAPES = {9: 0.367, 12: 0.489, 19: 0.734, 25: 0.978, 50: 1.927}
+VC500W_BLEED = 20
+VC500W_LABELS = tuple(
+    Label(f'vc{width}', (width, 0), FormFactor.ENDLESS, (_dots(tape) + VC500W_BLEED, 0), (_dots(tape), 0), 0,
+          restricted_to_models=[VC500W])
+    for width, tape in VC500W_TAPES.items())
+VC500W_MODEL = Model(VC500W, (1, 20000), (0, 0), number_bytes_per_row=81, mode_setting=False,
+                     expanded_mode=False, compression_support=False, num_invalidate_bytes=0)
+
+# What the label designer offers: brother_ql's printers and labels, and the
+# VC-500W with its tapes
+LABELS = ALL_LABELS + VC500W_LABELS
+MODELS = ALL_MODELS + [VC500W_MODEL]
+
 LABEL_NAMES = {
+    # Continuous ZINK tape of the VC-500W
+    **{f'vc{width}': f'{width} mm full color tape (VC-500W)' for width in VC500W_TAPES},
     # Endless DK rolls
     '12': '12 mm endless (DK-22214 / DK-2214)',
     '29': '29 mm endless (DK-22210 / DK-2210)',
@@ -84,6 +112,8 @@ def label_fits(label: Label, model: Model) -> bool:
     return (
         (not label.restricted_to_models or model.identifier in label.restricted_to_models)
         and (label.identifier in PTOUCH_LABELS) == model.identifier.startswith('PT-')
+        # The VC-500W takes only its own tapes
+        and (label in VC500W_LABELS) == (model.identifier == VC500W)
         and (label.color != Color.BLACK_RED_WHITE or model.two_color)
         # brother_ql does not restrict the TZe tapes to the printers with a
         # wide enough print head (36 mm needs a PT-P900 series printer)
@@ -91,20 +121,28 @@ def label_fits(label: Label, model: Model) -> bool:
     )
 
 
+def label_palette(label: Label) -> str:
+    """The colors a label can show: 'color' on the tapes of the VC-500W,
+    'red' (black and red) on black/red/white labels, 'black' on all others."""
+    if label in VC500W_LABELS:
+        return 'color'
+    return 'red' if label.color == Color.BLACK_RED_WHITE else 'black'
+
+
 def label_printers(label: Label) -> list:
     """Printer models the label designer offers a label size for."""
     if label.identifier in HIDDEN_LABELS:
         return []
-    return [model.identifier for model in ALL_MODELS if label_fits(label, model)]
+    return [model.identifier for model in MODELS if label_fits(label, model)]
 
 
 def label_size_problem(label_size: str, model: str) -> str:
     """Why the printer model cannot print the label size, or an empty string
     if it can. Unknown models are left to brother_ql."""
-    label = next((label for label in ALL_LABELS if label.identifier == label_size), None)
+    label = next((label for label in LABELS if label.identifier == label_size), None)
     if label is None:
         return f'Unknown label size: {label_size}'
-    printer_model = next((m for m in ALL_MODELS if m.identifier == model), None)
+    printer_model = next((m for m in MODELS if m.identifier == model), None)
     if printer_model is not None and not label_fits(label, printer_model):
         return f'The label size {label_name(label)} cannot be printed on a {model}'
     return ''

@@ -1,4 +1,5 @@
 import errno
+import io
 import logging
 import os
 import stat
@@ -15,13 +16,14 @@ from brother_ql import BrotherQLRaster, create_label
 from brother_ql.reader import interpret_response
 from brother_ql.backends import backend_factory, guess_backend
 from flask import Config
+from PIL import Image, ImageEnhance
 from .label import LabelOrientation, LabelType, LabelContent
-from .label_names import check_label_size
+from .label_names import VC500W, VC500W_LABELS, VC500W_TAPES, check_label_size
 from brother_ql.models import ALL_MODELS
 from brother_ql.labels import ALL_LABELS
 from brother_ql.devicedependent import label_type_specs
 from werkzeug.security import safe_join
-from . import ipp, mdns, snmp
+from . import ipp, mdns, snmp, vc500w
 
 try:
     import fcntl
@@ -137,11 +139,52 @@ def _lock_key(device_specifier: str) -> str:
     key = device_specifier.strip()
     if key.startswith('file://'):
         key = key[len('file://'):]
-    elif key.startswith(('tcp://', 'usb://')):
+    elif key.startswith(('tcp://', 'usb://', 'vc500w://')):
         key = key.lower()
-        if key.startswith('tcp://') and ':' not in key[len('tcp://'):]:
+        if key.startswith(('tcp://', 'vc500w://')) and ':' not in key.split('://', 1)[1]:
             key += ':9100'
     return key
+
+
+# The IEEE 1284 device ID of a printer on USB, which usblp read when it was
+# plugged in
+USB_DEVICE_ID = '/sys/class/usbmisc/{name}/device/ieee1284_id'
+
+
+def _usb_device_id(device_specifier: str) -> str:
+    path = device_specifier[len('file://'):] if device_specifier.startswith('file://') else device_specifier
+    if not path.startswith('/dev/usb/lp'):
+        return ''
+    try:
+        with open(USB_DEVICE_ID.format(name=os.path.basename(path))) as file:
+            return file.read()
+    except OSError:
+        return ''
+
+
+def is_vc500w(device_specifier, model: str = '') -> bool:
+    """A Brother VC-500W: addressed as vc500w://<host>[:<port>], configured
+    as one, or on USB with its device ID. It must never get the commands of
+    a QL printer."""
+    if not isinstance(device_specifier, str) or device_specifier == 'simulation':
+        return False
+    return (device_specifier.startswith('vc500w://') or model == VC500W
+            or vc500w.device_id_is_vc500w(_usb_device_id(device_specifier)))
+
+
+def _vc500w_target(device_specifier: str) -> tuple[str, int]:
+    """Host and port of a VC-500W on the network, or its path on USB."""
+    if device_specifier.startswith('vc500w://'):
+        url = urlsplit(device_specifier)
+        return url.hostname, url.port or vc500w.PORT
+    if device_specifier.startswith('file://'):
+        return device_specifier[len('file://'):], vc500w.PORT
+    return device_specifier, vc500w.PORT
+
+
+# The stage of the label a VC-500W prints, by printer, while it holds the
+# device: a status query cannot ask it then
+_vc500w_jobs = {}
 
 
 def _private_lock_dir() -> str:
@@ -273,13 +316,22 @@ class _Raster(BrotherQLRaster):
         self.page_number += 1
 
 
+CUT_MODE_REFUSED = 'cut_mode must be full, half or none'
+
+
 class PrinterQueue:
-    def __init__(self, model, device_specifier, label_size):
+    def __init__(self, model, device_specifier, label_size, cut_mode: str = 'full'):
+        if is_vc500w(device_specifier):
+            model = VC500W
         # A clear message instead of "Wrong pixel width" from brother_ql
         check_label_size(label_size, model)
         self.model = model
         self.device_specifier = device_specifier
         self.label_size = label_size
+        # Only for the VC-500W
+        if cut_mode not in vc500w.CUT_MODES:
+            raise ValueError(CUT_MODE_REFUSED)
+        self.cut_mode = cut_mode
         self._print_queue = []
 
     def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False, fast: bool = False):
@@ -427,6 +479,8 @@ class PrinterQueue:
             if not acquired:
                 logger.warning('Printer %s is busy with another job', self.device_specifier)
                 return "Printer is busy with another print job, please try again"
+            if self.model == VC500W:
+                return self._print_vc500w(entries)
             # Split into batches to avoid printer timeouts on large jobs. Each
             # batch is rasterized right before it is sent, so only one batch
             # is kept in memory at a time.
@@ -440,6 +494,49 @@ class PrinterQueue:
                     return status
 
         return ""
+
+    def _print_vc500w(self, entries) -> str:
+        """Print on a VC-500W: one image per label. With "cut only after the
+        last label" the labels before it get a half cut, they stay together
+        on a strip."""
+        modes = ['fast' if entry['fast'] else 'quality' for entry in entries]
+        images = [_vc500w_image(entry['label'], self.label_size, mode) for entry, mode in zip(entries, modes)]
+        if is_simulation(self.device_specifier):
+            os.makedirs(SIMULATED_LABELS_DIR, exist_ok=True)
+            ts = datetime.datetime.now(datetime.UTC).strftime('%Y%m%d_%H%M%S_%f')
+            for i, image in enumerate(images):
+                image.save(os.path.join(SIMULATED_LABELS_DIR, f'{ts}_vc500w_{i}.png'))
+            _prune_simulated_labels()
+            return ''
+        target, port = _vc500w_target(self.device_specifier)
+        key = _lock_key(self.device_specifier)
+        try:
+            for i, (entry, mode, image) in enumerate(zip(entries, modes, images)):
+                cut = self.cut_mode if entry['cut'] or self.cut_mode != 'full' else 'half'
+
+                def progress(stage, line, i=i, lines=image.height):
+                    job = {'stage': stage, 'label': i + 1, 'labels': len(entries)}
+                    if stage == vc500w.stage_name('PRINTING'):
+                        job['percent'] = min(99, round(100 * line / lines))
+                    _vc500w_jobs[key] = job
+                progress(vc500w.stage_name('PROCESSING'), 0)
+                label = f' (label {i + 1} of {len(entries)})' if len(entries) > 1 else ''
+                try:
+                    error = vc500w.print_image(target, image, mode, cut, port, progress)
+                except vc500w.VC500WError as e:
+                    # Its own words name paths of the printer, e.g. "please check /dev/tmp/lutgen.out"
+                    logger.warning('Printing on %s failed: %s', self.device_specifier, e)
+                    return f'The printer refused the label{label}, the log of the server names the reason'
+                except OSError as e:
+                    logger.warning('Printing on %s failed: %s', self.device_specifier, e)
+                    reason = _unanswered_reason(e)
+                    return (f'Could not send the label to the printer{label}: {reason}' if reason
+                            else f'Could not send the label to the printer{label}, the log of the server names the reason')
+                if error:
+                    return f'{_vc500w_error(error)}{label}'
+        finally:
+            _vc500w_jobs.pop(key, None)
+        return ''
 
 
 # A network printer that is stopped without telling why, e.g. a QL-810W
@@ -571,6 +668,102 @@ def _status_messages(received: bytes) -> tuple[list, bytes]:
         received = received[32:]
 
 
+# ZINK paper prints colors duller than a screen shows them. Of 1, 1.5 and 2
+# times the saturation, 2 printed red best, darker colors gain the most.
+VC500W_SATURATION = 2.0
+
+
+# The printer places an image this many dots off the middle of the tape,
+# toward its first pixel, and its cuts take off this many millimeters of
+# both ends (docs/vc500w.md)
+VC500W_OFFSET = 3
+VC500W_CUT_MM = 0.8
+
+
+def _repeat_rows(img: Image.Image, before: int, after: int) -> Image.Image:
+    """img with its first row repeated before times above it and its last
+    row after times below it."""
+    out = Image.new(img.mode, (img.width, img.height + before + after))
+    if before:
+        out.paste(img.crop((0, 0, img.width, 1)).resize((img.width, before), Image.Resampling.NEAREST), (0, 0))
+    if after:
+        last = img.crop((0, img.height - 1, img.width, img.height))
+        out.paste(last.resize((img.width, after), Image.Resampling.NEAREST), (0, before + img.height))
+    out.paste(img, (0, before))
+    return out
+
+
+def _vc500w_image(label, label_size: str, mode: str) -> Image.Image:
+    """A label as the image the VC-500W prints: each row is a line along the
+    tape at the lines per inch of the mode, the first row comes out first,
+    so standard labels come out top first, rotated ones with the end of
+    their text, as on QL printers. The label is as wide as the tape, its
+    edges are repeated beyond those of the tape and beyond both cuts, so a
+    color at an edge reaches it. Colors are saturated for the paper."""
+    img = label.generate().convert('RGB')
+    if label.label_orientation == LabelOrientation.STANDARD:
+        img = img.rotate(-90, expand=True)
+    # Now along the tape: its right end comes out first, its top becomes
+    # the first pixels of the rows
+    tape = next(tape for tape in VC500W_LABELS if tape.identifier == label_size)
+    lpi = vc500w.MODES[mode][2]
+    img = img.resize((round(img.width * lpi / vc500w.DPI), img.height), Image.Resampling.LANCZOS)
+    extra = max(tape.dots_total[0] - img.height, 0)
+    top = min(extra // 2 + VC500W_OFFSET, extra)
+    img = _repeat_rows(img, top, extra - top).transpose(Image.Transpose.TRANSPOSE)
+    ends = round(VC500W_CUT_MM / 25.4 * lpi)
+    img = _repeat_rows(img, ends, ends).transpose(Image.Transpose.TRANSPOSE)
+    img = ImageEnhance.Color(img).enhance(VC500W_SATURATION)
+    return img.transpose(Image.Transpose.ROTATE_90)
+
+
+def _vc500w_error(error: str) -> str:
+    """A message for an error of a VC-500W: its own or the one it reports."""
+    if error == vc500w.EJECT_JAM:
+        # A label lies in the output, also the tape a new cassette feeds
+        return vc500w.TAKE_OUT
+    if error in (vc500w.TAKE_OUT, vc500w.DAMAGED, vc500w.NO_ANSWER, vc500w.UNFINISHED, vc500w.NO_CASSETTE, vc500w.BUSY,
+                 vc500w.BLOCKED, vc500w.TOO_LONG):
+        return error
+    return f'The printer reports: {error.replace("_", " ").capitalize()}'
+
+
+def query_vc500w_status(device_specifier: str) -> dict:
+    """Status of a VC-500W: the tape in it, how much is left, errors and how
+    well it is reached. While it prints, the stage of the label instead.
+    Raises OSError or
+    VC500WError if it does not answer."""
+    key = _lock_key(device_specifier)
+    target = _vc500w_target(device_specifier)
+    # A job of this server holds the printer, it tells the stage right away
+    with device_lock(device_specifier, timeout=0 if key in _vc500w_jobs else STATUS_LOCK_TIMEOUT) as acquired:
+        if acquired:
+            config, status = vc500w.get_state(*target)
+            state = _network_printer(device_specifier, config['model'] or VC500W)
+            width = config['tape_width_mm']
+            if width:
+                # The nominal width of the tape, e.g. 25 for 24.8 mm
+                state['media_width'] = min(VC500W_TAPES, key=lambda tape: abs(tape - width))
+                state['media_type'] = 'Continuous length tape'
+            state['tape_length_mm'] = config['tape_length_mm']
+            state['tape_remaining_mm'] = status['tape_remaining_mm']
+            error = vc500w.ready_error(status)
+            state['errors'] = [_vc500w_error(error)] if error else []
+            busy = status['state'] not in ('', vc500w.IDLE)
+            state['status_type'] = 'Error occurred' if error else BUSY_STATUS_TYPE if busy else 'Reply to status request'
+            state['phase_type'] = 'Printing state' if busy else 'Waiting to receive'
+            if busy and not error:
+                state['job'] = {'stage': vc500w.stage_name(status['stage'])}
+            _status_cache[key] = state
+            return dict(state, **vc500w.link(*target))
+    state = dict(_status_cache.get(key, _network_printer(device_specifier, VC500W)))
+    state.update({'errors': [], 'status_type': BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
+    state.update(vc500w.link(*target))
+    if key in _vc500w_jobs:
+        state['job'] = dict(_vc500w_jobs[key])
+    return state
+
+
 def _print_failure(info: dict) -> str:
     """Why a print job was not confirmed, from the status read back from the
     printer while printing."""
@@ -652,6 +845,8 @@ def _release(printer):
 def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     """Query the printer status without waiting for a running print job. While
     a job holds the device, the last known status is returned instead."""
+    if is_vc500w(device_specifier, default_model):
+        return query_vc500w_status(device_specifier)
     key = _lock_key(device_specifier)
     with device_lock(device_specifier, timeout=STATUS_LOCK_TIMEOUT) as acquired:
         if acquired:
@@ -930,9 +1125,16 @@ def _ipp_network_status(device_specifier: str, host: str, default_model: str, la
     return dict(status)
 
 
+def _announces_vc500w(txt: dict) -> bool:
+    # It announces only IPP, its model as product, e.g. "Brother VC-500W"
+    names = (txt.get('usb_mdl'), txt.get('ty'), (txt.get('product') or '').strip('()'))
+    return any((name or '').removeprefix('Brother ').strip() == VC500W for name in names)
+
+
 def _discovered_label_printers() -> list[tuple[str, str]]:
     """Label printers that announce themselves on the network, as
-    (tcp://<address>[:<port>], model). Kept for DISCOVERY_INTERVAL."""
+    (tcp://<address>[:<port>], model), a VC-500W as vc500w://<address>. Kept
+    for DISCOVERY_INTERVAL."""
     global _discovered
     if not NETWORK_DISCOVERY:
         return []
@@ -941,12 +1143,15 @@ def _discovered_label_printers() -> list[tuple[str, str]]:
     printers = []
     for service in mdns.discover():
         txt = service['txt']
-        model = _label_printer_model(txt.get('usb_mdl') or '') or _label_printer_model(txt.get('ty') or '')
-        if model is None:
-            continue
-        # IPP announces its own port, jobs go to the raw port
-        port = service['port'] if service['service'].startswith('_pdl-datastream.') else None
-        spec = f"tcp://{service['address']}" + (f':{port}' if port and port != 9100 else '')
+        if _announces_vc500w(txt):
+            spec, model = f"vc500w://{service['address']}", VC500W
+        else:
+            model = _label_printer_model(txt.get('usb_mdl') or '') or _label_printer_model(txt.get('ty') or '')
+            if model is None:
+                continue
+            # IPP announces its own port, jobs go to the raw port
+            port = service['port'] if service['service'].startswith('_pdl-datastream.') else None
+            spec = f"tcp://{service['address']}" + (f':{port}' if port and port != 9100 else '')
         if all(urlsplit(known).hostname != service['address'] for known, _ in printers):
             printers.append((spec, model))
     _discovered = (time.monotonic(), printers)
@@ -1013,6 +1218,8 @@ def get_ptr_status(config: Config):
                         state = SIMULATOR_PRINTER.copy()
                     elif device.startswith('tcp://'):
                         state = query_network_status(device, model)
+                    elif is_vc500w(device, model):
+                        state = query_vc500w_status(device)
                     else:
                         state = query_status(device, model)
                 except Exception as e:
@@ -1073,8 +1280,11 @@ def get_ptr_status(config: Config):
                     logger.debug('Failed to read ARP table for network printer detection', exc_info=True)
                 for spec, model, unconfirmed in candidates:
                     try:
-                        printer = query_network_status(spec, model, label_printers_only=unconfirmed)
-                    except OSError as e:
+                        if is_vc500w(spec):
+                            printer = query_vc500w_status(spec)
+                        else:
+                            printer = query_network_status(spec, model, label_printers_only=unconfirmed)
+                    except (OSError, vc500w.VC500WError) as e:
                         logger.info('Status query of %s failed: %s', spec, e)
                         printer = _failed_printer_state(spec, e, model)
                     if printer is not None:
@@ -1111,6 +1321,16 @@ def get_ptr_status(config: Config):
                     'selected': None,
                     **status
                 }
+        elif is_vc500w(device_specifier, default_model):
+            try:
+                printer = query_vc500w_status(device_specifier)
+            except (OSError, vc500w.VC500WError) as e:
+                logger.info('Status query of %s failed: %s', device_specifier, e)
+                printer = _failed_printer_state(device_specifier, e, VC500W)
+            status.update(printer)
+            status['printers'] = [printer, SIMULATOR_PRINTER.copy()]
+            status['selected'] = device_specifier
+            return status
         elif device_specifier.startswith('tcp://'):
             try:
                 printer = query_network_status(device_specifier, default_model)

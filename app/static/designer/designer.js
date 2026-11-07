@@ -58,13 +58,13 @@ function storeQuiet(key, value) {
 }
 
 let toastTimer;
-function toast(text, action) {
+function toast(text, action, ms = 0) {
     const el = $('#toast');
     el.innerHTML = esc(text) + (action ? ` <button class="btn sm quiet" style="color:inherit;text-decoration:underline" type="button">${esc(action.label)}</button>` : '');
     el.hidden = false;
     if (action) el.querySelector('button').onclick = () => { el.hidden = true; action.run(); };
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.hidden = true; }, action ? 6000 : 3500);
+    toastTimer = setTimeout(() => { el.hidden = true; }, ms || (action ? 6000 : 3500));
 }
 
 function fmtTime(ts) {
@@ -80,11 +80,16 @@ function fmtTime(ts) {
 const isEndless = s => s.form === 'endless' || s.form === 'ptouch_endless';
 // TZe tape, only P-touch printers take it
 const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].models.every(m => m.startsWith('PT-'));
+// ZINK tape of the VC-500W, which prints in any color
+const VC500W = 'VC-500W';
+const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
+const isVc500w = p => !!p && p.model === VC500W;
 
 function sizeName(id) {
     const s = SIZES[id];
     if (!s) return id;
     if (isPtouch(id)) return s.name;
+    if (isColorTape(id)) return `${s.tape[0]} mm color tape`;
     if (s.form === 'endless') return `${s.tape[0]} mm endless${s.red ? ', black and red' : ''}`;
     if (s.form === 'round_die_cut') return `${s.tape[0]} mm round`;
     return `${s.tape[0]} x ${s.tape[1]} mm`;
@@ -299,11 +304,11 @@ function b64ToBlob(b64, mime) {
 }
 
 // 600 dpi, if chosen and the printer can print it
-const highRes = () => S.settings.quality === 'high' && !(S.printer && C.models_without_600_dpi.includes(S.printer.model));
+const highRes = () => S.settings.quality === 'high' && !(S.printer && (C.models_without_600_dpi.includes(S.printer.model) || isVc500w(S.printer)));
 // P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
 // command reference of the PT-E550W, PT-P750W and PT-P710BT), QL printers
-// at 300 dpi, or 600
-const dpiOf = (labelSize, high = highRes()) => (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
+// at 300 dpi, or 600, the VC-500W at 320 dpi
+const dpiOf = (labelSize, high = highRes()) => isColorTape(labelSize) ? 320 : (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
 
 // marks: a preview shows the blanks still to fill in. blanks: those of
 // blankRequest(), e.g. as a cached preview was made for them.
@@ -314,8 +319,9 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
         if (k === 'text' || k === 'image' || k === 'more_images' || k === 'fields' || k === 'blanks') continue;
         fd.append(k, typeof v === 'boolean' ? (v ? '1' : '0') : String(v));
     }
-    // Without red on the tape red parts print black, the preview shows that
-    const red = redTape(design);
+    // Without red on the tape red parts print black, the preview shows that.
+    // Other colors the server makes red or black on black and red tape.
+    const red = redTape(design) || isColorTape(design.label_size);
     if (!red) {
         fd.set('border_color', 'black');
         fd.set('print_color', 'black');
@@ -709,9 +715,32 @@ function detectTape() {
     S.tapeAssumed = !found;
 }
 
+// What a VC-500W does: the stage of the label it prints, the label of how
+// many, how far along it is
+function jobText(job) {
+    return job.stage + (job.percent !== undefined ? ` ${job.percent} %` : '') + (job.labels > 1 ? `, label ${job.label} of ${job.labels}` : '');
+}
+
+// The tape left in the cassette of a VC-500W
+function tapeLeft(p) {
+    if (!p || !p.tape_remaining_mm || !p.tape_length_mm) return '';
+    const m = mm => (mm / 1000).toFixed(1);
+    return `${m(p.tape_remaining_mm)} m of ${m(p.tape_length_mm)} m left`;
+}
+
+// How well a VC-500W is reached: how fast the last label went, answers lost
+function linkText(p) {
+    if (!p) return '';
+    const parts = [];
+    if (p.data_rate) parts.push(`last label sent at ${Math.max(1, Math.round(p.data_rate / 1000))} kB/s`);
+    if (p.answers_lost) parts.push(`${p.answers_lost} of the last ${p.answers} answers lost`);
+    return parts.join(', ');
+}
+
 function printerState(p) {
     if (!p) return { cls: 'off', text: 'No printer' };
     if (p.errors && p.errors.length) return { cls: 'bad', text: p.errors[0] };
+    if (p.job) return { cls: '', text: jobText(p.job) };
     if (/simulat/i.test(p.status_type || p.phase_type || '')) return { cls: '', text: 'Ready (simulated)' };
     return { cls: '', text: 'Ready' };
 }
@@ -746,6 +775,15 @@ async function printJob(job) {
     saveHistory();
     updateCounts();
     toast(`Printing ${entry.copies} ${entry.copies === 1 ? 'label' : 'labels'}...`);
+    // A VC-500W takes about 40 s for a label, what it does is shown meanwhile
+    const followed = isVc500w(S.printer) ? S.printer.path : '';
+    const follow = followed && setInterval(async () => {
+        try {
+            const data = await (await fetch(API + '/printer_status')).json();
+            const p = (Array.isArray(data.printers) ? data.printers : [data]).find(x => x.path === followed);
+            if (p && p.job && entry.state === 'printing') toast(jobText(p.job), null, 10000);
+        } catch (e) { }
+    }, 1500);
     try {
         const r = await post('/print', formFor(job.design, entry.copies, true, job.values));
         let data = {};
@@ -760,6 +798,7 @@ async function printJob(job) {
         entry.state = 'failed';
         entry.message = 'The label designer could not be reached';
     }
+    if (follow) clearInterval(follow);
     saveHistory();
     if ($('#libGrid')) {
         if (S.libCat === 'printed') renderLibGrid();
@@ -1197,9 +1236,13 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
 
 // Red parts on tape without red print black
 function layoutProblem(d) {
-    const redParts = (d.print_type !== 'qrcode' && d.text.some(l => l.color === 'red')) || (d.border_color === 'red' && frameOf(d) !== 'none')
-        || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
+    if (isColorTape(d.label_size)) return '';
+    const colored = c => (c || 'black') !== 'black';
+    const textColors = d.print_type !== 'qrcode' ? d.text.map(l => l.color) : [];
+    const parts = textColors.concat(frameOf(d) !== 'none' ? [d.border_color] : [], d.print_type !== 'text' ? [d.print_color] : []).filter(colored);
+    const redParts = parts.length || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
     if (redParts && !redTape(d)) return 'This tape has no red, the red parts print black.';
+    if (parts.some(c => c !== 'red')) return 'This tape prints black and red only, other colors print in one of them.';
     return '';
 }
 
@@ -1960,10 +2003,11 @@ function renderEditor() {
                         : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
                     <label${qr ? '' : ' title="Only for QR codes"'}><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
                 </div>${qr ? '' : '<span class="muted small">Error correction exists for QR codes only.</span>'}`)(d.barcode_type === 'QR', !fitted(d))}
+                ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' ? imageBlock(d) : ''}
             ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
-                <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d))).join('')}</div>
+                <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d), isColorTape(d.label_size))).join('')}</div>
                 <div class="addl">
                     <button class="pill" type="button" id="edAdd"><i class="fa-solid fa-plus"></i>Line</button>
                     <button class="pill" type="button" id="edBlank"><i class="fa-regular fa-square"></i>Blank</button>
@@ -2018,8 +2062,8 @@ function renderEditor() {
 // one is always offered, e.g. that of a label made for another printer.
 function sizeOptions(chosen, name) {
     const offered = s => s.id === chosen || printerTakes(s);
-    const groups = [['Endless', s => s.form === 'endless' && !isPtouch(s.id)], ['Die-cut', s => s.form === 'die_cut'],
-        ['Round', s => s.form === 'round_die_cut'], ['P-touch tape', s => isPtouch(s.id)]];
+    const groups = [['Endless', s => s.form === 'endless' && !isPtouch(s.id) && !isColorTape(s.id)], ['Die-cut', s => s.form === 'die_cut'],
+        ['Round', s => s.form === 'round_die_cut'], ['P-touch tape', s => isPtouch(s.id)], ['Color tape', s => isColorTape(s.id)]];
     return groups.map(([group, inGroup]) => {
         const sizes = C.label_sizes.filter(s => inGroup(s) && offered(s));
         return sizes.length ? `<optgroup label="${group}">${sizes.map(s => `<option value="${esc(s.id)}"${s.id === chosen ? ' selected' : ''}>${name(s)}</option>`).join('')}</optgroup>` : '';
@@ -2030,14 +2074,14 @@ function tapeNote(d) {
     const model = esc(S.printer ? S.printer.model : 'printer');
     if (S.tapeUnknown) return `<span class="tape-note warn">The ${model} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
     // An assumed tape matches nothing in the printer
-    if (d.label_size === S.tape) return S.tapeAssumed ? '' : '<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer</span>';
+    if (d.label_size === S.tape) return S.tapeAssumed ? '' : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
     if (fitsTape(d.label_size)) return '';
     const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
     return `<span class="tape-note warn">The ${model} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
 }
 
 function imageBlock(d) {
-    const red = redTape(d);
+    const red = redTape(d), color = isColorTape(d.label_size);
     const modes = [['black_and_white', 'Black and white'], ['grayscale', 'Grayscale'], ['red_and_black', 'Red and black'], ['colored', 'Full color']];
     const needsRed = v => (v === 'red_and_black' || v === 'colored') && !red && d.image_mode !== v;
     const bw = d.image_mode === 'black_and_white';
@@ -2048,8 +2092,8 @@ function imageBlock(d) {
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
             ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own. The preview shows the first, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
-            <div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>
-            <label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>
+            ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
+            ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
             <div class="row" style="flex-wrap:wrap;align-items:flex-end">
                 <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
                 <label title="${fit ? 'Only without fitting to the label' : ''}"><span class="label-s${fit ? ' off' : ''}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edScale" value="${esc(d.image_scaling_factor)}" style="width:6rem"${fit ? ' disabled' : ''}></label>
@@ -2103,7 +2147,8 @@ function frameDetails(d) {
             ${(rd => `<label title="${rd ? '' : 'Only for rounded frames'}"><span class="${rd ? '' : 'off'}">Corners, mm</span><input class="field" type="number" min="0" max="20" step="0.5" data-frame-k="border_roundness" value="${dotsToMm(d.border_roundness, dpi)}"${rd ? '' : ' disabled'}></label>`)(frameOf(d) === 'rounded')}
         </div>
         <p class="muted small" style="margin:.4rem 0 0">Sides, top and bottom: the distance from the edge of the label. The margins grow so that the text stays inside.</p>
-        <div style="margin-top:.5rem"><span class="label-s">Color</span><div class="seg"><button type="button" data-bcolor="black" class="${d.border_color === 'red' ? '' : 'on'}">Black</button><button type="button" data-bcolor="red" class="${d.border_color === 'red' ? 'on' : ''}"${red || d.border_color === 'red' ? '' : ' disabled title="Needs black and red tape"'}>Red</button></div></div>
+        <div style="margin-top:.5rem"><span class="label-s">Color</span>${isColorTape(d.label_size) ? colorField('edFrameColor', d.border_color, 'Color of the frame')
+            : `<div class="seg"><button type="button" data-bcolor="black" class="${d.border_color === 'red' ? '' : 'on'}">Black</button><button type="button" data-bcolor="red" class="${d.border_color === 'red' ? 'on' : ''}"${red || d.border_color === 'red' ? '' : ' disabled title="Needs black and red tape"'}>Red</button></div>`}</div>
     </div>`;
 }
 
@@ -2141,16 +2186,20 @@ function fitMarginsToFrame(d) {
 }
 
 const redTape = d => !!(SIZES[d.label_size] && SIZES[d.label_size].red);
+// Colors are kept as black, red or #rrggbb
+const hexOf = c => c === 'red' ? '#ff0000' : /^#[0-9a-f]{6}$/i.test(c || '') ? c.toLowerCase() : '#000000';
+const colorOf = hex => hex === '#000000' ? 'black' : hex === '#ff0000' ? 'red' : hex;
+const colorField = (id, color, title) => `<input type="color" class="color-in" id="${id}" value="${hexOf(color)}" title="${title}" aria-label="${title}">`;
 const SPACINGS = [100, 150, 200, 250, 300];
 
 // Two rows per line: the text on top, all settings of the line below it
-function lineRow(l, i, main, families, red) {
+function lineRow(l, i, main, families, red, color) {
     const al = { left: 'align-left', center: 'align-center', right: 'align-right' }[l.align] || 'align-center';
     const fam = familyOf(l.font);
     const noBold = wantsBold(l) && !hasBold(fam);
     const spacing = +(l.line_spacing || 100);
     return `<div class="lrow${wantsBold(l) && !noBold ? ' bold' : ''}${i === S.editSel ? ' sel' : ''}${l.color === 'red' ? ' red' : ''}" data-row="${i}">
-        <span class="txw">${l.checkbox ? '<i class="fa-regular fa-square" title="To-do box"></i>' : ''}<input class="tx" value="${esc(toDisplay(l.text))}" placeholder="${i === 0 ? 'Type the label text' : 'Line ' + (i + 1)}" aria-label="Line ${i + 1}">
+        <span class="txw">${l.checkbox ? '<i class="fa-regular fa-square" title="To-do box"></i>' : ''}<input class="tx"${color && hexOf(l.color) !== '#000000' ? ` style="color:${hexOf(l.color)}"` : ''} value="${esc(toDisplay(l.text))}" placeholder="${i === 0 ? 'Type the label text' : 'Line ' + (i + 1)}" aria-label="Line ${i + 1}">
             <button class="mini quiet" type="button" data-act="del" title="Remove the line"><i class="fa-solid fa-xmark"></i></button></span>
         <div class="st">
             <select class="mini lf${fam !== main ? ' on' : ''}" title="Font of line ${i + 1}" aria-label="Font of line ${i + 1}">${missingFont(fam)}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select>
@@ -2159,7 +2208,7 @@ function lineRow(l, i, main, families, red) {
             <button class="mini" type="button" data-act="align" title="Alignment: ${esc(l.align || 'center')}"><i class="fa-solid fa-${al}"></i></button>
             <button class="mini${l.inverted ? ' on' : ''}" type="button" data-act="invert" title="White on black"><i class="fa-solid fa-circle-half-stroke"></i></button>
             <button class="mini${l.checkbox ? ' on' : ''}" type="button" data-act="todo" title="To-do box in front"><i class="fa-regular fa-square-check"></i></button>
-            <button class="mini red-sw${l.color === 'red' ? ' on' : ''}${l.color === 'red' && !red ? ' nored' : ''}" type="button" data-act="red" title="${red ? 'Red text' : l.color === 'red' ? 'This tape has no red, the line prints black' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>
+            ${color ? `<label class="mini-wrap color-sw" title="Color of line ${i + 1}"><input type="color" class="lcol" value="${hexOf(l.color)}" aria-label="Color of line ${i + 1}"></label>` : `<button class="mini red-sw${l.color === 'red' ? ' on' : ''}${l.color === 'red' && !red ? ' nored' : ''}" type="button" data-act="red" title="${red ? 'Red text' : l.color === 'red' ? 'This tape has no red, the line prints black' : 'Red text needs black and red tape'}"${red || l.color === 'red' ? '' : ' disabled'}><span></span></button>`}
             <label class="mini-wrap${spacing !== 100 ? ' on' : ''}" title="Line spacing"><i class="fa-solid fa-text-height"></i><select class="mini lsp" aria-label="Line spacing of line ${i + 1}">${SPACINGS.concat(SPACINGS.includes(spacing) ? [] : [spacing]).map(v => `<option value="${v}"${v === spacing ? ' selected' : ''}>${v} %</option>`).join('')}</select></label>
         </div></div>`;
 }
@@ -2425,6 +2474,7 @@ function bindEditor() {
         $('input.mini', row).addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { l.size = String(v); redrawEditor(); } });
         $('select.lf', row).onchange = e => { l.bold = wantsBold(l); l.font = fontOf(e.target.value, l.bold); S.editSel = i; renderEditor(); };
         $('select.lsp', row).onchange = e => { l.line_spacing = e.target.value; S.editSel = i; renderEditor(); };
+        if ($('input.lcol', row)) $('input.lcol', row).onchange = e => { l.color = colorOf(e.target.value); S.editSel = i; renderEditor(); };
         $$('button[data-act]', row).forEach(b => b.onclick = () => {
             const act = b.dataset.act;
             if (act === 'todo') l.checkbox = !l.checkbox;
@@ -2474,6 +2524,8 @@ function bindEditor() {
         renderEditor();
     }));
     $$('[data-bcolor]').forEach(b => b.onclick = () => { d.border_color = b.dataset.bcolor; renderEditor(); });
+    if ($('#edFrameColor')) $('#edFrameColor').onchange = e => { d.border_color = colorOf(e.target.value); renderEditor(); };
+    if ($('#edCodeColor')) $('#edCodeColor').onchange = e => { d.print_color = colorOf(e.target.value); renderEditor(); };
     // Symbols, undo and redo
     if ($('#tplInfoBtn')) $('#tplInfoBtn').onclick = () => toggleVars($('#tplInfoBtn'), $('#tplInfo'));
     if ($('#edSym')) $('#edSym').onclick = () => openSymbols($(`[data-row="${S.editSel}"] .tx`) || $('[data-row] .tx'));
@@ -2629,7 +2681,7 @@ function printerPanelHTML() {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
-            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc(st.text)}, ${esc((p.path || '').replace('file://', ''))}</span></span>
+            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc([st.text, (p.path || '').replace('file://', ''), tapeLeft(p), linkText(p)].filter(Boolean).join(', '))}</span></span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
@@ -2673,8 +2725,9 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 
 function settingsCard() {
     const p = S.printer;
-    const noHigh = p && C.models_without_600_dpi.includes(p.model);
-    const q = S.settings.quality, c = S.settings.cut;
+    const vc = isVc500w(p), noHigh = p && C.models_without_600_dpi.includes(p.model);
+    // Without 600 dpi the VC-500W prints those labels in quality
+    const q = vc && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = S.settings.cut;
     const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
         : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
     return `<div class="settings">
@@ -2687,11 +2740,13 @@ function settingsCard() {
             <div class="seg">
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
-            <button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button></div>
+            ${vc ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
             ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
-                <p>Fast printing is quicker, the print is a little less sharp.</p>
-                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>
+                ${vc ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
+                <p>A label takes about 40 seconds, most of it to prepare and preheat. With "After each label" take every label out of the printer, the next one waits for that. "After the last label" keeps the labels together on a strip.</p>`
+                : `<p>Fast printing is quicker, the print is a little less sharp.</p>
+                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>`}
             </div></div>
         <div><label class="label-s" for="setDate">Dates on labels</label>
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]

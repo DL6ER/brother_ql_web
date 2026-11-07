@@ -21,11 +21,11 @@ from app.fonts import FontNotFound
 from PIL import Image
 from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
-from .printer import MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
-from brother_ql.labels import ALL_LABELS, FormFactor
-from brother_ql.models import ALL_MODELS
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size
-from .label_names import label_name, label_printers, label_size_problem
+from . import vc500w
+from .printer import CUT_MODE_REFUSED, MODELS_WITHOUT_600_DPI, PrinterQueue, flock_within, get_ptr_status, resolution_problem
+from brother_ql.labels import FormFactor
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, parse_color
+from .label_names import LABELS, MODELS, VC500W, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -62,6 +62,7 @@ PRINTER_DEVICE_PATTERNS = (
     re.compile(r'(file://)?/dev/usb/lp\d+'),
     re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
     re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
+    re.compile(r'vc500w://[A-Za-z0-9.-]+(:9100)?'),
 )
 
 @bp.errorhandler(ValueError)
@@ -213,8 +214,8 @@ def index():
     label_sizes = [
         {'id': label.identifier, 'name': label_name(label), 'form': label.form_factor.name.lower(),
          'tape': list(label.tape_size), 'dots': list(label.dots_printable), 'red': label.color == 1,
-         'models': label_printers(label)}
-        for label in ALL_LABELS
+         'palette': label_palette(label), 'models': label_printers(label)}
+        for label in LABELS
     ]
     return render_template(
         'designer.html',
@@ -516,7 +517,7 @@ def _label_size_name(label_size: str | None) -> str | None:
     """The readable name of a label size, e.g. "62 mm endless (DK-22205 / DK-2205)"."""
     if not label_size:
         return None
-    return next((label_name(label) for label in ALL_LABELS if label.identifier == label_size), str(label_size))
+    return next((label_name(label) for label in LABELS if label.identifier == label_size), str(label_size))
 
 
 @bp.route('/api/repository/save', methods=['POST'])
@@ -547,7 +548,7 @@ def repo_save():
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
             data['label_size'] = stored_label_size(data['label_size'])
-            if not any(label.identifier == data['label_size'] for label in ALL_LABELS):
+            if not any(label.identifier == data['label_size'] for label in LABELS):
                 raise ValueError('Unknown label_size')
     except ValueError as e:
         _log_refused_request('Saving the label', e)
@@ -901,7 +902,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         data['blanks'] = _requested_blanks(data.get('blanks'))
         device, model = _printer(requested_printer, _requested('model'))
         label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
-        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
+        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size,
+                               cut_mode=_option('cut_mode', data, '') or 'full')
 
         # Determine printing options (print_count, cut_once, high_res)
         print_count = _check_print_count(_whole(_option('print_count', data, 1)))
@@ -1077,7 +1079,11 @@ def openapi_spec():
 
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
-    return get_ptr_status(current_app.config)
+    status = get_ptr_status(current_app.config)
+    # The VC-500W prints in color, the label designer then offers colors
+    for printer in [status] + status.get('printers', []):
+        printer['color_support'] = printer.get('model') == VC500W
+    return status
 
 
 @bp.route('/api/print', methods=['POST'])
@@ -1143,7 +1149,7 @@ def _log_refused_request(what: str, error: Exception):
         current_app.logger.exception(error)
 
 
-PRINTER_MODELS = [model.identifier for model in ALL_MODELS]
+PRINTER_MODELS = [model.identifier for model in MODELS]
 
 
 def _printer(requested_device, requested_model) -> tuple[str, str]:
@@ -1173,7 +1179,9 @@ def create_printer_from_request(request: Request):
     return PrinterQueue(
         model=model,
         device_specifier=device,
-        label_size=label_size
+        label_size=label_size,
+        # VC-500W only
+        cut_mode=request.values.get('cut_mode') or 'full'
     )
 
 
@@ -1191,9 +1199,32 @@ def _label_type(kind: FormFactor) -> LabelType:
     return LabelType.ROUND_DIE_CUT_LABEL
 
 
+def _palette(label_size: str) -> str:
+    label = next((label for label in LABELS if label.identifier == label_size), None)
+    return label_palette(label) if label is not None else 'black'
+
+
+def _printable_color(value: str, palette: str) -> str:
+    """A color the label can show: any on the tapes of the VC-500W, red for
+    reddish colors on black/red/white labels, black otherwise. The designer
+    offers only these, other clients may send any."""
+    red, green, blue = parse_color(value or 'black')
+    if palette == 'color':
+        return value or 'black'
+    if palette == 'red' and red - max(green, blue) > 64:
+        return 'red'
+    return 'black'
+
+
+def _image_mode(d: dict) -> str:
+    """Images stay in color on the tapes of the VC-500W."""
+    mode = check_image_mode(d.get('image_mode'))
+    return 'colored' if _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color' else mode
+
+
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
     label_size = d.get('label_size', DEFAULT_LABEL_SIZE)
-    kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
+    kind = next((label.form_factor for label in LABELS if label.identifier == label_size), None)
     if kind is None:
         raise LookupError("Unknown label_size")
     context = {
@@ -1215,7 +1246,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'barcode_type': d.get('barcode_type', 'QR'),
         'qrcode_size': int(d.get('qrcode_size', 10)),
         'qrcode_correction': d.get('qrcode_correction', 'L'),
-        'image_mode': check_image_mode(d.get('image_mode')),
+        'image_mode': _image_mode(d),
         'image_bw_threshold': int(d.get('image_bw_threshold', 70)),
         'image_fit': _whole_or(d.get('image_fit'), 1) > 0,
         'image_crop': _whole_or(d.get('image_crop'), 0) > 0,
@@ -1223,7 +1254,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'image_rotation': int(d.get('image_rotation', 0)),
         'print_color': d.get('print_color', 'black'),
         'timestamp': int(d.get('timestamp', 0)),
-        'high_res': _whole_or(d.get('high_res'), 0) != 0,
+        # 600 dpi is for QL printers only
+        'high_res': _whole_or(d.get('high_res'), 0) != 0 and _palette(label_size) != 'color',
         'code_text': d.get('code_text', '').strip(),
         'text_fit': _text_fit(d),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
@@ -1287,8 +1319,11 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         if len(line.get('text', '')) > MAX_TEXT_LENGTH:
             raise TextTooLong("Text is too long")
 
-    fore_color = (255, 0, 0) if context['print_color'] == 'red' else (0, 0, 0)
-    border_color = (255, 0, 0) if context['border_color'] == 'red' else (0, 0, 0)
+    palette = _palette(context['label_size'])
+    fore_color = parse_color(_printable_color(context['print_color'], palette))
+    border_color = parse_color(_printable_color(context['border_color'], palette))
+    for line in context['text']:
+        line['color'] = _printable_color(line.get('color'), palette)
 
     if image is _LOAD_IMAGE:
         image = load_label_image(d, files)
@@ -1453,10 +1488,13 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     otherwise. Labels without image get [None]. A stored label has its
     image in image_dir, by default the repository, or in image_bytes where
     it was read with the label."""
-    image_mode = check_image_mode(d.get('image_mode'))
+    image_mode = _image_mode(d)
     bw_threshold = int(d.get('image_bw_threshold', 70))
     # PDFs are rendered at the resolution the label is printed with
-    dpi = HIGH_RES_DPI if _whole_or(d.get('high_res'), 0) != 0 else DEFAULT_DPI
+    if _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color':
+        dpi = vc500w.DPI
+    else:
+        dpi = HIGH_RES_DPI if _whole_or(d.get('high_res'), 0) != 0 else DEFAULT_DPI
     pdf_pages = str(d.get('pdf_pages') or '')
     # Pages only make several labels of an image label
     first_only = first_only or d.get('print_type', 'text') != 'image'
@@ -1536,7 +1574,7 @@ def _template_env_vars() -> frozenset:
 
 
 def _get_label_dimensions(label_size: str, high_res: bool = False):
-    dimensions = next((label.dots_printable for label in ALL_LABELS if label.identifier == label_size), None)
+    dimensions = next((label.dots_printable for label in LABELS if label.identifier == label_size), None)
     if dimensions is None:
         raise LookupError("Unknown label_size")
     if high_res:
@@ -1564,7 +1602,7 @@ def _scale_image_to_label(img: Image.Image, label_size: str, orientation: str,
     if orientation == 'rotated':
         height, width = width, height
 
-    kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
+    kind = next((label.form_factor for label in LABELS if label.identifier == label_size), None)
     is_endless = _label_type(kind) == LabelType.ENDLESS_LABEL
 
     img_width, img_height = img.size
@@ -1668,18 +1706,25 @@ def webhook_print():
         device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size
-        kind = next((label.form_factor for label in ALL_LABELS if label.identifier == label_size), None)
+        kind = next((label.form_factor for label in LABELS if label.identifier == label_size), None)
         if kind is None:
             return make_response(jsonify({'success': False, 'message': f'Unknown label_size: {label_size}'}), 400)
         try:
             image_mode = check_image_mode(image_mode, current_app.config['IMAGE_DEFAULT_MODE'])
         except ValueError:
             return make_response(jsonify({'success': False, 'message': IMAGE_MODE_REFUSED}), 400)
+        # Images stay in color on the tapes of the VC-500W, printed at its resolution
+        color = _palette(label_size) == 'color'
+        if color:
+            image_mode, high_res = 'colored', False
         # The message is returned without an exception, those may contain
         # details that should not reach the client
         problem = label_size_problem(label_size, model) or resolution_problem(model, high_res)
         if problem:
             return make_response(jsonify({'success': False, 'message': problem}), 400)
+        cut_mode = _param('cut_mode', 'full')
+        if cut_mode not in vc500w.CUT_MODES:
+            return make_response(jsonify({'success': False, 'message': CUT_MODE_REFUSED}), 400)
 
         # Determine label content type from image_mode
         if image_mode == 'grayscale':
@@ -1724,7 +1769,7 @@ def webhook_print():
         return _scale_image_to_label(img, label_size, image_orientation_name, high_res), image_width, image_height, image_orientation
 
     pil_images = []
-    dpi = HIGH_RES_DPI if high_res else DEFAULT_DPI
+    dpi = vc500w.DPI if color else HIGH_RES_DPI if high_res else DEFAULT_DPI
     try:
         for f in uploaded_files:
             pil_images.append(prepare(open_image(f, f.filename, dpi)))
@@ -1749,7 +1794,7 @@ def webhook_print():
 
     # Process and queue each image
     try:
-        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
+        printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size, cut_mode=cut_mode)
         for img, image_width, image_height, image_orientation in pil_images:
             label = SimpleLabel(
                 width=image_width,

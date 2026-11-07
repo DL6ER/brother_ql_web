@@ -121,10 +121,11 @@ class TestLabelDesignerAPI:
         # Markup is drawn as plain text
         pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': '<script>alert(1)</script>', 'size': '32', 'align': 'center'}],
                      'security_xss.png', id='security_xss'),
-        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
+        # Red on black and red tape, other tape prints it black
+        pytest.param({'label_size': '62red'}, [{'font': 'DejaVu Sans,Book', 'text': 'Red Text', 'size': '24', 'align': 'center', 'color': 'red'},
                           {'font': 'DejaVu Sans,Book', 'text': 'Red Text INVERTED', 'size': '24', 'align': 'center', 'inverted': True, 'color': 'red'}],
                      'red_text.png', id='print_red_text'),
-        pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': f'--- {i} ---', 'size': str(i + 1), 'align': ['center', 'left', 'right'][i % 3],
+        pytest.param({'label_size': '62red'}, [{'font': 'DejaVu Sans,Book', 'text': f'--- {i} ---', 'size': str(i + 1), 'align': ['center', 'left', 'right'][i % 3],
                            'inverted': bool(i % 2), 'color': 'red' if i % 5 == 0 else 'black'} for i in range(100)],
                      'large_label.png', id='large_number_of_text_blocks'),
         # White on black around the letters reaching below and above the line
@@ -135,12 +136,12 @@ class TestLabelDesignerAPI:
         pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': 'Caf\u00e9', 'size': '24', 'align': 'center'},
                           {'font': 'DejaVu Sans,Book', 'text': unicodedata.normalize('NFD', 'Caf\u00e9'), 'size': '24', 'align': 'center'}],
                      'unicode_normalization.png', id='unicode_normalization'),
-        pytest.param({}, [{'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'checkbox': True},
+        pytest.param({'label_size': '62red'}, [{'font': 'Droid Sans,Regular', 'text': 'Item 1 (very small)', 'size': '15', 'align': 'left', 'checkbox': True},
                           {'font': 'Noto Sans,Regular', 'text': 'Item 2', 'size': '50', 'align': 'left', 'checkbox': True},
                           {'font': 'DejaVu Sans,Book', 'text': 'Not an item XX', 'size': '70', 'align': 'right', 'checkbox': False, 'color': 'red'},
                           {'font': 'DejaVu Serif,Bold', 'text': 'Item 3', 'size': '50', 'align': 'left', 'checkbox': True}],
                      'todo_list.png', id='todo_list'),
-        pytest.param({'border_thickness': 1, 'border_color': 'red'},
+        pytest.param({'label_size': '62red', 'border_thickness': 1, 'border_color': 'red'},
                      [{'font': 'DejaVu Math TeX Gyre,Regular', 'text': 'Mehrwegbecher', 'size': '70', 'align': 'left'}],
                      'large_text.png', id='large_font_not_cropped'),
         pytest.param({}, [{'font': 'DejaVu Sans,Book', 'text': '{{datetime:}}', 'size': '32', 'align': 'center'}],

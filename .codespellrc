@@ -5,3 +5,5 @@ builtin = clear,rare,en-GB_to_en-US
 check-hidden = true
 # Vendored libraries and fonts, and the German demo labels (tools/spelling_de.py)
 skip = ./.git,*.min.js,*-min.js,*.min.css,*.map,./app/labeldesigner/demos/*/*-de.json
+# ZINK (zero ink), the paper of the VC-500W
+ignore-words-list = zink
