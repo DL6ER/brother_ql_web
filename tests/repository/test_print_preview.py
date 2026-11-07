@@ -69,8 +69,8 @@ def test_printing_a_saved_label_takes_false_and_whole_numbers_of_a_json_body(tmp
     # were refused
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append((cut, high_res)))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue',
+                        lambda self: queued.extend(zip(self.label_cuts(), (e['high_res'] for e in self._print_queue))) or '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT, 'high_res': 1, 'cut_once': 1}).status_code == 200
     body = {'name': 'Shelf.json', 'print_count': 2.0, 'high_res': False, 'cut_once': False}
@@ -280,8 +280,7 @@ def test_printing_a_saved_label_takes_its_settings_from_a_json_body(tmp_path, mo
     # The blanks were taken from it, the number of copies was not
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append(cut))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: queued.extend(self.label_cuts()) or '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 200
     assert client.post('/labeldesigner/api/repository/print', json={'name': 'Shelf.json', 'print_count': 3, 'cut_once': 1}).get_json() == {'success': True}

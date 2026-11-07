@@ -249,15 +249,22 @@ class _Raster(BrotherQLRaster):
     # half cuts. brother_ql sends no "cut each * labels" (ESC i A) to PT
     # printers, which then cut after every label.
     cut_every = 1
+    # Whether a PT printer cuts the tape at all (ESC i M). brother_ql only
+    # sends it to switch cutting on.
+    autocut = True
 
     def add_media_and_quality(self, rnumber):
         if self.model.startswith('PT-') and getattr(self, '_mtype', None) == b'\x00':
             self._mtype = None
         super().add_media_and_quality(rnumber)
 
+    def add_autocut(self, autocut=False):
+        super().add_autocut(self.autocut if self.model.startswith('PT-') else autocut)
+
     def add_cut_every(self, n=1):
         if self.model.startswith('PT-'):
-            self.data += b'\x1biA' + bytes([self.cut_every])
+            if self.autocut:
+                self.data += b'\x1biA' + bytes([self.cut_every])
         else:
             super().add_cut_every(n)
 
@@ -275,18 +282,28 @@ class PrinterQueue:
         self.model = model
         self.device_specifier = device_specifier
         self.label_size = label_size
+        # Cut after each label, the last one or none (see routes._cutting),
+        # on PT printers half cut between labels not cut, chain printing
+        self.cut = 'each'
+        self.half_cut = True
+        self.chain = False
         self._print_queue = []
 
-    def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False, fast: bool = False):
+    def add_label_to_queue(self, label, high_res: bool = False, fast: bool = False):
         problem = resolution_problem(self.model, high_res)
         if problem:
             raise ValueError(problem)
         self._print_queue.append({
             'label': label,
-            'cut': cut,
             'high_res': high_res,
             'fast': fast
         })
+
+    def label_cuts(self) -> list[bool]:
+        """Whether the printer cuts after each label of the queue, as
+        self.cut says: after each one, the last one or none."""
+        last = len(self._print_queue) - 1
+        return [self.cut == 'each' or (self.cut == 'last' and i == last) for i in range(last + 1)]
 
     def _rasterize_entries(self, entries):
         """Rasterize the queue entries into one BrotherQLRaster. Each label
@@ -340,6 +357,11 @@ class PrinterQueue:
             # Cut after every label, or with cut_once after the last one, the
             # printer half cuts between them. ESC i A counts up to 255 labels.
             qlr.cut_every = 1 if all(job['cuts']) else min(len(job['images']), 255)
+            qlr.autocut = self.cut != 'none'
+            qlr.half_cut = self.half_cut
+            # Chain printing: the last label stays in the printer, the
+            # next job cuts it off and saves the tape fed before it
+            qlr.no_chain_printing = not self.chain
         # Unless printing fast, the printer gives priority to print
         # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
         # 3.0 s instead of 1.8 s with it, a little sharper.
@@ -410,7 +432,7 @@ class PrinterQueue:
             logger.warning("Print queue is empty.")
             return "Print queue is empty."
 
-        entries = list(self._print_queue)
+        entries = [dict(entry, cut=cut) for entry, cut in zip(self._print_queue, self.label_cuts())]
         self._print_queue.clear()
 
         # Hold the device for the whole job so that neither status queries nor

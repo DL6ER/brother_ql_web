@@ -3,6 +3,7 @@ copies."""
 
 import base64
 import json
+from urllib.parse import parse_qs
 
 from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
 
@@ -320,3 +321,82 @@ def test_printer_panel_of_a_link_stays_closed(designer):
     designer.keyboard.press('Escape')
     designer.wait_for_timeout(500)
     assert designer.evaluate("() => document.getElementById('layer').hidden")
+
+
+def test_cutting_per_printer_and_per_label(designer):
+    # Set in the printer panel for each printer, half cuts and chain printing
+    # only for P-touch printers. A label can keep its own cutting.
+    def sent():
+        with designer.expect_request('**/api/print') as request:
+            designer.click('#edPrint')
+        # Without files a plain form
+        form = parse_qs(request.value.post_data)
+        return {k: form[k][0] for k in ('cut', 'half_cut', 'chain')}
+
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.evaluate("() => { S.settings.cut = 'last'; }")
+    type_line(designer, 0, 'Hello')
+    # Printers without a setting of their own keep the one set before for all
+    assert sent() == {'cut': 'last', 'half_cut': '1', 'chain': '0'}
+    designer.evaluate("() => openPrinterPanel()")
+    # Only P-touch printers half cut and chain print, shown off
+    assert designer.locator('[data-c="half_cut"][data-v="0"].on:disabled, [data-c="chain"][data-v="0"].on:disabled').count() == 2
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); closeLayer(true); openPrinterPanel(); }")
+    # Not cut is chain printing on P-touch printers
+    designer.click('[data-c="cut"][data-v="none"]')
+    assert designer.locator('[data-c="chain"][data-v="1"].on:disabled').count() == 1
+    assert designer.get_attribute('.pp .cut-strip', 'title') == ('Half cut between the labels, not cut. The last label stays in the printer, the next print cuts it off. '
+                                                                 'The tape fed before the first label is waste, short labels get some extra tape.')
+    designer.click('[data-c="cut"][data-v="last"]')
+    designer.click('[data-c="chain"][data-v="1"]')
+    designer.keyboard.press('Escape')
+    assert sent() == {'cut': 'last', 'half_cut': '1', 'chain': '1'}
+    # Saved with the label, it is cut its own way
+    designer.select_option('#edCut', 'each')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.cut, S.edit.design.chain]') == ['each', '1']
+    assert sent() == {'cut': 'each', 'half_cut': '1', 'chain': '1'}
+    designer.select_option('#edCut', '')
+    wait_for_preview(designer)
+    assert sent()['cut'] == 'last'
+
+
+def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
+    # The PT-P700 cuts and chain prints, but has no half cutter: half cuts
+    # are shown off and disabled with the reason, also when they are on
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-P700' }); S.settings.cut = 'last'; openPrinterPanel(); }")
+    half = designer.locator('.pp [data-c="half_cut"][data-v="0"]')
+    assert half.get_attribute('class') == 'on' and half.is_disabled()
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="half_cut"])', 'title') == 'This printer has no half cutter'
+    assert designer.is_enabled('.pp [data-c="chain"][data-v="1"]')
+    assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
+
+
+def test_cutting_saved_through_the_api(designer, server):
+    # half_cut 0 was shown and printed as on, chain 1 was sent but not shown
+    designer.request.post(server + '/labeldesigner/api/repository/save', headers={'Content-Type': 'application/json'},
+                          data=json.dumps({'name': 'Own.json', 'title': 'Own', 'label_size': 'pt12', 'text': [{'text': 'Own', 'size': '40'}],
+                                           'cut': 'last', 'half_cut': 0, 'chain': True}))
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.evaluate("""async () => {
+        S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' });
+        S.tape = 'pt12';
+        openEditor({ title: 'Own', design: await itemDesign(savedItem({ name: 'Own.json', title: 'Own' })) });
+    }""")
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.cut, S.edit.design.half_cut, S.edit.design.chain]') == ['last', '0', '1']
+    assert designer.locator('[data-lcut="half_cut"][data-v="0"].on, [data-lcut="chain"][data-v="1"].on').count() == 2
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    form = parse_qs(request.value.post_data)
+    assert {k: form[k][0] for k in ('cut', 'half_cut', 'chain')} == {'cut': 'last', 'half_cut': '0', 'chain': '1'}
+
+
+def test_cutting_does_not_render_the_preview_again(designer):
+    # The fields went into the preview request and its cache key
+    type_line(designer, 0, 'Hello')
+    asked = []
+    designer.on('request', lambda r: asked.append(r) if '/api/preview' in r.url else None)
+    designer.select_option('#edCut', 'none')
+    wait_for_preview(designer)
+    assert asked == []
