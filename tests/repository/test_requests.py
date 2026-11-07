@@ -80,7 +80,7 @@ def test_parameters_of_the_address_go_before_those_of_a_json_body(tmp_path, monk
     from app.labeldesigner import printer
     queued = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append(label))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 200
     assert client.post('/labeldesigner/api/repository/print?print_count=2', json={'name': 'Shelf.json', 'print_count': 3}).get_json() == {'success': True}
@@ -94,7 +94,7 @@ def test_json_sent_as_a_form_is_read(tmp_path, monkeypatch):
     # curl -d sends JSON as a form: read as a form first, the body was gone
     from app.labeldesigner import printer
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: None)
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 200
     response = client.post('/labeldesigner/api/repository/print', data='{"name": "Shelf.json"}', content_type='application/x-www-form-urlencoded')
@@ -141,7 +141,7 @@ def test_replace_and_options_of_the_address_are_taken_as_text(tmp_path, monkeypa
     from app.labeldesigner import printer
     queued = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append((cut, high_res)))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 200
     assert client.post(SAVE_URL + '?replace=false', json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 409
@@ -165,7 +165,7 @@ def test_texts_of_a_json_body_sent_as_a_form_are_no_parameters(tmp_path):
 def test_json_body_is_read_once(tmp_path, monkeypatch):
     from app.labeldesigner import printer
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: None)
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json=BLANK_LABEL).status_code == 200
     provider = client.application.json
@@ -184,7 +184,7 @@ def test_numbers_of_a_saved_label_are_numbers(tmp_path, monkeypatch):
     from app.labeldesigner import printer
     queued = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append(label))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     body = {'name': 'Shelf.json', 'label_size': '62', 'margin_top': 10.0, 'image_text_gap': 12.0, 'qrcode_size': 6.0, 'print_count': 0,
             'print_type': 'qrcode_text', 'code_text': 'https://example.com', 'text': TEXT}

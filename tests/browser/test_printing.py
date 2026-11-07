@@ -27,7 +27,7 @@ def test_ctrl_enter_prints(designer, monkeypatch, tmp_path):
 def test_printer_failure_is_shown(designer, monkeypatch):
     # The server answers 503 for a print the printer did not do, the message
     # is shown as for a refused request
-    monkeypatch.setattr('app.labeldesigner.printer.PrinterQueue.process_queue', lambda self, batch_size=0: 'The printer reports: Replace media error')
+    monkeypatch.setattr('app.labeldesigner.printer.PrinterQueue.process_queue', lambda self: 'The printer reports: Replace media error')
     type_line(designer, 0, 'Hello')
     designer.click('#edPrint')
     assert printed(designer) == ['failed']

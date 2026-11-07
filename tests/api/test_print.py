@@ -194,7 +194,7 @@ def test_fast_printing(tmp_path, monkeypatch, route, fast):
     # 6 of the media and quality command (ESC i z), which makes it slower
     from app.labeldesigner import printer
     sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
     client = make_client(tmp_path)
     options = {} if fast is None else {'fast_printing': fast}
     if route == 'print':
@@ -217,7 +217,7 @@ def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkey
     # Wi-Fi, and with media type 0x00 ("no tape") also over USB
     from app.labeldesigner import printer
     sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
     client = make_client(tmp_path, model=model)
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size=label_size, orientation='rotated'))
     assert response.get_json()['success'] is True
@@ -229,31 +229,27 @@ def test_ptouch_printers_get_compressed_lines_and_no_media_type(tmp_path, monkey
 
 
 @pytest.mark.parametrize('cut_once', ['0', '1'])
-def test_copies_on_ptouch_printers_are_one_job_per_batch(tmp_path, monkeypatch, cut_once):
+def test_copies_on_ptouch_printers_are_one_job(tmp_path, monkeypatch, cut_once):
     # As jobs of their own, a PT-E550W fed, half cut and cut the tape for
     # every copy, also with cut_once
     from app.labeldesigner import printer
     sent = []
-    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr: sent.append(qlr.data) or '')
     client = make_client(tmp_path, model='PT-E550W')
-    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='7', cut_once=cut_once))
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='12', cut_once=cut_once))
     assert response.get_json()['success'] is True
-    # Batches of 5 and 2 labels, one job each
-    assert len(sent) == 2
-    for data, labels in zip(sent, [5, 2]):
-        assert data.count(b'\x1b@') == 1
-        # The following labels of a job are not its first page
-        assert [data[i + 11] for i in range(len(data)) if data.startswith(b'\x1biz', i)] == [0] + [1] * (labels - 1)
-        # Half cut, no chain printing
-        assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biK', i)] == [0x0c] * labels
-        assert data.endswith(b'\x1a')
-    cut_every = [[data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)] for data in sent]
-    if cut_once == '1':
-        # Half cuts between the labels, the tape is cut after each batch
-        assert cut_every == [[5] * 5, [2] * 2]
-    else:
-        # Cut after every label
-        assert cut_every == [[1] * 5, [1] * 2]
+    assert len(sent) == 1
+    data = sent[0]
+    assert data.count(b'\x1b@') == 1
+    # The following labels of a job are not its first page
+    assert [data[i + 11] for i in range(len(data)) if data.startswith(b'\x1biz', i)] == [0] + [1] * 11
+    # Half cut, no chain printing
+    assert [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biK', i)] == [0x0c] * 12
+    assert data.endswith(b'\x1a')
+    cut_every = [data[i + 3] for i in range(len(data)) if data.startswith(b'\x1biA', i)]
+    # With cut_once half cuts between the labels and a cut after the last,
+    # else a cut after every label
+    assert cut_every == ([12] * 12 if cut_once == '1' else [1] * 12)
 
 
 def test_ptouch_tape_is_endless(tmp_path):
@@ -281,7 +277,7 @@ def test_printer_failures_are_told_from_refused_requests(tmp_path, monkeypatch, 
     # to try again later
     from app.labeldesigner import printer
     failure = 'The printer reports: Replace media error'
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: failure)
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: failure)
     client = make_client(tmp_path, empty_repo=True)
     client.application.config['WEBHOOK_PASSWORD'] = 'secret'
     text = json.dumps([{'text': 'Shelf', 'font': 'DejaVu Sans,Book', 'size': '40'}])

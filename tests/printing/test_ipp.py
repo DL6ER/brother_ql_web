@@ -244,6 +244,22 @@ def test_job_waits_until_the_network_printer_finished(network_job):
     assert answer['requests'] == 5
 
 
+
+@pytest.mark.parametrize('speed, success', [(1, True), (1e6, False)])
+def test_network_job_waits_as_long_as_its_labels_take(network_job, monkeypatch, speed, success):
+    # Besides the time any job may take, as long as the labels take at the
+    # slowest printers
+    answer, sent, print_label = network_job
+    monkeypatch.setattr(printer, 'NETWORK_JOB_TIMEOUT', 0)
+    monkeypatch.setattr(printer, 'SLOWEST_PRINT_SPEED', speed)
+    answer['bodies'] = [READY, PRINTING, PRINTING, PRINTING, READY]
+    response = print_label()
+    if success:
+        assert response.get_json() == {'success': True}
+    else:
+        assert response.get_json()['message'] == 'The printer did not report that it finished the label, check whether it was printed'
+
+
 def test_network_printer_error_after_the_job_is_reported(network_job):
     answer, sent, print_label = network_job
     answer['bodies'] = [READY, PRINTING, fixture('ql810w-stopped-other-error.bin')]
