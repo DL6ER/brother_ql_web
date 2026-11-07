@@ -206,7 +206,8 @@ def index():
     label_sizes = [
         {'id': label.identifier, 'name': label_name(label), 'form': label.form_factor.name.lower(),
          'tape': list(label.tape_size), 'dots': list(label.dots_printable), 'red': label.color == 1,
-         'palette': label_palette(label), 'models': label_printers(label)}
+         'palette': label_palette(label), 'models': label_printers(label),
+         'dpi': list(drivers.for_label(label.identifier).label_dpi(label))}
         for label in LABELS
     ]
     return render_template(
@@ -234,7 +235,8 @@ def index():
                 'image_mode': current_app.config['IMAGE_DEFAULT_MODE'],
                 'image_bw_threshold': current_app.config['IMAGE_DEFAULT_BW_THRESHOLD'],
             },
-            'models_without_600_dpi': sorted(model for model in MODELS if resolution_problem(model, True)),
+            # What the label designer offers for each printer model
+            'models': {model: drivers.for_model(model).capabilities(model) for model in MODELS},
             'preview_parallel': max(1, min(16, cpus - 1)),
         },
         version=_asset_version(),

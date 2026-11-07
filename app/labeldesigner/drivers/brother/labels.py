@@ -120,6 +120,9 @@ HIDDEN_LABELS = frozenset({'103'})
 # https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
 MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W')
 
+# P-touch printers with a half cutter, the PT-P700 has none
+HALF_CUTTERS = ('PT-E550W', 'PT-P750W', 'PT-P900W', 'PT-P950NW')
+
 
 def label_fits(label: Label, model: str) -> bool:
     """Whether a printer model can print a label size."""

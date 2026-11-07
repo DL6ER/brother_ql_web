@@ -372,6 +372,24 @@ def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
     assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
 
 
+def test_printer_of_another_driver_gets_what_it_offers(designer):
+    # The label designer knows printers only by what their driver tells
+    designer.evaluate("""() => {
+        C.models['Other-1'] = { qualities: ['fast', 'quality'], high_res: false, half_cut: false, chain: false,
+                                feed_waste: false, job_stages: false, colors: 'black', never_cut: 'It keeps them.' };
+        SIZES['o48'] = Object.assign({}, SIZES['62'], { id: 'o48', models: ['Other-1'], dpi: [203, 203] });
+        S.printer = Object.assign({}, S.printer, { model: 'Other-1' }); S.settings.quality = 'high'; S.settings.cut = 'last';
+        openPrinterPanel(); }""")
+    assert designer.eval_on_selector_all('.pp [data-q]', 'buttons => buttons.map(b => b.textContent)') == ['Fast', 'Quality']
+    assert designer.inner_text('.pp [data-q].on') == 'Quality'
+    assert designer.evaluate("() => [highRes(), dpiOf('o48'), dpiOf('o48', true)]") == [False, 203, 203]
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="half_cut"])', 'title') == 'This printer has no half cutter'
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="chain"])', 'title') == 'Only for P-touch printers'
+    assert designer.get_attribute('.pp .cut-strip', 'title') == 'Cut after the last label.'
+    never = designer.locator('.pp [data-c="cut"][data-v="none"]')
+    assert never.is_disabled() and never.get_attribute('title') == 'It keeps them.'
+
+
 def test_cutting_saved_through_the_api(designer, server):
     # half_cut 0 was shown and printed as on, chain 1 was sent but not shown
     designer.request.post(server + '/labeldesigner/api/repository/save', headers={'Content-Type': 'application/json'},

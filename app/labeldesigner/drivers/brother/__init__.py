@@ -38,6 +38,18 @@ class BrotherRaster(Driver):
     def dpi(self, high_res):
         return 600 if high_res else 300
 
+    def label_dpi(self, label):
+        # P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
+        # command reference of the PT-E550W, PT-P750W and PT-P710BT)
+        dpi = 180 if label.identifier in tables.PTOUCH_LABELS else 300
+        return dpi, dpi * 2
+
+    def capabilities(self, model):
+        ptouch = model.startswith('PT-')
+        return dict(super().capabilities(model), qualities=['fast', 'quality', 'high'],
+                    high_res=not tables.resolution_problem(model, True), half_cut=model in tables.HALF_CUTTERS,
+                    chain=ptouch, feed_waste=ptouch)
+
     def resolution_problem(self, model, high_res):
         return tables.resolution_problem(model, high_res)
 

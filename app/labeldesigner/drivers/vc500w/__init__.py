@@ -10,6 +10,7 @@ from . import image, printing, protocol, status, tapes
 # It keeps labels it does not cut until the next print, which follows them
 # without a cut
 NEVER_CUT = 'The VC-500W cannot leave the labels uncut, cut them after the last label'
+NEVER_WHY = 'The VC-500W would keep the labels inside until the next print'
 
 
 class VC500W(Driver):
@@ -44,6 +45,10 @@ class VC500W(Driver):
 
     def dpi(self, high_res):
         return protocol.DPI
+
+    def capabilities(self, model):
+        # A label takes about 40 s, the label designer shows its stages
+        return dict(super().capabilities(model), half_cut=True, job_stages=True, never_cut=NEVER_WHY)
 
     def status(self, device, model, unconfirmed=False):
         return status.query_status(device)

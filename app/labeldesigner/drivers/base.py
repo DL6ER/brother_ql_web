@@ -71,6 +71,20 @@ class Driver:
         """The resolution labels are made with."""
         raise NotImplementedError
 
+    def label_dpi(self, label) -> tuple[int, int]:
+        """Dots per inch of the dots of a label size, printed normally and at
+        600 dpi. The label designer converts millimeters with them."""
+        return self.dpi(False), self.dpi(True)
+
+    def capabilities(self, model: str) -> dict:
+        """What the label designer offers for the model: the qualities it
+        shows (fast, quality, high for 600 dpi), whether the model prints at
+        600 dpi, half cuts between labels and chain prints, whether it feeds
+        tape before the first label, reports the stage of a job it prints,
+        its colors, and why it does not leave labels uncut, if it does not."""
+        return {'qualities': ['fast', 'quality'], 'high_res': False, 'half_cut': False, 'chain': False,
+                'feed_waste': False, 'job_stages': False, 'colors': self.colors(model), 'never_cut': ''}
+
     def resolution_problem(self, model: str, high_res: bool) -> str:
         """Why the model cannot print at the resolution, or an empty string."""
         return ''
