@@ -412,7 +412,7 @@ def test_a_label_saved_with_a_number_as_its_size_is_read_as_the_size_it_names(tm
     from app.labeldesigner import printer
     sizes = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, *args, **kwargs: sizes.append(self.label_size))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     with open(os.path.join(client.application.config['LABEL_REPOSITORY_DIR'], 'Shelf.json'), 'w', encoding='utf-8') as fh:
         json.dump({'name': 'Shelf.json', 'label_size': 62, 'text': TEXT}, fh)
@@ -429,7 +429,7 @@ def test_a_label_saved_without_a_size_prints_on_the_size_its_preview_shows(tmp_p
     from app.labeldesigner import printer
     sizes = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, *args, **kwargs: sizes.append(self.label_size))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path, empty_repo=True)
     client.application.config['LABEL_DEFAULT_SIZE'] = '29'
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'text': TEXT}).status_code == 200

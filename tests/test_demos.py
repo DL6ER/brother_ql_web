@@ -127,7 +127,7 @@ def test_print(client, monkeypatch, label_id):
     queued = []
     monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue',
                         lambda self, label, cut=True, high_res=False, fast=False: queued.append((self.label_size, label)))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: '')
     response = client.post('/labeldesigner/api/demos/print', json={'id': label_id})
     assert response.get_json() == {'success': True}
     (label_size, label), = queued

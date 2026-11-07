@@ -5,8 +5,10 @@ import time
 
 import pytest
 from brother_ql.backends import linux_kernel
+from PIL import Image
 
 from app.labeldesigner import printer
+from app.labeldesigner.enums import LabelContent, LabelOrientation, LabelType
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 DEVICE = 'file:///dev/usb/lp0'
@@ -380,3 +382,60 @@ def test_status_errors_are_told_without_their_text(client, monkeypatch, caplog):
     status = printer.get_ptr_status(client.application.config)
     assert status['errors'] == ['The status of the printer could not be read, the log of the server names the reason']
     assert any('/app/instance/secret.json is gone' in record.getMessage() for record in caplog.records)
+
+
+class _Label:
+    """A label that notes when it is generated."""
+    label_type = LabelType.ENDLESS_LABEL
+    label_orientation = LabelOrientation.STANDARD
+    label_content = LabelContent.TEXT_ONLY
+
+    def __init__(self, events, width):
+        self.events, self.width = events, width
+
+    def generate(self):
+        self.events.append('generate')
+        return Image.new('RGB', (self.width, 20), 'white')
+
+
+@pytest.mark.parametrize('model, label_size, width, expected', [
+    # Each label is converted before the next one is generated, so that a
+    # long job does not keep all its images
+    ('QL-700', '62', 696, ['generate', 'convert 1'] * 3),
+    # The labels of a PT printer are one job
+    ('PT-E550W', 'pt12', 70, ['generate'] * 3 + ['convert 3']),
+])
+def test_labels_are_converted_as_they_are_generated(monkeypatch, model, label_size, width, expected):
+    events = []
+    monkeypatch.setattr(printer, 'create_label', lambda qlr, images, *args, **kwargs: events.append(f'convert {len(images)}'))
+    queue = printer.PrinterQueue(model, 'file:///dev/usb/lp0', label_size)
+    for _ in range(3):
+        queue.add_label_to_queue(_Label(events, width), cut=False)
+    queue._rasterize_entries(queue._print_queue)
+    assert events == expected
+
+
+def test_cut_count_of_a_ptouch_job_fits_its_byte(monkeypatch):
+    # ESC i A counts up to 255 labels, cut_once with more cuts every 255
+    counts = []
+    monkeypatch.setattr(printer, 'create_label', lambda qlr, images, *args, **kwargs: counts.append(qlr.cut_every))
+    queue = printer.PrinterQueue('PT-E550W', 'file:///dev/usb/lp0', 'pt12')
+    job = {'settings': (0, True, False, False), 'images': [None] * 300, 'cuts': [False] * 300}
+    queue._add_job(printer._Raster('PT-E550W'), job)
+    assert counts == [255]
+
+
+def test_copies_on_ql_printers_are_sent_at_once(client, monkeypatch):
+    sent = []
+    monkeypatch.setattr(printer, 'send_job', lambda data, device, page_lengths: sent.append(len(page_lengths)) or {'did_print': True, 'ready_for_next_job': True})
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='12', cut_once='1'))
+    assert response.get_json()['success'] is True
+    assert sent == [12]
+
+
+def test_simulated_labels_are_saved_in_their_order(tmp_path):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, printer='simulation', print_count='12')
+    assert client.post('/labeldesigner/api/print', data=data).get_json()['success'] is True
+    names = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
+    assert [name[-7:] for name in names] == [f'{i:03d}.png' for i in range(12)]

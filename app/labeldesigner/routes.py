@@ -1592,7 +1592,7 @@ def webhook_print():
 
     Accepts multiple images via multipart form-data or JSON with base64-encoded
     images. Each image is scaled to fit the target label dimensions and printed
-    in batch with a cut after each label. On die-cut labels each image is
+    as one job with a cut after each label. On die-cut labels each image is
     turned to the orientation that shows it largest.
 
     Authentication:
