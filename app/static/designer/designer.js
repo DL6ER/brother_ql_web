@@ -326,7 +326,7 @@ function cutText(c, pt) {
     const half = pt && c.half_cut === '1', chain = chainOf(c, pt);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
-    return text + '.' + (chain ? ' The last label stays in the printer, the next print cuts it off.' : '')
+    return text + '.' + (chain ? ' The last label stays in the printer, the next print cuts it off.' : c.cut === 'none' ? ' The last label stays in the printer.' : '')
         + (pt ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
 }
 
@@ -345,7 +345,8 @@ function cutShort(c, pt) {
 function cutStrip(c, pt) {
     const half = pt && c.half_cut === '1', chain = chainOf(c, pt);
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
-    const end = chain ? 'chain' : c.cut === 'none' ? 'none' : 'full';
+    // Not cut, the last label stays in the printer, as with chain printing
+    const end = chain || c.cut === 'none' ? 'chain' : 'full';
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, pt));
