@@ -261,8 +261,9 @@ def test_copies_on_ptouch_printers_are_one_job_per_batch(tmp_path, monkeypatch, 
     ({}, 0x40, [1, 1, 1], 0x0c),
     ({'cut': 'last'}, 0x40, [3, 3, 3], 0x0c),
     ({'cut': 'last', 'half_cut': '0'}, 0x40, [3, 3, 3], 0x08),
-    # Not cut at all, the labels only half cut
-    ({'cut': 'none'}, 0x00, [], 0x0c),
+    # Not cut at all, the labels only half cut, chain printing: else the
+    # printer cuts after the last label
+    ({'cut': 'none'}, 0x00, [], 0x04),
     # The last label stays in the printer, the next job cuts it off
     ({'cut': 'last', 'chain': '1'}, 0x40, [3, 3, 3], 0x04),
     ({'cut': 'none', 'half_cut': '0', 'chain': '1'}, 0x00, [], 0x00),

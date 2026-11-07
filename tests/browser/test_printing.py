@@ -341,11 +341,15 @@ def test_cutting_per_printer_and_per_label(designer):
     designer.evaluate("() => openPrinterPanel()")
     assert designer.locator('[data-c="chain"]').count() == 0
     designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); closeLayer(true); openPrinterPanel(); }")
+    # Not cut is chain printing on P-touch printers
     designer.click('[data-c="cut"][data-v="none"]')
+    assert designer.locator('[data-c="chain"]').count() == 0
+    assert designer.get_attribute('.pp .cut-strip', 'title') == ('Half cut between the labels, not cut. The last label stays in the printer, the next print cuts it off. '
+                                                                 'The tape fed before the first label is waste, short labels get some extra tape.')
+    designer.click('[data-c="cut"][data-v="last"]')
     designer.click('[data-c="chain"][data-v="1"]')
-    assert designer.get_attribute('.pp .cut-strip', 'title') == 'Half cut between the labels, not cut. The last label stays in the printer, the next print cuts it off.'
     designer.keyboard.press('Escape')
-    assert sent() == {'cut': 'none', 'half_cut': '1', 'chain': '1'}
+    assert sent() == {'cut': 'last', 'half_cut': '1', 'chain': '1'}
     # Saved with the label, it is cut its own way
     designer.select_option('#edCut', 'each')
     wait_for_preview(designer)
@@ -353,4 +357,4 @@ def test_cutting_per_printer_and_per_label(designer):
     assert sent() == {'cut': 'each', 'half_cut': '1', 'chain': '1'}
     designer.select_option('#edCut', '')
     wait_for_preview(designer)
-    assert sent()['cut'] == 'none'
+    assert sent()['cut'] == 'last'

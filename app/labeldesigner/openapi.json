@@ -240,7 +240,7 @@
                           1
                         ],
                         "default": 0,
-                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
+                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
                       },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
@@ -316,7 +316,7 @@
                           1
                         ],
                         "default": 0,
-                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
+                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
                       },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
@@ -1016,7 +1016,7 @@
                       1
                     ],
                     "default": 0,
-                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
+                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
                   },
                   "blanks": {
                     "$ref": "#/components/schemas/SavedLabelBlanks"
@@ -1422,7 +1422,7 @@
                       1
                     ],
                     "default": 0,
-                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it."
+                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
                   },
                   "blanks": {
                     "$ref": "#/components/schemas/SavedLabelBlanks"

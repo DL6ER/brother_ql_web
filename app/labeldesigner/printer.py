@@ -345,8 +345,10 @@ class PrinterQueue:
                 qlr.autocut = self.cut != 'none'
                 qlr.half_cut = self.half_cut
                 # Chain printing: the last label stays in the printer, the
-                # next job cuts it off and saves the tape fed before it
-                qlr.no_chain_printing = not self.chain
+                # next job cuts it off and saves the tape fed before it.
+                # Without it a PT-E550W cut after the last label also with
+                # auto cut off, so not cutting is chain printing.
+                qlr.no_chain_printing = not (self.chain or self.cut == 'none')
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
             # 3.0 s instead of 1.8 s with it, a little sharper.

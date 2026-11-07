@@ -316,34 +316,40 @@ const CUTS = [['each', 'After each label'], ['last', 'After the last label'], ['
 const ptPrinter = () => !!(S.printer && String(S.printer.model || '').startsWith('PT-'));
 // Printers without a setting of their own cut as set before for all
 const printerCut = () => Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]);
+// P-touch printers cut after the last label unless chain printing, so not
+// cutting at all is chain printing
+const chainOf = (c, pt) => pt && (c.chain === '1' || c.cut === 'none');
 // A label saved with its own way of cutting keeps it
 const cutOf = d => d && d.cut ? { cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' } : printerCut();
 
 function cutText(c, pt) {
-    const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
+    const half = pt && c.half_cut === '1', chain = chainOf(c, pt);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
-    return text + (chain ? '. The last label stays in the printer, the next print cuts it off.'
-        : pt ? '. The tape fed before the first label is waste.' : '.');
+    return text + '.' + (chain ? ' The last label stays in the printer, the next print cuts it off.' : '')
+        + (pt ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
 }
 
 // The same in a few words, next to the preview
 function cutShort(c, pt) {
     const half = pt && c.half_cut === '1' && c.cut !== 'each';
-    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (pt && c.chain === '1' ? ', chain' : '');
+    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (pt && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
 }
 
 // Three copies leaving the printer, as the display of a P-touch printer
-// shows them: the waste fed before the first label, cuts, half cuts and the
-// last label left in the printer
+// shows them: the waste fed before the first label, half cut off with half
+// cuts or a cut after each label (as a PT-E550W did it), cuts, half cuts and
+// the last label left in the printer. Not to scale: a PT-E550W fed 22 mm
+// before the first label, 11 mm after a chain print, and gave short labels
+// some more tape.
 function cutStrip(c, pt) {
-    const half = pt && c.half_cut === '1', chain = pt && c.chain === '1';
+    const half = pt && c.half_cut === '1', chain = chainOf(c, pt);
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     const end = chain ? 'chain' : c.cut === 'none' ? 'none' : 'full';
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, pt));
-    const waste = pt && !chain ? `<span class="waste"></span>${mark(c.cut === 'none' ? between : 'full')}` : '';
+    const waste = pt ? `<span class="waste"></span>${mark(half || c.cut === 'each' ? 'half' : 'full')}` : '';
     return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${waste}${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
 }
 
@@ -1234,7 +1240,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
     // The cut after the label, in the corner how copies are cut
     const pt = isPtouch(design.label_size), cutNow = cutOf(design);
-    const cutEnd = pt && cutNow.chain === '1' ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
+    const cutEnd = chainOf(cutNow, pt) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
     const paper = blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${p.url}">`;
     el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
         <div class="cut"${cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
@@ -2123,7 +2129,7 @@ function cutSettings(attr, c, pt, withCut = true) {
     const seg = (k, opts) => `<div class="seg wrap">${opts.map(([v, n]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${c[k] === v ? 'on' : ''}">${n}</button>`).join('')}</div>`;
     return (withCut ? `<span class="label-s">Cutting</span>${seg('cut', CUTS)}` : '')
         + (pt ? `<span class="label-s">Half cut between labels</span>${seg('half_cut', [['1', 'On'], ['0', 'Off']])}
-            <span class="label-s">Chain printing, the last label stays in the printer</span>${seg('chain', [['1', 'On'], ['0', 'Off']])}` : '');
+            ${c.cut === 'none' ? '' : `<span class="label-s">Chain printing, the last label stays in the printer</span>${seg('chain', [['1', 'On'], ['0', 'Off']])}`}` : '');
 }
 
 // A label can keep its own way of cutting, else it is cut as set for the printer
