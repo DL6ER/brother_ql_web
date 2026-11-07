@@ -729,14 +729,16 @@ def _vc500w_error(error: str) -> str:
 
 
 def query_vc500w_status(device_specifier: str) -> dict:
-    """Status of a VC-500W: the tape in it, how much is left and errors.
-    While it prints, the stage of the label instead. Raises OSError or
+    """Status of a VC-500W: the tape in it, how much is left, errors and how
+    well it is reached. While it prints, the stage of the label instead.
+    Raises OSError or
     VC500WError if it does not answer."""
     key = _lock_key(device_specifier)
+    target = _vc500w_target(device_specifier)
     # A job of this server holds the printer, it tells the stage right away
     with device_lock(device_specifier, timeout=0 if key in _vc500w_jobs else STATUS_LOCK_TIMEOUT) as acquired:
         if acquired:
-            config, status = vc500w.get_state(*_vc500w_target(device_specifier))
+            config, status = vc500w.get_state(*target)
             state = _network_printer(device_specifier, config['model'] or VC500W)
             width = config['tape_width_mm']
             if width:
@@ -753,9 +755,10 @@ def query_vc500w_status(device_specifier: str) -> dict:
             if busy and not error:
                 state['job'] = {'stage': vc500w.stage_name(status['stage'])}
             _status_cache[key] = state
-            return dict(state)
+            return dict(state, **vc500w.link(*target))
     state = dict(_status_cache.get(key, _network_printer(device_specifier, VC500W)))
     state.update({'errors': [], 'status_type': BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
+    state.update(vc500w.link(*target))
     if key in _vc500w_jobs:
         state['job'] = dict(_vc500w_jobs[key])
     return state

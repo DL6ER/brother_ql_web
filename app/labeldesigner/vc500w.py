@@ -12,6 +12,7 @@ Micheloni for labelprinter
 (https://m7i.org/projects/labelprinter-linux-python-for-vc-500w/), this is
 an implementation of our own. Standard library only."""
 
+import collections
 import os
 import select
 import socket
@@ -62,6 +63,8 @@ BUSY_TIMEOUT = 120
 FILL_LIMIT = 32768
 FILL_WAIT = 0.5
 POLL_INTERVAL = 0.5
+# How many answers to status questions show how well the printer is reached
+LINK_ANSWERS = 20
 IDLE = 'IDLE'
 EJECT_JAM = 'EJECT JAM'
 
@@ -89,6 +92,11 @@ TOO_LONG = 'The label is too long for the printer'
 PRINTER_IS_BUSY = 'printer is busy'
 
 XML_DECLARATION = '<?xml version="1.0" encoding="UTF-8"?>\n'
+
+# By (target, port): whether the last status questions got an answer, and
+# how many bytes per second the data of the last label took
+_answers: dict = {}
+_data_rates: dict = {}
 
 
 class VC500WError(Exception):
@@ -244,7 +252,13 @@ class Connection:
 
     def read(self, path: str) -> ET.Element:
         """A file of the printer, e.g., /config.xml, as XML."""
-        _, data = self.command(f'<read>\n<path>{path}</path>\n</read>')
+        answers = _answers.setdefault((self._target, self._port), collections.deque(maxlen=LINK_ANSWERS))
+        try:
+            _, data = self.command(f'<read>\n<path>{path}</path>\n</read>')
+        except (OSError, VC500WError):
+            answers.append(False)
+            raise
+        answers.append(True)
         return _element(data.rstrip(b'\x00'))
 
 
@@ -294,6 +308,14 @@ def get_state(target: str, port: int = PORT) -> tuple[dict, dict]:
         config = parse_config(connection.read('/config.xml'))
         status = parse_status(connection.read('/status.xml'))
     return config, status
+
+
+def link(target: str, port: int = PORT) -> dict:
+    """How well the printer is reached: how many of the last status questions
+    got no answer, e.g., on a weak Wi-Fi, and how many bytes per second the
+    data of the last label took, None before the first."""
+    answers = _answers.get((target, port), ())
+    return {'answers': len(answers), 'answers_lost': answers.count(False), 'data_rate': _data_rates.get((target, port))}
 
 
 def print_error(status: dict) -> str:
@@ -417,12 +439,14 @@ def print_image(target: str, image, mode: str = DEFAULT_MODE, cut: str = 'full',
             if error:
                 return error
             time.sleep(DATA_DELAY)
+            sent = time.monotonic()
             connection.send(data)
             try:
                 connection.answer(timeout=DATA_TIMEOUT + len(data) / DATA_RATE)
             except TimeoutError:
                 # Otherwise it waits until it is switched off
                 return DAMAGED if _fill(connection) else NO_ANSWER
+            _data_rates[(target, port)] = round(len(data) / max(time.monotonic() - sent, 0.001))
             error = _follow(connection, progress)
             if error != EJECT_JAM:
                 return error

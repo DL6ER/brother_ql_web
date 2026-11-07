@@ -1981,6 +1981,18 @@
             "type": ["integer", "null"],
             "description": "VC-500W: tape left in the cassette, in millimeters."
           },
+          "answers": {
+            "type": "integer",
+            "description": "VC-500W: the last status questions of the server, up to 20."
+          },
+          "answers_lost": {
+            "type": "integer",
+            "description": "VC-500W: of those, the ones the printer did not answer, e.g., on a weak Wi-Fi."
+          },
+          "data_rate": {
+            "type": ["integer", "null"],
+            "description": "VC-500W: bytes per second the data of the last label took, `null` before the first."
+          },
           "job": {
             "type": "object",
             "description": "VC-500W: what it does while it prints a label, which takes about 40 s.",

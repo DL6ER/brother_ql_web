@@ -728,6 +728,15 @@ function tapeLeft(p) {
     return `${m(p.tape_remaining_mm)} m of ${m(p.tape_length_mm)} m left`;
 }
 
+// How well a VC-500W is reached: how fast the last label went, answers lost
+function linkText(p) {
+    if (!p) return '';
+    const parts = [];
+    if (p.data_rate) parts.push(`last label sent at ${Math.max(1, Math.round(p.data_rate / 1000))} kB/s`);
+    if (p.answers_lost) parts.push(`${p.answers_lost} of the last ${p.answers} answers lost`);
+    return parts.join(', ');
+}
+
 function printerState(p) {
     if (!p) return { cls: 'off', text: 'No printer' };
     if (p.errors && p.errors.length) return { cls: 'bad', text: p.errors[0] };
@@ -2672,7 +2681,7 @@ function printerPanelHTML() {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
-            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc(st.text)}, ${esc((p.path || '').replace('file://', ''))}${tapeLeft(p) ? ', ' + esc(tapeLeft(p)) : ''}</span></span>
+            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc([st.text, (p.path || '').replace('file://', ''), tapeLeft(p), linkText(p)].filter(Boolean).join(', '))}</span></span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>

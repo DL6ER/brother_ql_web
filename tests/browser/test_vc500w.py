@@ -109,6 +109,14 @@ def test_tape_left_in_the_printer_panel(designer):
     designer.click('#printerChip')
     designer.wait_for_selector('.plist')
     assert '4.6 m of 5.0 m left' in designer.inner_text('.plist')
+    assert 'answers' not in designer.inner_text('.plist')
+
+
+def test_connection_in_the_printer_panel(designer):
+    fake_vc500w(designer, answers=20, answers_lost=3, data_rate=452300)
+    designer.click('#printerChip')
+    designer.wait_for_selector('.plist')
+    assert '4.6 m of 5.0 m left, last label sent at 452 kB/s, 3 of the last 20 answers lost' in designer.inner_text('.plist')
 
 
 def test_stages_are_shown_while_printing(designer):
