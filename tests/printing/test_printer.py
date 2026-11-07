@@ -410,8 +410,8 @@ def test_labels_are_converted_as_they_are_generated(monkeypatch, model, label_si
     monkeypatch.setattr(printer, 'create_label', lambda qlr, images, *args, **kwargs: events.append(f'convert {len(images)}'))
     queue = printer.PrinterQueue(model, 'file:///dev/usb/lp0', label_size)
     for _ in range(3):
-        queue.add_label_to_queue(_Label(events, width), cut=False)
-    queue._rasterize_entries(queue._print_queue)
+        queue.add_label_to_queue(_Label(events, width))
+    queue._rasterize_entries([dict(entry, cut=False) for entry in queue._print_queue])
     assert events == expected
 
 

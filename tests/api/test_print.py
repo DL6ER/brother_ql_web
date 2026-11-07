@@ -252,6 +252,50 @@ def test_copies_on_ptouch_printers_are_one_job(tmp_path, monkeypatch, cut_once):
     assert cut_every == ([12] * 12 if cut_once == '1' else [1] * 12)
 
 
+@pytest.mark.parametrize('options, autocut, cut_every, advanced', [
+    # Cut after each label, half cut before the first, no chain printing
+    ({}, 0x40, [1, 1, 1], 0x0c),
+    ({'cut': 'last'}, 0x40, [3, 3, 3], 0x0c),
+    ({'cut': 'last', 'half_cut': '0'}, 0x40, [3, 3, 3], 0x08),
+    # Not cut at all, the labels only half cut, chain printing: else the
+    # printer cuts after the last label
+    ({'cut': 'none'}, 0x00, [], 0x04),
+    # The last label stays in the printer, the next job cuts it off
+    ({'cut': 'last', 'chain': '1'}, 0x40, [3, 3, 3], 0x04),
+    ({'cut': 'none', 'half_cut': '0', 'chain': '1'}, 0x00, [], 0x00),
+])
+def test_cutting_on_ptouch_printers(tmp_path, monkeypatch, options, autocut, cut_every, advanced):
+    from app.labeldesigner import printer
+    sent = []
+    monkeypatch.setattr(printer.PrinterQueue, '_send_raster', lambda self, qlr, *args, **kwargs: sent.append(qlr.data) or '')
+    client = make_client(tmp_path, model='PT-E550W')
+    data = dict(EXAMPLE_FORMDATA, label_size='pt12', orientation='rotated', print_count='3', **options)
+    assert client.post('/labeldesigner/api/print', data=data).get_json()['success'] is True
+    data, = sent
+    of = lambda cmd: [data[i + 3] for i in range(len(data)) if data.startswith(cmd, i)]
+    # Various mode (ESC i M), cut every n labels (ESC i A), advanced mode (ESC i K)
+    assert of(b'\x1biM') == [autocut] * 3
+    assert of(b'\x1biA') == cut_every
+    assert of(b'\x1biK') == [advanced] * 3
+
+
+@pytest.mark.parametrize('cut, cuts', [('each', [True, True, True]), ('last', [False, False, True]), ('none', [False, False, False])])
+def test_cutting_on_ql_printers(tmp_path, monkeypatch, cut, cuts):
+    from app.labeldesigner import printer
+    queued = []
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: queued.extend(self.label_cuts()) or '')
+    client = make_client(tmp_path)
+    assert client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='3', cut=cut)).get_json()['success'] is True
+    assert queued == cuts
+
+
+def test_unknown_cut_is_refused(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, cut='twice'))
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'cut must be each, last or none'
+
+
 def test_ptouch_tape_is_endless(tmp_path):
     # P-touch tapes were taken for round die-cut labels: the label was 1 dot
     # long and the printer stopped after a few millimeters
