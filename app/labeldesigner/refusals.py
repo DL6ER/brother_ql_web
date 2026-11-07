@@ -37,6 +37,7 @@ MESSAGES = (
     'The date format of a blank is too long',
     'shrink_text must be 0 or 1',
     'text_fit must be none, shrink or fill',
+    'cut must be each, last or none',
     'image_text_gap must be a whole number of dots or empty',
     'image_text_gap must not be negative',
     BLANKS_MESSAGE,

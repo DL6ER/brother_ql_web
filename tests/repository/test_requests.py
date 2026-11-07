@@ -140,8 +140,8 @@ def test_replace_and_options_of_the_address_are_taken_as_text(tmp_path, monkeypa
     # options of printing were refused
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append((cut, high_res)))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue',
+                        lambda self, batch_size=0: queued.extend(zip(self.label_cuts(), (e['high_res'] for e in self._print_queue))) or '')
     client = make_client(tmp_path, empty_repo=True)
     assert client.post(SAVE_URL, json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 200
     assert client.post(SAVE_URL + '?replace=false', json={'name': 'Shelf.json', 'label_size': '62', 'text': TEXT}).status_code == 409
@@ -211,3 +211,33 @@ def test_a_name_that_is_no_text_is_refused(tmp_path, body):
     client = make_client(tmp_path)
     for url in ('/labeldesigner/api/repository/print', '/labeldesigner/api/repository/delete', SAVE_URL):
         assert client.post(url, json=dict(body, label_size='62', text=TEXT)).status_code == 400
+
+
+def test_a_saved_label_is_cut_as_saved_unless_the_request_names_a_cut(tmp_path, monkeypatch):
+    # half_cut 0 was taken for left out, cut_once of the request was not
+    # looked at for a label saved with its own cutting
+    from app.labeldesigner import printer
+    cuts = []
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: cuts.append((self.cut, self.half_cut, self.chain)) or '')
+    client = make_client(tmp_path, empty_repo=True)
+    label = {'label_size': '62', 'text': TEXT, 'cut': 'last', 'half_cut': 0, 'chain': 1}
+    assert client.post(SAVE_URL, json=dict(label, name='Own.json')).status_code == 200
+    assert client.post(SAVE_URL, json=dict(label, name='Never.json', cut='none')).status_code == 200
+
+    def printed(**request):
+        assert client.post('/labeldesigner/api/repository/print', json=request).get_json() == {'success': True}
+        return cuts.pop()
+    assert printed(name='Own.json') == ('last', False, True)
+    # Of the request, also the half cuts and chain printing
+    assert printed(name='Own.json', cut='each') == ('each', True, False)
+    assert printed(name='Own.json', cut_once=1) == ('last', True, False)
+    assert printed(name='Own.json', cut_once=0) == ('each', True, False)
+    # Not cutting is chain printing
+    assert printed(name='Never.json') == ('none', False, True)
+
+
+def test_a_label_with_an_unknown_cut_is_not_saved(tmp_path):
+    # It could never be printed
+    client = make_client(tmp_path, empty_repo=True)
+    response = client.post(SAVE_URL, json={'name': 'Twice.json', 'label_size': '62', 'text': TEXT, 'cut': 'twice'})
+    assert (response.status_code, response.get_json()['message']) == (400, 'cut must be each, last or none')

@@ -543,6 +543,7 @@ def repo_save():
                     del data[key]
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
+        _cutting(data.get)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
@@ -770,6 +771,37 @@ def _option(key: str, stored: dict, default):
     return value if value is not None else stored.get(key) or default
 
 
+CUTS = ('each', 'last', 'none')
+
+
+def _cutting(requested, stored: dict | None = None) -> tuple[str, bool, bool]:
+    """How the labels of a job are cut: cut after each label, after the last
+    one or not at all, the old cut_once as after the last one. half_cut and
+    chain only matter on P-touch printers: a half cut between labels that
+    are not cut, and the last label left in the printer, cut off by the next
+    job. requested(key) is an option of the request, None where it is left
+    out. A request that names cut or cut_once is cut its own way, else as
+    stored with the label, else after each label."""
+    stored = stored or {}
+    names_cut = lambda get: _given(get('cut'), None) is not None or _given(get('cut_once'), None) is not None
+    get = requested if names_cut(requested) or not names_cut(stored.get) else stored.get
+    option = lambda key, default: _given(get(key), default)
+    cut = option('cut', None) or ('last' if _whole(option('cut_once', 0)) == 1 else 'each')
+    if cut not in CUTS:
+        raise ValueError('cut must be each, last or none')
+    # A P-touch printer cuts after the last label unless chain printing, also
+    # with auto cut off: not cutting is chain printing
+    return cut, _whole(option('half_cut', 1)) != 0, _whole(option('chain', 0)) != 0 or cut == 'none'
+
+
+def _queue_labels(printer, labels, data, files, high_res, fast):
+    """Adds the labels to the queue, the printer cuts them as printer.cut says."""
+    # The copies share the text measured, alike where nothing changes
+    layouts = {}
+    for i, image in enumerate(labels):
+        printer.add_label_to_queue(create_label_from_request(data, files, i, image, layouts=layouts), high_res=high_res, fast=fast)
+
+
 def _given(value, default):
     """value, else default where it is left out or empty."""
     return default if value is None or value == '' else value
@@ -903,9 +935,9 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         label_size = data.get('label_size', DEFAULT_LABEL_SIZE)
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
 
-        # Determine printing options (print_count, cut_once, high_res)
+        # Determine printing options (print_count, cutting, high_res)
         print_count = _check_print_count(_whole(_option('print_count', data, 1)))
-        cut_once = _whole(_option('cut_once', data, 0)) == 1
+        printer.cut, printer.half_cut, printer.chain = _cutting(_requested, data)
         high_res = _whole(_option('high_res', data, 0)) != 0
         fast = _whole(_option('fast_printing', data, 0)) != 0
         # The label and its image have to be generated with the resolution
@@ -920,12 +952,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # Of a PDF each selected page is a label of its own
         images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
         labels = [image for _ in range(print_count) for image in images]
-        # The copies share the text measured, alike where nothing changes
-        layouts = {}
-        for i, image in enumerate(labels):
-            label = create_label_from_request(data, {}, i, image, layouts=layouts)
-            cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res, fast=fast)
+        _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         _log_refused_request('Print job', e)
@@ -1090,7 +1117,7 @@ def print_label():
     try:
         printer = create_printer_from_request(request)
         print_count = _check_print_count(_whole_or(request.values.get('print_count'), 1))
-        cut_once = _whole_or(request.values.get('cut_once'), 0) == 1
+        printer.cut, printer.half_cut, printer.chain = _cutting(request.values.get)
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
     except HTTPException:
@@ -1109,15 +1136,7 @@ def print_label():
         # each selected page is a label of its own, the copies are collated.
         images, _ = load_label_images(values, files, copies=print_count)
         labels = [image for _ in range(print_count) for image in images]
-        # The copies share the text measured, alike where nothing changes
-        layouts = {}
-        for i, image in enumerate(labels):
-            label = create_label_from_request(values, files, i, image, layouts=layouts)
-            # Cut only if we
-            # - always cut, or
-            # - we cut only once and this is the last label to be generated
-            cut = not cut_once or (cut_once and i == len(labels) - 1)
-            printer.add_label_to_queue(label, cut, high_res, fast=fast)
+        _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
@@ -1761,7 +1780,7 @@ def webhook_print():
                 image_fit=True,
                 text=[],
             )
-            printer.add_label_to_queue(label, cut=True, high_res=high_res, fast=fast)
+            printer.add_label_to_queue(label, high_res=high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)
