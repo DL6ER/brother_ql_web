@@ -220,8 +220,7 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .cut-strip .cm.none { background: linear-gradient(#b3b3b3, #b3b3b3) center / 1px 100% no-repeat, #fff; }
 .cut-strip .cm.half { background: linear-gradient(#333 50%, transparent 0) center / 2px 3px repeat-y, #fff; }
 .cut-strip .cm.chain { width: 0; }
-.cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); margin-left: 4px; }
-.cut-strip .cm.chain + .out { margin-left: 0; }
+.cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); }
 .cut-show { display: flex; gap: .7rem; align-items: center; margin-top: .6rem; }
 .cutting .seg + .label-s { margin-top: .5rem; }
 .stage .dim-x, .stage .dim-y { position: absolute; font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: .4rem; white-space: nowrap; }

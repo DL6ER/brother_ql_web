@@ -350,8 +350,10 @@ function cutStrip(c, pt) {
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, pt));
-    const waste = pt ? `<span class="waste"></span>${mark(half || c.cut === 'each' ? 'half' : 'full')}` : '';
-    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}">${waste}${lab}${mark(between)}${lab}${mark(between)}${lab}${mark(end)}<span class="out"></span></span>`;
+    const waste = pt ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
+    // The printer on the left, as on its display: the tape leaves it to the
+    // right, the waste first
+    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${lab}${mark(between)}${lab}${mark(between)}${lab}${waste}</span>`;
 }
 
 // marks: a preview shows the blanks still to fill in. blanks: those of
