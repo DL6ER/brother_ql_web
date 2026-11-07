@@ -214,34 +214,6 @@
                         "default": 0,
                         "description": "1 cuts only after the last label, like `cut` `last`."
                       },
-                      "cut": {
-                        "type": "string",
-                        "enum": [
-                          "each",
-                          "last",
-                          "none"
-                        ],
-                        "default": "each",
-                        "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
-                      },
-                      "half_cut": {
-                        "type": "integer",
-                        "enum": [
-                          0,
-                          1
-                        ],
-                        "default": 1,
-                        "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
-                      },
-                      "chain": {
-                        "type": "integer",
-                        "enum": [
-                          0,
-                          1
-                        ],
-                        "default": 0,
-                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
-                      },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
                       },
@@ -249,6 +221,9 @@
                         "$ref": "#/components/schemas/BlankSettings"
                       }
                     }
+                  },
+                  {
+                    "$ref": "#/components/schemas/Cutting"
                   }
                 ]
               },
@@ -290,34 +265,6 @@
                         "default": 0,
                         "description": "1 cuts only after the last label, like `cut` `last`."
                       },
-                      "cut": {
-                        "type": "string",
-                        "enum": [
-                          "each",
-                          "last",
-                          "none"
-                        ],
-                        "default": "each",
-                        "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
-                      },
-                      "half_cut": {
-                        "type": "integer",
-                        "enum": [
-                          0,
-                          1
-                        ],
-                        "default": 1,
-                        "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
-                      },
-                      "chain": {
-                        "type": "integer",
-                        "enum": [
-                          0,
-                          1
-                        ],
-                        "default": 0,
-                        "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
-                      },
                       "blanks": {
                         "$ref": "#/components/schemas/BlankValues"
                       },
@@ -325,6 +272,9 @@
                         "$ref": "#/components/schemas/BlankSettings"
                       }
                     }
+                  },
+                  {
+                    "$ref": "#/components/schemas/Cutting"
                   }
                 ]
               }
@@ -919,6 +869,7 @@
     "/labeldesigner/api/repository/print": {
       "post": {
         "summary": "Print a saved label",
+        "description": "The saved label is cut as saved with it (`cut`, `half_cut`, `chain`), unless the request names `cut` or `cut_once`: then the request decides all three.",
         "operationId": "repositoryPrint",
         "parameters": [
           {
@@ -948,80 +899,59 @@
             },
             "application/x-www-form-urlencoded": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string"
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "high_res": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ]
+                      },
+                      "fast_printing": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ]
+                      },
+                      "printer": {
+                        "type": "string",
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                      },
+                      "print_count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1,
+                        "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "cut_once": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "1 cuts only after the last label, like `cut` `last`."
+                      },
+                      "blanks": {
+                        "$ref": "#/components/schemas/SavedLabelBlanks"
+                      }
+                    }
                   },
-                  "high_res": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ]
-                  },
-                  "fast_printing": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ]
-                  },
-                  "printer": {
-                    "type": "string",
-                    "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
-                  },
-                  "model": {
-                    "type": "string",
-                    "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
-                  },
-                  "print_count": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "default": 1,
-                    "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
-                  },
-                  "cut_once": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 0,
-                    "description": "1 cuts only after the last label, like `cut` `last`."
-                  },
-                  "cut": {
-                    "type": "string",
-                    "enum": [
-                      "each",
-                      "last",
-                      "none"
-                    ],
-                    "default": "each",
-                    "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
-                  },
-                  "half_cut": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 1,
-                    "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
-                  },
-                  "chain": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 0,
-                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
-                  },
-                  "blanks": {
-                    "$ref": "#/components/schemas/SavedLabelBlanks"
+                  {
+                    "$ref": "#/components/schemas/Cutting"
                   }
-                }
+                ]
               }
             }
           }
@@ -1325,6 +1255,7 @@
     "/labeldesigner/api/demos/print": {
       "post": {
         "summary": "Print a demo label",
+        "description": "The label is cut as saved with it (`cut`, `half_cut`, `chain`), unless the request names `cut` or `cut_once`: then the request decides all three.",
         "operationId": "demoPrint",
         "parameters": [
           {
@@ -1354,80 +1285,59 @@
             },
             "application/x-www-form-urlencoded": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "id": {
-                    "type": "string"
+                "allOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "high_res": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ]
+                      },
+                      "fast_printing": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ]
+                      },
+                      "printer": {
+                        "type": "string",
+                        "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
+                      },
+                      "model": {
+                        "type": "string",
+                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                      },
+                      "print_count": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "default": 1,
+                        "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "cut_once": {
+                        "type": "integer",
+                        "enum": [
+                          0,
+                          1
+                        ],
+                        "default": 0,
+                        "description": "1 cuts only after the last label, like `cut` `last`."
+                      },
+                      "blanks": {
+                        "$ref": "#/components/schemas/SavedLabelBlanks"
+                      }
+                    }
                   },
-                  "high_res": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ]
-                  },
-                  "fast_printing": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ]
-                  },
-                  "printer": {
-                    "type": "string",
-                    "description": "Printer to use: the configured one, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
-                  },
-                  "model": {
-                    "type": "string",
-                    "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
-                  },
-                  "print_count": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "default": 1,
-                    "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
-                  },
-                  "cut_once": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 0,
-                    "description": "1 cuts only after the last label, like `cut` `last`."
-                  },
-                  "cut": {
-                    "type": "string",
-                    "enum": [
-                      "each",
-                      "last",
-                      "none"
-                    ],
-                    "default": "each",
-                    "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
-                  },
-                  "half_cut": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 1,
-                    "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
-                  },
-                  "chain": {
-                    "type": "integer",
-                    "enum": [
-                      0,
-                      1
-                    ],
-                    "default": 0,
-                    "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
-                  },
-                  "blanks": {
-                    "$ref": "#/components/schemas/SavedLabelBlanks"
+                  {
+                    "$ref": "#/components/schemas/Cutting"
                   }
-                }
+                ]
               }
             }
           }
@@ -1976,6 +1886,9 @@
                 ]
               }
             }
+          },
+          {
+            "$ref": "#/components/schemas/Cutting"
           }
         ]
       },
@@ -2191,6 +2104,40 @@
             "Room": "Garage"
           }
         ]
+      },
+      "Cutting": {
+        "type": "object",
+        "description": "How the labels of a job are cut. Saved with a label, it is cut so wherever it is printed; an empty cut follows the setting of the printer in the label designer.",
+        "properties": {
+          "cut": {
+            "type": "string",
+            "enum": [
+              "each",
+              "last",
+              "none"
+            ],
+            "default": "each",
+            "description": "Cut after each label, after the last one or not at all. Without it `cut_once` decides."
+          },
+          "half_cut": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 1,
+            "description": "P-touch printers: half cut between labels that are not cut, the backing stays whole."
+          },
+          "chain": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "P-touch printers: chain printing, the last label stays in the printer and the next print cuts it off, without feeding tape before it. Always on with cut none, else the printer cuts after the last label."
+          }
+        }
       }
     }
   }

@@ -543,6 +543,7 @@ def repo_save():
                     del data[key]
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
+        _cutting(data.get)
         check_image_position(data.get('image_position'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
@@ -773,28 +774,32 @@ def _option(key: str, stored: dict, default):
 CUTS = ('each', 'last', 'none')
 
 
-def _cutting(get) -> tuple[str, bool, bool]:
-    """How the labels of a job are cut, of the option get(key, default):
-    cut after each label, after the last one or not at all, the old
-    cut_once as after the last one. half_cut and chain only matter on
-    P-touch printers: a half cut between labels that are not cut, and the
-    last label left in the printer, cut off by the next job."""
-    cut = get('cut', None)
-    if cut in (None, ''):
-        cut = 'last' if _whole(get('cut_once', 0)) == 1 else 'each'
+def _cutting(requested, stored: dict | None = None) -> tuple[str, bool, bool]:
+    """How the labels of a job are cut: cut after each label, after the last
+    one or not at all, the old cut_once as after the last one. half_cut and
+    chain only matter on P-touch printers: a half cut between labels that
+    are not cut, and the last label left in the printer, cut off by the next
+    job. requested(key) is an option of the request, None where it is left
+    out. A request that names cut or cut_once is cut its own way, else as
+    stored with the label, else after each label."""
+    stored = stored or {}
+    names_cut = lambda get: _given(get('cut'), None) is not None or _given(get('cut_once'), None) is not None
+    get = requested if names_cut(requested) or not names_cut(stored.get) else stored.get
+    option = lambda key, default: _given(get(key), default)
+    cut = option('cut', None) or ('last' if _whole(option('cut_once', 0)) == 1 else 'each')
     if cut not in CUTS:
         raise ValueError('cut must be each, last or none')
-    return cut, _whole(get('half_cut', 1)) != 0, _whole(get('chain', 0)) != 0
+    # A P-touch printer cuts after the last label unless chain printing, also
+    # with auto cut off: not cutting is chain printing
+    return cut, _whole(option('half_cut', 1)) != 0, _whole(option('chain', 0)) != 0 or cut == 'none'
 
 
 def _queue_labels(printer, labels, data, files, high_res, fast):
-    """Adds the labels to the queue, each cut as printer.cut says."""
+    """Adds the labels to the queue, the printer cuts them as printer.cut says."""
     # The copies share the text measured, alike where nothing changes
     layouts = {}
     for i, image in enumerate(labels):
-        label = create_label_from_request(data, files, i, image, layouts=layouts)
-        last = i == len(labels) - 1
-        printer.add_label_to_queue(label, printer.cut == 'each' or (printer.cut == 'last' and last), high_res, fast=fast)
+        printer.add_label_to_queue(create_label_from_request(data, files, i, image, layouts=layouts), high_res=high_res, fast=fast)
 
 
 def _given(value, default):
@@ -932,7 +937,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
 
         # Determine printing options (print_count, cutting, high_res)
         print_count = _check_print_count(_whole(_option('print_count', data, 1)))
-        printer.cut, printer.half_cut, printer.chain = _cutting(lambda key, default: _option(key, data, default))
+        printer.cut, printer.half_cut, printer.chain = _cutting(_requested, data)
         high_res = _whole(_option('high_res', data, 0)) != 0
         fast = _whole(_option('fast_printing', data, 0)) != 0
         # The label and its image have to be generated with the resolution
@@ -1112,7 +1117,7 @@ def print_label():
     try:
         printer = create_printer_from_request(request)
         print_count = _check_print_count(_whole_or(request.values.get('print_count'), 1))
-        printer.cut, printer.half_cut, printer.chain = _cutting(lambda key, default: _given(request.values.get(key), default))
+        printer.cut, printer.half_cut, printer.chain = _cutting(request.values.get)
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
     except HTTPException:
@@ -1775,7 +1780,7 @@ def webhook_print():
                 image_fit=True,
                 text=[],
             )
-            printer.add_label_to_queue(label, cut=True, high_res=high_res, fast=fast)
+            printer.add_label_to_queue(label, high_res=high_res, fast=fast)
         status = printer.process_queue()
     except Exception as e:
         current_app.logger.exception(e)

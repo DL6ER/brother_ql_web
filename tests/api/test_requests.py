@@ -277,8 +277,8 @@ def test_flags_are_read_alike_by_all_that_take_them(tmp_path, monkeypatch):
     # read them as numbers only
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append((cut, high_res)))
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue',
+                        lambda self, batch_size=0: queued.extend(zip(self.label_cuts(), (e['high_res'] for e in self._print_queue))) or '')
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': 'Shelf {{blank:Room}}'}]))
     assert client.post('/labeldesigner/api/print', data=dict(data, print_count='2', cut_once='true')).get_json() == {'success': True}

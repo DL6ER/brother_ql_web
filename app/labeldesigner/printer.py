@@ -294,16 +294,21 @@ class PrinterQueue:
         self.chain = False
         self._print_queue = []
 
-    def add_label_to_queue(self, label, cut: bool = True, high_res: bool = False, fast: bool = False):
+    def add_label_to_queue(self, label, high_res: bool = False, fast: bool = False):
         problem = resolution_problem(self.model, high_res)
         if problem:
             raise ValueError(problem)
         self._print_queue.append({
             'label': label,
-            'cut': cut,
             'high_res': high_res,
             'fast': fast
         })
+
+    def label_cuts(self) -> list[bool]:
+        """Whether the printer cuts after each label of the queue, as
+        self.cut says: after each one, the last one or none."""
+        last = len(self._print_queue) - 1
+        return [self.cut == 'each' or (self.cut == 'last' and i == last) for i in range(last + 1)]
 
     def _rasterize_entries(self, entries):
         """Rasterize a list of queue entries into a BrotherQLRaster and
@@ -345,10 +350,8 @@ class PrinterQueue:
                 qlr.autocut = self.cut != 'none'
                 qlr.half_cut = self.half_cut
                 # Chain printing: the last label stays in the printer, the
-                # next job cuts it off and saves the tape fed before it.
-                # Without it a PT-E550W cut after the last label also with
-                # auto cut off, so not cutting is chain printing.
-                qlr.no_chain_printing = not (self.chain or self.cut == 'none')
+                # next job cuts it off and saves the tape fed before it
+                qlr.no_chain_printing = not self.chain
             # Unless printing fast, the printer gives priority to print
             # quality (ESC i z). A QL-810W printed a 29 x 90 mm label in
             # 3.0 s instead of 1.8 s with it, a little sharper.
@@ -435,7 +438,7 @@ class PrinterQueue:
             batch_size = DEFAULT_BATCH_SIZE
 
         total = len(self._print_queue)
-        entries = list(self._print_queue)
+        entries = [dict(entry, cut=cut) for entry, cut in zip(self._print_queue, self.label_cuts())]
         self._print_queue.clear()
 
         batch_count = (total + batch_size - 1) // batch_size

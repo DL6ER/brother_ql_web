@@ -222,7 +222,7 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .cut-strip .cm.chain { width: 0; }
 .cut-strip .out { width: 12px; height: 20px; border-radius: 2px; background: var(--printer-bottom); }
 .cut-show { display: flex; gap: .7rem; align-items: center; margin-top: .6rem; }
-.cutting .seg + .label-s { margin-top: .5rem; }
+.cutting > * + div { margin-top: .5rem; }
 .stage .dim-x, .stage .dim-y { position: absolute; font-size: .75rem; color: var(--muted); display: flex; align-items: center; gap: .4rem; white-space: nowrap; }
 .stage .dim-x { left: 0; right: 0; bottom: -1.9rem; justify-content: center; }
 .stage .dim-x::before, .stage .dim-x::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .5; }

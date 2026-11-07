@@ -287,7 +287,7 @@ def test_cutting_on_ptouch_printers(tmp_path, monkeypatch, options, autocut, cut
 def test_cutting_on_ql_printers(tmp_path, monkeypatch, cut, cuts):
     from app.labeldesigner import printer
     queued = []
-    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: queued.extend(e['cut'] for e in self._print_queue) or '')
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self: queued.extend(self.label_cuts()) or '')
     client = make_client(tmp_path)
     assert client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='3', cut=cut)).get_json()['success'] is True
     assert queued == cuts
