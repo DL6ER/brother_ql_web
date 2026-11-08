@@ -2840,8 +2840,10 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 function settingsCard() {
     const p = S.printer;
     const caps = printerCaps(), offersHigh = caps.qualities.includes('high'), noHigh = p && offersHigh && !caps.high_res;
-    // Printers without 600 dpi, e.g. the VC-500W, print those labels in quality
-    const q = !offersHigh && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut();
+    // Printers without 600 dpi, e.g. the VC-500W, print those labels in
+    // quality, those with one quality, e.g. the PUQU Q00, all of them
+    const oneQuality = !caps.qualities.includes('fast'), ONE = ' disabled title="This printer prints in one quality only"';
+    const q = oneQuality || (!offersHigh && S.settings.quality === 'high') ? 'quality' : S.settings.quality, c = printerCut();
     const without600 = Object.keys(C.models).filter(m => C.models[m].qualities.includes('high') && !C.models[m].high_res).sort();
     // The assumed tape is named, it is the default only if the printer takes it
     const assumed = `${esc(sizeName(S.tape))} is assumed.`;
@@ -2855,8 +2857,8 @@ function settingsCard() {
         <div><div class="row" style="gap:.35rem;margin-bottom:.3rem"><span class="label-s" style="margin:0">Quality</span>
             <button type="button" class="info-btn" id="qInfoBtn" aria-expanded="${!!S.qualityInfo}" aria-controls="qInfo" title="About the quality settings"><i class="fa-solid fa-circle-info"></i><span class="sr-only">About the quality settings</span></button></div>
             <div class="seg">
-            <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
-            <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
+            <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}"${oneQuality ? ONE : ''}>Fast</button>
+            <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}"${oneQuality ? ONE : ''}>Quality</button>
             ${!offersHigh ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
             ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>

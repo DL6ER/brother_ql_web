@@ -410,6 +410,11 @@ def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     # Not cut is what is sent, also for a label saved with its own cutting
     assert designer.evaluate("() => [printerCut().cut, cutOf({ cut: 'each', label_size: 'puqu50x30' }).cut]") == ['none', 'none']
     assert 'disabled title="This printer has no cutter"' in designer.evaluate("() => cutField({ cut: '', label_size: 'puqu50x30' })")
+    # It prints in one quality, Fast did nothing
+    designer.evaluate("() => { S.settings.quality = 'fast'; closeLayer(true); openPrinterPanel(); }")
+    fast, quality = designer.locator('.pp [data-q="fast"]'), designer.locator('.pp [data-q="quality"]')
+    assert fast.is_disabled() and quality.is_disabled() and 'on' in quality.get_attribute('class').split()
+    assert quality.get_attribute('title') == 'This printer prints in one quality only'
 
 
 def test_assumed_tape_is_one_the_printer_takes(designer):
