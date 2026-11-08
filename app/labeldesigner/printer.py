@@ -507,14 +507,12 @@ def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
     printer = get_printer(device_specifier)
     try:
         _drain(printer)
-        for start in range(0, len(data), WRITE_CHUNK):
-            printer.write(data[start:start + WRITE_CHUNK])
+        received = _write_reading(printer, data)
         # A page may take as long as the longest one, the whole job as long
         # as all its pages
         page_wait = STATUS_WAIT + max(page_lengths, default=0) / SLOWEST_PRINT_SPEED
         give_up = time.monotonic() + sum(STATUS_WAIT + length / SLOWEST_PRINT_SPEED for length in page_lengths)
         deadline = min(time.monotonic() + page_wait, give_up)
-        received = b''
         printing = False
         while time.monotonic() < deadline:
             states, received = _status_messages(received + (printer.read(32) or b''))
@@ -545,6 +543,37 @@ def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
         return info
     finally:
         _release(printer)
+
+
+def _write_reading(printer, data: bytes) -> bytes:
+    """Write a job in pieces and return what the printer said meanwhile. A
+    QL-700 takes a job only as fast as it prints it and keeps just two status
+    messages that are not read, so they are read while the job is written."""
+    received, failed = [], []
+    written = threading.Event()
+
+    def read():
+        try:
+            while not written.is_set():
+                data = printer.read(32)
+                if data:
+                    received.append(data)
+                else:
+                    written.wait(0.005)
+        except Exception as e:
+            failed.append(e)
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    try:
+        for start in range(0, len(data), WRITE_CHUNK):
+            printer.write(data[start:start + WRITE_CHUNK])
+    finally:
+        written.set()
+        reader.join()
+    if failed:
+        raise failed[0]
+    return b''.join(received)
 
 
 def _drain(printer):

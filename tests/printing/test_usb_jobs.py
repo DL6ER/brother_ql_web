@@ -2,13 +2,15 @@
 printers that do not answer. The clock is a fake one, a job of minutes
 takes no time."""
 
+import threading
+
 import pytest
 from brother_ql.backends import helpers, linux_kernel
 
 from app.labeldesigner import printer
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
-COMPLETED, PHASE_CHANGE, ERROR = 0x01, 0x06, 0x02
+REPLY, COMPLETED, PHASE_CHANGE, ERROR = 0x00, 0x01, 0x06, 0x02
 PRINTING, WAITING = 0x01, 0x00
 
 
@@ -66,6 +68,38 @@ class FakePrinter:
 
     def dispose(self):
         self.released = True
+
+
+class QL700(FakePrinter):
+    """Takes a job only as fast as it prints it, one label with each write.
+    Each label begins with two messages, and of those not read meanwhile it
+    keeps two, the others are lost. The last label is printed once the job
+    is written, and reported completed."""
+
+    def __init__(self, clock, labels):
+        super().__init__(clock, [(0, status(REPLY)), (0, status(PHASE_CHANGE, PRINTING)),
+                                 (0.5, status(COMPLETED)), (0, status(PHASE_CHANGE, WAITING))])
+        self.labels, self.pending, self.lock = labels, [], threading.Lock()
+
+    def write(self, data):
+        if len(self.written) + len(data) >= self.labels:
+            super().write(data)
+            return
+        self.written += data
+        with self.lock:
+            self.pending = (self.pending + [status(REPLY), status(PHASE_CHANGE, PRINTING)])[:2]
+        # Printing the label takes a while, messages read meanwhile are not lost
+        for _ in range(100):
+            with self.lock:
+                if not self.pending:
+                    break
+            threading.Event().wait(0.005)
+
+    def read(self, length=32):
+        with self.lock:
+            if self.pending:
+                return self.pending.pop(0)
+        return super().read(length)
 
 
 @pytest.fixture
@@ -163,6 +197,15 @@ def test_every_label_of_a_job_is_confirmed_as_reported(clock, monkeypatch, messa
     info = send(monkeypatch, fake, page_lengths)
     assert (info['did_print'], info['ready_for_next_job'], info['confirmed']) == (True, True, len(page_lengths))
     assert clock.now - start == pytest.approx(sum(delay for delay, _ in messages), abs=0.1)
+
+
+def test_labels_reported_while_the_job_is_written(clock, monkeypatch):
+    # A QL-700 confirmed 2 of 12 labels, the messages of the others came while
+    # the job was written and were never read
+    monkeypatch.setattr(printer, 'WRITE_CHUNK', 1)
+    fake = QL700(clock, 12)
+    info = send(monkeypatch, fake, [50] * 12, data=bytes(12))
+    assert (info['did_print'], info['ready_for_next_job'], info['confirmed']) == (True, True, 12)
 
 
 def test_labels_of_a_job_that_were_not_confirmed(clock, monkeypatch):
