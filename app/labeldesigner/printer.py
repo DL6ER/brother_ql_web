@@ -70,7 +70,7 @@ class PrinterQueue:
     def __init__(self, model, device_specifier, label_size):
         # A printer known by its address or device ID is that model
         self.driver, model = drivers.resolve(device_specifier, model)
-        # A clear message instead of "Wrong pixel width" from brother_ql
+        # A clear message instead of "Wrong pixel width" from the raster commands
         check_label_size(label_size, model)
         self.model = model
         self.device_specifier = device_specifier

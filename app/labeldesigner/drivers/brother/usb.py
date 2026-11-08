@@ -1,14 +1,13 @@
 """Brother raster printers on USB: jobs and their status messages, and
-status queries, through the backends of brother_ql."""
+status queries."""
 
 import logging
 import threading
 import time
 
-from brother_ql.backends import backend_factory, guess_backend
-from brother_ql.reader import interpret_response
-
 from .. import devices
+from .backends import open_printer
+from .status import HEADER, LENGTH, parse_status
 
 logger = logging.getLogger(__name__)
 
@@ -20,18 +19,14 @@ SLOWEST_PRINT_SPEED = 10
 # A job is written in pieces: pyusb gives up on a single write after 15 s,
 # a long label that the printer prints while it receives it takes longer
 WRITE_CHUNK = 16384
-STATUS_HEADER = b'\x80\x20\x42'
 
 
 def send_job(data: bytes, device_specifier: str, page_lengths: list) -> dict:
     """Send a print job to a USB printer and read its status messages until
     it reports every page printed and that it is ready for the next job, an
     error, or until it stays silent for longer than a page takes to print.
-
-    brother_ql's send() stopped reading 10 s after it began to write: a long
-    label, which the printer prints while it receives it, was not confirmed.
-    It also stopped at the first
-    page, the messages of the other pages were left for the next job.
+    A long label is printed while it is received, a job of several labels
+    sends messages for each of them.
 
     page_lengths: the length of each page in mm. Returns, as print_failure()
     reads it: did_print, ready_for_next_job, the last printer_state, and the
@@ -124,15 +119,15 @@ def _status_messages(received: bytes) -> tuple[list, bytes]:
     skipped."""
     states = []
     while True:
-        start = received.find(STATUS_HEADER)
+        start = received.find(HEADER)
         if start < 0:
             # The end may be the beginning of a header
-            return states, received[-(len(STATUS_HEADER) - 1):]
+            return states, received[-(len(HEADER) - 1):]
         received = received[start:]
         if len(received) < 32:
             return states, received
         try:
-            states.append(interpret_response(received[:32]))
+            states.append(parse_status(received[:LENGTH]))
         except Exception:
             logger.warning('Could not read a status message of the printer: %s', received[:32].hex())
         received = received[32:]
@@ -153,36 +148,15 @@ def print_failure(info: dict) -> str:
     return 'The printer did not answer after receiving the label, check whether it was printed'
 
 
-def get_printer(printer_identifier=None, backend_identifier=None):
-    """
-    Instantiate a printer object for communication. Only bidirectional transport backends are supported.
-
-    :param str printer_identifier: Identifier for the printer.
-    :param str backend_identifier: Can enforce the use of a specific backend.1
-    """
-
-    selected_backend = None
-    if backend_identifier:
-        selected_backend = backend_identifier
-    else:
-        try:
-            selected_backend = guess_backend(printer_identifier)
-        except ValueError:
-            logger.info("No backend stated. Selecting the default linux_kernel backend.")
-            selected_backend = "linux_kernel"
-
-    be = backend_factory(selected_backend)
-    BrotherQLBackend = be["backend_class"]
-    printer = BrotherQLBackend(printer_identifier)
-    return printer
+def get_printer(device_specifier: str):
+    """A connection to the printer, see backends.open_printer()."""
+    return open_printer(device_specifier)
 
 
 def _read_status(printer, timeout: float) -> bytes:
     """Ask for the status, the 32-byte answer or what came until the timeout.
-
-    brother_ql's own helper reads only twice, 10 ms apart, but printers such
-    as the QL-1100 need ~100 ms to answer and return empty reads until then.
-    """
+    Printers such as the QL-1100 need about 100 ms to answer and return empty
+    reads until then."""
     printer.write(b"\x1b\x69\x53")  # "ESC i S" Status information request
     data = b''
     deadline = time.time() + timeout
@@ -203,7 +177,7 @@ def get_status(printer, timeout: float = 2.0):
         data = _read_status(printer, timeout)
     if len(data) < 32:
         raise TimeoutError(f"No complete status response within {timeout} s")
-    return interpret_response(data)
+    return parse_status(data)
 
 
 def _release(printer):

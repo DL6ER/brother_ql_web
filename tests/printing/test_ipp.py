@@ -10,7 +10,6 @@ import pytest
 
 from app import create_app
 from app.labeldesigner import ipp, printer
-from app.labeldesigner.drivers import brother
 from app.labeldesigner.drivers import devices
 from app.labeldesigner.drivers.brother import network
 from app.labeldesigner.drivers.brother import usb
@@ -229,7 +228,7 @@ def network_job(fake_printer, monkeypatch, tmp_path):
     the fake printer, what is sent to port 9100 is collected."""
     from tests.helpers import EXAMPLE_FORMDATA, make_client
     sent = []
-    monkeypatch.setattr(brother, 'send_raster', lambda data, device: sent.append(device) or {})
+    monkeypatch.setattr(network, 'send', lambda data, device: sent.append(device))
     monkeypatch.setattr(network, 'NETWORK_JOB_POLL', 0.01)
     client = make_client(tmp_path)
 

@@ -1645,7 +1645,7 @@
           "label_size": {
             "type": "string",
             "default": "62",
-            "description": "Label size identifier of brother_ql, e.g. `62`, `62x29`, `103x164`, `d24`, or a tape of the VC-500W (`vc9`, `vc12`, `vc19`, `vc25`, `vc50`). The label designer lists them."
+            "description": "Label size identifier, e.g. `62`, `62x29`, `103x164`, `d24`, or a tape of the VC-500W (`vc9`, `vc12`, `vc19`, `vc25`, `vc50`). The label designer lists them."
           },
           "orientation": {
             "type": "string",

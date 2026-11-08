@@ -1,144 +1,78 @@
-"""The label sizes and models of brother_ql, with the label sizes it lacks
-and the model codes and offsets it has wrong fixed when this module is
-imported (app/labeldesigner/__init__.py imports the drivers first), and
-which model prints which label size.
+"""The label sizes of the Brother raster printers, after the label table of
+brother_ql by Philipp Klaus, and which model prints which."""
 
-brother_ql-inventree is archived, so it is fixed here, after Brother's raster
-command reference for the PT-E550W/P750W/P710BT:
-https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
+from ..labels import Color, FormFactor, Label
+from .models import MODELS
 
-- 6 and 9 mm TZe tapes, with the print head pins of the reference (6 mm:
-  48 + 32 + 48 pins, 9 mm: 39 + 50 + 39).
-- The model code of the PT-E550W (status byte 4): 66h, brother_ql has 68h,
-  the code of the PT-P750W. A PT-E550W was an unknown printer, a PT-P750W
-  was taken for a PT-E550W.
-"""
-import brother_ql.labels
-from brother_ql import devicedependent
-from brother_ql.devicedependent import label_type_specs
-from brother_ql.labels import Color, FormFactor, Label, LabelsManager
-from brother_ql.models import ALL_MODELS
+# DK rolls of 102 to 104 mm, for the QL-1050 and QL-1100 series
+WIDE = ('QL-1050', 'QL-1060N', 'QL-1100', 'QL-1110NWB', 'QL-1115NWB')
+# TZe tapes of 6 to 24 mm on the 128 pins of the print head at 180 dpi, placed
+# as in Brother's raster command reference of the PT-E550W, PT-P750W and
+# PT-P710BT (6 mm: 48 + 32 + 48 pins, 9 mm: 39 + 50 + 39). The PT-P900 series
+# has a print head of its own, its tapes are "18" and pt36.
+# https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
+SMALL_HEAD = ('PT-E550W', 'PT-P700', 'PT-P750W')
 
-# The pins are those of the 128-pin print head, the PT-P900 series places
-# tapes differently on its wider one
-SMALL_HEAD_MODELS = ['PT-E550W', 'PT-P700', 'PT-P750W']
-# brother_ql's tapes made for the 128-pin print head at 180 dpi. Offered to
-# the PT-P900 series as well, with its 560 pins at 360 dpi they printed half
-# as large and in the wrong place. Its 18 and 36 mm tapes ("18", pt36) are
-# made for its head.
-SMALL_HEAD_TAPES = ('pt12', 'pt18', 'pt24')
-
-EXTRA_LABELS = (
-    Label('pt6', (6, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (32, 0), 48, feed_margin=14,
-          restricted_to_models=SMALL_HEAD_MODELS),
-    Label('pt9', (9, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (50, 0), 39, feed_margin=14,
-          restricted_to_models=SMALL_HEAD_MODELS),
+LABELS = (
+    Label('12', (12, 0), FormFactor.ENDLESS, (142, 0), (106, 0), 29, feed_margin=35),
+    Label('12+17', (12, 0), FormFactor.ENDLESS, (342, 0), (306, 0), 29, feed_margin=35),
+    Label('18', (18, 0), FormFactor.ENDLESS, (256, 0), (234, 0), 171, feed_margin=14),
+    Label('29', (29, 0), FormFactor.ENDLESS, (342, 0), (306, 0), 6, feed_margin=35),
+    Label('38', (38, 0), FormFactor.ENDLESS, (449, 0), (413, 0), 12, feed_margin=35),
+    Label('50', (50, 0), FormFactor.ENDLESS, (590, 0), (554, 0), 12, feed_margin=35),
+    Label('54', (54, 0), FormFactor.ENDLESS, (636, 0), (590, 0), 0, feed_margin=35),
+    Label('62', (62, 0), FormFactor.ENDLESS, (732, 0), (696, 0), 12, feed_margin=35),
+    Label('62red', (62, 0), FormFactor.ENDLESS, (732, 0), (696, 0), 12, feed_margin=35, color=Color.BLACK_RED_WHITE),
+    Label('102', (102, 0), FormFactor.ENDLESS, (1200, 0), (1164, 0), 12, feed_margin=35, models=WIDE),
+    Label('103', (104, 0), FormFactor.ENDLESS, (1224, 0), (1200, 0), 12, feed_margin=35, models=('QL-1100', 'QL-1110NWB')),
+    Label('104', (104, 0), FormFactor.ENDLESS, (1227, 0), (1200, 0), -8, feed_margin=35, models=WIDE),
+    Label('17x54', (17, 54), FormFactor.DIE_CUT, (201, 636), (165, 566), 0),
+    Label('17x87', (17, 87), FormFactor.DIE_CUT, (201, 1026), (165, 956), 0),
+    Label('23x23', (23, 23), FormFactor.DIE_CUT, (272, 272), (202, 202), 42),
+    Label('29x42', (29, 42), FormFactor.DIE_CUT, (342, 495), (306, 425), 6),
+    Label('29x90', (29, 90), FormFactor.DIE_CUT, (342, 1061), (306, 991), 6),
+    Label('39x90', (38, 90), FormFactor.DIE_CUT, (449, 1061), (413, 991), 12),
+    Label('39x48', (39, 48), FormFactor.DIE_CUT, (461, 565), (425, 495), 6),
+    Label('52x29', (52, 29), FormFactor.DIE_CUT, (614, 341), (578, 271), 0),
+    Label('54x29', (54, 29), FormFactor.DIE_CUT, (630, 341), (598, 271), 60),
+    Label('60x86', (60, 87), FormFactor.DIE_CUT, (708, 1024), (672, 954), 18),
+    Label('62x29', (62, 29), FormFactor.DIE_CUT, (732, 341), (696, 271), 12),
+    Label('62x100', (62, 100), FormFactor.DIE_CUT, (732, 1179), (696, 1109), 12),
+    Label('102x51', (102, 51), FormFactor.DIE_CUT, (1200, 596), (1164, 526), 12, models=WIDE),
+    Label('102x152', (102, 153), FormFactor.DIE_CUT, (1200, 1804), (1164, 1660), 12, models=WIDE),
+    # The roll is 104 mm wide. With an offset of -6 the print is centered on a
+    # QL-1100, measured.
+    Label('103x164', (104, 164), FormFactor.DIE_CUT, (1224, 1941), (1200, 1822), -6, models=('QL-1100', 'QL-1110NWB')),
+    Label('d12', (12, 12), FormFactor.ROUND_DIE_CUT, (142, 142), (94, 94), 113, feed_margin=35),
+    Label('d24', (24, 24), FormFactor.ROUND_DIE_CUT, (284, 284), (236, 236), 42),
+    Label('d58', (58, 58), FormFactor.ROUND_DIE_CUT, (688, 688), (618, 618), 51),
+    Label('pt6', (6, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (32, 0), 48, feed_margin=14, models=SMALL_HEAD),
+    Label('pt9', (9, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (50, 0), 39, feed_margin=14, models=SMALL_HEAD),
+    Label('pt12', (12, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (70, 0), 29, feed_margin=14, models=SMALL_HEAD),
+    Label('pt18', (18, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (112, 0), 8, feed_margin=14, models=SMALL_HEAD),
+    Label('pt24', (24, 0), FormFactor.PTOUCH_ENDLESS, (128, 0), (128, 0), 0, feed_margin=14, models=SMALL_HEAD),
+    Label('pt36', (36, 0), FormFactor.PTOUCH_ENDLESS, (512, 0), (454, 0), 61, feed_margin=14),
 )
+BY_ID = {label.identifier: label for label in LABELS}
 
-
-def _add_labels():
-    known = {label.identifier for label in brother_ql.labels.ALL_LABELS}
-    new = tuple(label for label in EXTRA_LABELS if label.identifier not in known)
-    if not new:
-        return
-    # Before the 12 mm tape, the narrowest one brother_ql has
-    labels = list(brother_ql.labels.ALL_LABELS)
-    position = next((i for i, label in enumerate(labels) if label.identifier == 'pt12'), len(labels))
-    labels[position:position] = new
-    brother_ql.labels.ALL_LABELS = tuple(labels)
-    LabelsManager.DEFAULT_ELEMENTS = tuple(labels)
-    # The conversion to raster data reads the labels from label_type_specs,
-    # which brother_ql fills when it is imported
-    devicedependent._populate_label_legacy_structures()
-
-
-MODEL_CODES = {'PT-E550W': 0x66}
-
-
-def _correct_model_codes():
-    # brother_ql reads a status with these same objects
-    for model in ALL_MODELS:
-        if model.identifier in MODEL_CODES:
-            model.model_code = MODEL_CODES[model.identifier]
-
-
-def _restrict_tapes():
-    for label in brother_ql.labels.ALL_LABELS:
-        if label.identifier in SMALL_HEAD_TAPES:
-            label.restricted_to_models = SMALL_HEAD_MODELS
-
-
-_add_labels()
-_correct_model_codes()
-_restrict_tapes()
-
-
-# Horizontal offsets (offset_r, in dots) that differ from the label table of
-# brother_ql, measured on real printers. Remove an entry once brother_ql
-# ships the corrected value.
-# - 103x164 (103 x 164 mm die-cut): with brother_ql's 12 the content is 1.5 mm
-#   off-center on a QL-1100 (3.5 mm left, 6.5 mm right), -6 centers it. The
-#   104 mm endless entry of brother_ql already uses a similar -8.
-LABEL_OFFSET_CORRECTIONS = {
-    '103x164': -6,
-}
-
-
-def _apply_label_offset_corrections():
-    for label in brother_ql.labels.ALL_LABELS:
-        if label.identifier in LABEL_OFFSET_CORRECTIONS:
-            label.offset_r = LABEL_OFFSET_CORRECTIONS[label.identifier]
-    # brother_ql copies the offsets into label_type_specs when it is imported,
-    # the conversion to raster data reads them from there
-    for identifier, offset in LABEL_OFFSET_CORRECTIONS.items():
-        if identifier in label_type_specs:
-            label_type_specs[identifier]['right_margin_dots'] = offset
-
-
-_apply_label_offset_corrections()
-
-LABELS = brother_ql.labels.ALL_LABELS
-MODELS = {model.identifier: model for model in ALL_MODELS}
-
-# Label sizes for P-touch printers. brother_ql does not restrict them to
-# these printers, but QL printers cannot use TZe tapes (and P-touch printers
-# no DK rolls).
+# The tapes of the P-touch printers, which QL printers cannot use (nor the
+# P-touch printers DK rolls)
 PTOUCH_LABELS = {'18', 'pt6', 'pt9', 'pt12', 'pt18', 'pt24', 'pt36'}
 
 # Label sizes only shown while selected, e.g. in saved settings. "103" is the
-# same roll as "104", but brother_ql places it 18 dots (1.5 mm) further from
-# the center of the QL-1100 print head. "104" is 2 dots from the position
-# measured for the 103 x 164 mm die-cut label (see LABEL_OFFSET_CORRECTIONS).
+# same roll as "104", but placed 18 dots (1.5 mm) further from the center of
+# the QL-1100 print head. "104" is 2 dots from the position measured for the
+# 103 x 164 mm die-cut label.
 HIDDEN_LABELS = frozenset({'103'})
-
-# The QL-1100 series prints at 300 dpi only. Brother's raster command
-# reference of these models lists no 600 dpi resolution, unlike that of the
-# QL-800, and a 600 dpi label came out twice as long on a QL-1100 (#103):
-# https://download.brother.com/welcome/docp100366/cv_ql1100_eng_raster_100.pdf
-# The P-touch printers print at 180 dpi. For 600 dpi brother_ql sets bit 5
-# of ESC i K, which their reference marks as not used:
-# https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf
-MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT-P700', 'PT-P750W')
-
-# P-touch printers with a half cutter, the PT-P700 has none
-HALF_CUTTERS = ('PT-E550W', 'PT-P750W', 'PT-P900W', 'PT-P950NW')
 
 
 def label_fits(label: Label, model: str) -> bool:
     """Whether a printer model can print a label size."""
     printer_model = MODELS[model]
     return (
-        (not label.restricted_to_models or model in label.restricted_to_models)
+        (not label.models or model in label.models)
         and (label.identifier in PTOUCH_LABELS) == model.startswith('PT-')
         and (label.color != Color.BLACK_RED_WHITE or printer_model.two_color)
-        # brother_ql does not restrict the TZe tapes to the printers with a
-        # wide enough print head (36 mm needs a PT-P900 series printer)
+        # 36 mm tape needs the wide print head of the PT-P900 series
         and label.dots_printable[0] <= printer_model.number_bytes_per_row * 8
     )
-
-
-def resolution_problem(model: str, high_res: bool) -> str:
-    """Why the model cannot print at the resolution, or an empty string."""
-    if high_res and model in MODELS_WITHOUT_600_DPI:
-        return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing'
-    return ''

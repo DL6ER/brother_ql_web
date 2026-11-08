@@ -20,7 +20,7 @@ from .label_names import cut_problems, label_size_problems
 from .drivers import MODELS, resolution_problem
 
 IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
-# A detected printer whose status names no model brother_ql knows
+# A detected printer whose status names no model this server knows
 UNKNOWN_MODEL = 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'
 BLANKS_MESSAGE = 'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}'
 FIELDS_MESSAGE = ('fields must be a JSON object with the settings of each blank: a type of text, number or date, '

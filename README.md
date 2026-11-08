@@ -172,7 +172,7 @@ Pull requests are welcome: [fork the repository](https://github.com/DL6ER/brothe
 
 ## Credits and license
 
-This fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web) talks to the printers with [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree) and builds on improvements from [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web), [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web), for which we are grateful.
+This fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web) carries the printer code of [`pklaus/brother_ql`](https://github.com/pklaus/brother_ql) and its fork [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree), both GPLv3, in its Brother driver, and builds on improvements from [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web), [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web), for which we are grateful.
 
 It is published under the terms of the GPLv3, see [LICENSE](./LICENSE). It includes software of third parties under other licenses:
 

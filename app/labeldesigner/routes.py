@@ -25,7 +25,7 @@ from . import drivers
 from .drivers import DEVICE_PATTERNS, resolution_problem
 from .drivers.devices import flock_within
 from .printer import PrinterQueue, get_ptr_status
-from brother_ql.labels import FormFactor
+from .drivers.labels import FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, parse_color
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
@@ -1185,7 +1185,7 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
         raise ValueError(f"Unsupported printer: {device}")
     model = requested_model or next((m for m, d in printers if d == device), model)
     if model not in PRINTER_MODELS:
-        # brother_ql refuses it without a message
+        # The driver would refuse it without a message
         raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")
     return device, model
 
@@ -1206,7 +1206,7 @@ _LOAD_IMAGE = object()
 
 
 def _label_type(kind: FormFactor) -> LabelType:
-    """The label type of a brother_ql form factor. P-touch tapes are endless,
+    """The label type of a form factor. P-touch tapes are endless,
     they were taken for round die-cut labels and came out 1 dot long."""
     if kind in (FormFactor.ENDLESS, FormFactor.PTOUCH_ENDLESS):
         return LabelType.ENDLESS_LABEL

@@ -16,7 +16,7 @@ _BY_LABEL = {label.identifier: driver for driver in DRIVERS for label in driver.
 
 
 def for_model(model: str) -> Driver:
-    """The driver of a model. Unknown models are left to brother_ql."""
+    """The driver of a model. Unknown models are left to the Brother driver."""
     return _BY_MODEL.get(model, BROTHER)
 
 

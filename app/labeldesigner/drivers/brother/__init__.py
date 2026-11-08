@@ -1,21 +1,22 @@
-"""Brother QL and P-touch printers, which speak Brother's raster protocol,
-on USB (usb.py) and on the network (network.py)."""
+"""Brother QL and P-touch printers, which speak Brother's raster protocol
+(commands.py, raster.py), on USB (usb.py, backends.py) and on the network
+(network.py). Based on brother_ql by Philipp Klaus and its fork
+brother_ql-inventree by Matthias Mair, both GPLv3."""
 
 import logging
 import re
 
-from brother_ql.backends.helpers import send as send_raster
-from brother_ql.labels import Color
-
 from .. import devices
 from ..base import Driver
+from ..labels import Color
 from . import labels as tables, names, network, raster, usb
+from .models import HALF_CUTTERS, MODELS, resolution_problem
 
 logger = logging.getLogger(__name__)
 
 
 class BrotherRaster(Driver):
-    models = tuple(tables.MODELS)
+    models = tuple(MODELS)
     labels = tables.LABELS
     label_names = names.LABEL_NAMES
     hidden_labels = tables.HIDDEN_LABELS
@@ -30,7 +31,7 @@ class BrotherRaster(Driver):
         return tables.label_fits(label, model)
 
     def colors(self, model):
-        return 'red' if model in tables.MODELS and tables.MODELS[model].two_color else 'black'
+        return 'red' if model in MODELS and MODELS[model].two_color else 'black'
 
     def palette(self, label):
         return 'red' if label.color == Color.BLACK_RED_WHITE else 'black'
@@ -47,11 +48,11 @@ class BrotherRaster(Driver):
     def capabilities(self, model):
         ptouch = model.startswith('PT-')
         return dict(super().capabilities(model), qualities=['fast', 'quality', 'high'],
-                    high_res=not tables.resolution_problem(model, True), half_cut=model in tables.HALF_CUTTERS,
+                    high_res=not resolution_problem(model, True), half_cut=model in HALF_CUTTERS,
                     chain=ptouch, feed_waste=ptouch)
 
     def resolution_problem(self, model, high_res):
-        return tables.resolution_problem(model, high_res)
+        return resolution_problem(model, high_res)
 
     def status(self, device, model, unconfirmed=False):
         if device.startswith('tcp://'):
@@ -82,7 +83,7 @@ class BrotherRaster(Driver):
                     return problem
             logger.info("Sending %d bytes to printer at %s", len(job.data), device)
             if network_printer:
-                send_raster(job.data, device)
+                network.send(job.data, device)
                 logger.info('Sent %d bytes to printer %s', len(job.data), device)
                 # Port 9100 gives no answer, IPP tells how the job ended
                 message = network.job_result(device, queue.model, job.page_lengths)
