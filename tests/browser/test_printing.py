@@ -376,6 +376,26 @@ def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
     assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
 
 
+def test_labels_of_a_q00_leave_it_turned(designer):
+    # They come out readable, the other way round than from a QL printer
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
+        openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
+    wait_for_preview(designer)
+    assert 'turned' in designer.get_attribute('#edStage', 'class').split()
+    # The printer stands below the label, which leaves it upwards
+    assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'column-reverse'
+    assert designer.locator('#edStage .flow .fa-arrow-up-long').count() == 1
+    # Labels that leave it sideways leave it as from a QL printer, their end
+    # first, the printer to their left
+    designer.evaluate("() => { S.tape = 'puqu50x80'; openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x80'), { text: [L('Q', 40)] }) }); }")
+    wait_for_preview(designer)
+    classes = designer.get_attribute('#edStage', 'class').split()
+    assert 'side' in classes and 'turned' not in classes
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700' }); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
+    wait_for_preview(designer)
+    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+
+
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     # The labels of a PUQU Q00 are torn off, cutting after each or the last
     # label was offered all the same

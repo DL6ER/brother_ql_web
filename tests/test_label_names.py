@@ -79,13 +79,14 @@ def test_label_designer_gets_what_each_printer_offers(tmp_path):
     models = config['models']
     assert set(models) == set(drivers.MODELS)
     assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'cutter': True, 'half_cut': False, 'chain': False,
-                                'feed_waste': False, 'job_stages': False, 'colors': 'red', 'never_cut': ''}
+                                'feed_waste': False, 'job_stages': False, 'colors': 'red', 'never_cut': '', 'leaves_turned': False}
     assert (models['QL-1100']['high_res'], models['PT-P700']['half_cut'], models['PT-P700']['chain']) == (False, False, True)
     assert models['PT-E550W']['half_cut'] and models['PT-E550W']['feed_waste']
     assert models['VC-500W'] == {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'half_cut': True, 'chain': False,
-                                 'feed_waste': False, 'job_stages': True, 'colors': 'color', 'never_cut': NEVER_WHY}
+                                 'feed_waste': False, 'job_stages': True, 'colors': 'color', 'never_cut': NEVER_WHY,
+                                 'leaves_turned': False}
     # The labels of the PUQU Q00 are torn off
-    assert models['Q00']['cutter'] is False
+    assert models['Q00']['cutter'] is False and models['Q00']['leaves_turned'] is True
 
 
 def test_check_label_size():

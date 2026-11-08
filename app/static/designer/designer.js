@@ -83,7 +83,7 @@ const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].m
 // ZINK tape of the VC-500W, which prints in any color
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
 // What the server's driver of a printer model offers, see Driver.capabilities()
-const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '' };
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false };
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 
@@ -1287,7 +1287,11 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const dw = Math.round(w * k), dh = Math.round(h * k);
     // Short labels keep the arrow clear of the scissors at the cut
     const short = side ? dw : dh;
+    // Some printers let labels out the other way round than a QL printer,
+    // the top first. Those that leave sideways leave them as a QL printer.
+    const turned = !side && sizeCaps(design.label_size).leaves_turned;
     el.className = 'stage' + (side ? ' side' : '') + (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : '')
+        + (turned ? ' turned' : '')
         + (short < 30 ? ' tiny' : short < 50 ? ' short' : '');
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
@@ -1296,7 +1300,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const printer = side
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
-    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
+    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
     // The cut after the label, in the corner how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
     const cutEnd = chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';

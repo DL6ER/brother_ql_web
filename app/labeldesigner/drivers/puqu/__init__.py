@@ -72,8 +72,9 @@ class Puqu(Driver):
         return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
 
     def capabilities(self, model):
-        # The labels are torn off
-        return dict(super().capabilities(model), qualities=['quality'], cutter=False)
+        # The labels are torn off. They leave it readable, the other way round
+        # than a QL printer.
+        return dict(super().capabilities(model), qualities=['quality'], cutter=False, leaves_turned=True)
 
     def status(self, device, model, unconfirmed=False):
         state = network_status(device, model)

@@ -81,10 +81,13 @@ class Driver:
         shows (fast, quality, high for 600 dpi), whether the model prints at
         600 dpi, whether it has a cutter, half cuts between labels and chain
         prints, whether it feeds tape before the first label, reports the
-        stage of a job it prints, its colors, and why it does not leave
-        labels uncut, if it does not."""
+        stage of a job it prints, its colors, why it does not leave labels
+        uncut, if it does not, and whether labels that leave it top first
+        come out turned around from how the label designer shows them
+        leaving a QL printer."""
         return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'half_cut': False, 'chain': False,
-                'feed_waste': False, 'job_stages': False, 'colors': self.colors(model), 'never_cut': ''}
+                'feed_waste': False, 'job_stages': False, 'colors': self.colors(model), 'never_cut': '',
+                'leaves_turned': False}
 
     def resolution_problem(self, model: str, high_res: bool) -> str:
         """Why the model cannot print at the resolution, or an empty string."""
