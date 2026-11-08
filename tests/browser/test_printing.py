@@ -286,7 +286,8 @@ def test_loaded_label_that_is_not_offered(designer):
     fake_printer(designer, media_width=40, media_length=0)
     assert designer.inner_text('.tape-note') == 'The QL-800 reports 40 mm tape, which is not offered here.'
     designer.click('#printerChip')
-    assert 'The printer reports 40 mm tape, which is not offered here.' in designer.inner_text('.pp')
+    # The assumed tape is named, not called the default
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer reports 40 mm tape, which is not offered here. ' + designer.evaluate('() => sizeName(S.tape)') + ' is assumed.'
 
 
 def test_tape_set_by_hand_is_known(designer):
@@ -341,7 +342,10 @@ def test_cutting_per_printer_and_per_label(designer):
     designer.evaluate("() => openPrinterPanel()")
     # Only P-touch printers half cut and chain print, shown off
     assert designer.locator('[data-c="half_cut"][data-v="0"].on:disabled, [data-c="chain"][data-v="0"].on:disabled').count() == 2
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); closeLayer(true); openPrinterPanel(); }")
+    # The 62 mm label is printed on it as set by hand: a PT-E550W does not
+    # report its tape over the network, and tape it takes would be assumed
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' });
+        S.settings.tapes = Object.assign({}, S.settings.tapes, { [printerKey()]: '62' }); closeLayer(true); openPrinterPanel(); }""")
     # Not cut is chain printing on P-touch printers
     designer.click('[data-c="cut"][data-v="none"]')
     assert designer.locator('[data-c="chain"][data-v="1"].on:disabled').count() == 1
@@ -386,6 +390,18 @@ def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     # Not cut is what is sent, also for a label saved with its own cutting
     assert designer.evaluate("() => [printerCut().cut, cutOf({ cut: 'each', label_size: 'puqu50x30' }).cut]") == ['none', 'none']
     assert 'disabled title="This printer has no cutter"' in designer.evaluate("() => cutField({ cut: '', label_size: 'puqu50x30' })")
+
+
+def test_assumed_tape_is_one_the_printer_takes(designer):
+    # A PUQU Q00 does not report its labels, 62 mm endless tape was assumed
+    designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'Q00', media_width: null, media_length: 0 }); detectTape(); }")
+    assert designer.evaluate('() => [S.tape, S.tapeAssumed]') == ['puqu50x30', True]
+    # The printer panel names it, "the default is assumed" was 62 mm endless
+    designer.evaluate('() => openPrinterPanel()')
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer does not report its tape, 50 x 30 mm is assumed.'
+    designer.evaluate('() => closeLayer(true)')
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700', media_width: null }); detectTape(); }")
+    assert designer.evaluate('() => S.tape') == '62'
 
 
 def test_printer_of_another_driver_gets_what_it_offers(designer):

@@ -788,7 +788,10 @@ function detectTape() {
         S.tapeRedUnknown = !!found && !red && !p.text_color;
         if (!found) S.tapeUnknown = p.media_length ? `${p.media_width} x ${p.media_length} mm` : `${p.media_width} mm`;
     }
-    S.tape = found ? found.id : C.default_label_size;
+    // Assumed is the default size, or the first one the printer takes if it
+    // does not take that, e.g. a PUQU Q00 no 62 mm endless tape
+    const fallback = C.label_sizes.find(s => s.id === C.default_label_size && printerTakes(s)) || C.label_sizes.find(printerTakes);
+    S.tape = found ? found.id : fallback ? fallback.id : C.default_label_size;
     S.tapeAssumed = !found;
 }
 
@@ -2836,8 +2839,10 @@ function settingsCard() {
     // Printers without 600 dpi, e.g. the VC-500W, print those labels in quality
     const q = !offersHigh && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut();
     const without600 = Object.keys(C.models).filter(m => C.models[m].qualities.includes('high') && !C.models[m].high_res).sort();
-    const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
-        : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
+    // The assumed tape is named, it is the default only if the printer takes it
+    const assumed = `${esc(sizeName(S.tape))} is assumed.`;
+    const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. ${assumed}`
+        : S.tapeAssumed ? `The printer does not report its tape, ${assumed}` : 'Read from the printer.';
     return `<div class="settings">
         <div><label class="label-s" for="setTape">Tape in the printer</label>
             <select class="field" id="setTape"><option value="">Automatic${S.tapeManual ? '' : ': ' + esc(sizeName(S.tape))}</option>
