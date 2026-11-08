@@ -307,7 +307,7 @@ def test_failed_preview_of_the_text_before_is_not_shown(designer):
         renderEditor();
     }""")
     wait_for_preview(designer)
-    errors = designer.evaluate("""() => {
+    designer.evaluate("""() => {
         window.errorsSeen = 0;
         new MutationObserver(() => { if (document.querySelector('#edStage .err')) errorsSeen++; })
             .observe(document.querySelector('#edView') || document.body, { childList: true, subtree: true });
