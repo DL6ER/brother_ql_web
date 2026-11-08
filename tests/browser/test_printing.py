@@ -433,6 +433,24 @@ def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     assert quality.get_attribute('title') == 'This printer prints in one quality only'
 
 
+def test_ql500_labels_are_cut_by_hand(designer):
+    # The QL-500 has a lever instead of a cutter, cutting was offered
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-500' }); S.settings.cut = 'each'; openPrinterPanel(); }")
+    cuts = designer.locator('.pp [data-c="cut"]')
+    assert cuts.count() == 3 and all(cuts.nth(i).is_disabled() for i in range(3))
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="cut"])', 'title') == 'This printer has no automatic cutter'
+    assert designer.inner_text('.pp .cut-show .muted') == 'No automatic cutter, cut the labels off with the lever on the printer.'
+    assert designer.evaluate("() => [printerCut().cut, cutOf({ cut: 'each', label_size: '62' }).cut]") == ['none', 'none']
+    assert 'disabled title="This printer has no automatic cutter"' in designer.evaluate("() => cutField({ cut: '', label_size: '62' })")
+    # Next to the preview
+    designer.evaluate("() => { closeLayer(true); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
+    wait_for_preview(designer)
+    assert designer.inner_text('#edStage .cuts > span:not(.cut-strip)') == 'Cut by hand'
+    # Labels for it and other QL printers are cut as these cut them
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); }")
+    assert designer.evaluate("() => noCutter(sizeCaps('62'))") is False
+
+
 def test_assumed_tape_is_one_the_printer_takes(designer):
     # A PUQU Q00 does not report its labels, 62 mm endless tape was assumed
     designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'Q00', media_width: null, media_length: 0 }); detectTape(); }")

@@ -83,7 +83,7 @@ const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].m
 // ZINK tape of the VC-500W, which prints in any color
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
 // What the server's driver of a printer model offers, see Driver.capabilities()
-const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false, vendor: '' };
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false, vendor: '', manual_cutter: false };
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 // The maker and the model of a printer, as the label designer names it
@@ -325,16 +325,16 @@ const dpiOf = (labelSize, high = highRes()) => SIZES[labelSize] ? SIZES[labelSiz
 const CUTS = [['each', 'After each label'], ['last', 'After the last label'], ['none', 'Never']];
 const CUT_KEYS = ['cut', 'half_cut', 'chain'];
 // How a label size is cut: as the printer cuts it if the printer prints
-// it, else as its first printer would
+// it, else as its first printer with a cutter would, if there is one
 const sizeCaps = id => {
     const models = SIZES[id] ? SIZES[id].models : [], model = S.printer && S.printer.model;
-    return capsOf(models.includes(model) ? model : models[0]);
+    return capsOf(models.includes(model) ? model : models.find(m => !noCutter(capsOf(m))) || models[0]);
 };
 // A printer that does not leave labels uncut tells why, the server refuses it
 const neverWhy = k => k.never_cut || '';
-// Labels of a printer without a cutter are torn off, they are not cut
+// Labels of a printer without a cutter are torn off or cut with its lever
 const noCutter = k => k.cutter === false;
-const NO_CUTTER = 'This printer has no cutter';
+const noCutterWhy = k => k.manual_cutter ? 'This printer has no automatic cutter' : 'This printer has no cutter';
 const usableCut = (c, k) => noCutter(k) ? Object.assign(c, { cut: 'none' })
     : neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
@@ -347,7 +347,7 @@ const halfOf = (c, k) => k.half_cut && c.half_cut === '1';
 const cutOf = d => d && d.cut ? usableCut({ cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' }, sizeCaps(d.label_size)) : printerCut();
 
 function cutText(c, k) {
-    if (noCutter(k)) return 'No cutter, the labels are torn off.';
+    if (noCutter(k)) return k.manual_cutter ? 'No automatic cutter, cut the labels off with the lever on the printer.' : 'No cutter, the labels are torn off.';
     const half = halfOf(c, k), chain = chainOf(c, k);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
@@ -357,7 +357,7 @@ function cutText(c, k) {
 
 // The same in a few words, next to the preview
 function cutShort(c, k) {
-    if (noCutter(k)) return 'Torn off';
+    if (noCutter(k)) return k.manual_cutter ? 'Cut by hand' : 'Torn off';
     const half = halfOf(c, k) && c.cut !== 'each';
     return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (k.chain && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
 }
@@ -2229,7 +2229,7 @@ function cutSettings(attr, c, k, withCut = true) {
     const onOff = [['1', 'On'], ['0', 'Off']];
     const halfWhy = k.half_cut ? '' : 'This printer has no half cutter';
     const chainWhy = !k.chain ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
-    const cutWhy = noCutter(k) ? NO_CUTTER : '';
+    const cutWhy = noCutter(k) ? noCutterWhy(k) : '';
     return (withCut ? seg('cut', 'Cutting', CUTS.map(([v, n]) => [v, n, v === 'none' ? neverWhy(k) : '']), cutWhy, cutWhy ? '' : c.cut) : '')
         + seg('half_cut', 'Half cut between labels', onOff, halfWhy, halfOf(c, k) ? '1' : halfWhy ? '0' : c.half_cut)
         + seg('chain', 'Chain printing, the last label stays in the printer', onOff, chainWhy, chainOf(c, k) ? '1' : chainWhy ? '0' : c.chain);
@@ -2239,7 +2239,7 @@ function cutSettings(attr, c, k, withCut = true) {
 function cutField(d) {
     const pc = CUTS.find(x => x[0] === printerCut().cut)[1].toLowerCase();
     return `<div class="cutting"><label class="label-s" for="edCut">Cutting</label>
-        <select class="field" id="edCut"${noCutter(sizeCaps(d.label_size)) ? ` disabled title="${NO_CUTTER}"` : ''}><option value="">Like the printer: ${esc(pc)}</option>
+        <select class="field" id="edCut"${noCutter(sizeCaps(d.label_size)) ? ` disabled title="${noCutterWhy(sizeCaps(d.label_size))}"` : ''}><option value="">Like the printer: ${esc(pc)}</option>
         ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}${v === 'none' && neverWhy(sizeCaps(d.label_size)) ? ' disabled' : ''}>${n}, saved with the label</option>`).join('')}</select>
         ${d.cut ? cutSettings('lcut', cutOf(d), sizeCaps(d.label_size), false) : ''}</div>`;
 }

@@ -51,9 +51,11 @@ class BrotherRaster(Driver):
 
     def capabilities(self, model):
         ptouch = model.startswith('PT-')
+        # The QL-500 takes no cut commands, its labels are cut with a lever
+        cutting = MODELS[model].cutting
         return dict(super().capabilities(model), qualities=['fast', 'quality', 'high'],
-                    high_res=not resolution_problem(model, True), half_cut=model in HALF_CUTTERS,
-                    chain=ptouch, feed_waste=ptouch)
+                    high_res=not resolution_problem(model, True), cutter=cutting, manual_cutter=not cutting,
+                    half_cut=model in HALF_CUTTERS, chain=ptouch, feed_waste=ptouch)
 
     def resolution_problem(self, model, high_res):
         return resolution_problem(model, high_res)
