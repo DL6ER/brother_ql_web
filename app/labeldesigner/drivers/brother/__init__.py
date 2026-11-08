@@ -10,7 +10,7 @@ from .. import devices
 from ..base import Driver
 from ..labels import Color
 from . import labels as tables, names, network, raster, usb
-from .models import HALF_CUTTERS, MODELS, resolution_problem
+from .models import HALF_CUTTERS, MODELS, length_problem, resolution_problem
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ class BrotherRaster(Driver):
         re.compile(r'tcp://\[[0-9A-Fa-f:.]+\](:9100)?'),
     )
     mac_address_prefixes = network.MAC_ADDRESS_PREFIXES
+    refusals = tuple(length_problem(model) for model in MODELS)
 
     def fits(self, label, model):
         return tables.label_fits(label, model)

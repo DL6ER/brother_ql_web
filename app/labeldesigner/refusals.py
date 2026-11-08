@@ -17,7 +17,7 @@ from qrcode.exceptions import DataOverflowError
 
 from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
 from .label_names import cut_problems, label_size_problems
-from .drivers import MODELS, resolution_problem
+from .drivers import DRIVERS, MODELS, resolution_problem
 
 IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
 # A detected printer whose status names no model this server knows
@@ -63,6 +63,7 @@ MESSAGES = (
     *(problem for model in MODELS if (problem := resolution_problem(model, True))),
     *label_size_problems(),
     *cut_problems(),
+    *(message for driver in DRIVERS for message in driver.refusals),
 )
 
 # Errors whose text names details, by their text. They may span lines, a

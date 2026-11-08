@@ -9,6 +9,7 @@ from ...label import LabelContent, LabelOrientation, LabelType
 from ..labels import FormFactor
 from .commands import Raster, RasterError
 from .labels import BY_ID
+from .models import length_problem
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +130,9 @@ def convert(raster: Raster, images: list, label_size: str, *, red: bool = False,
             padded = Image.new(im.mode, (width, dots_expected[1]), (255,) * len(im.mode))
             padded.paste(im, (width - im.size[0] - right_margin, 0))
             im = padded
+        # At 600 dpi a label has twice the lines
+        if im.size[1] // (2 if dpi_600 else 1) > raster.spec.max_length_dots:
+            raise ValueError(length_problem(raster.model))
 
         if red:
             red_im = _layer(_filtered_hsv(im, lambda h: 255 if h < 40 or h > 210 else 0,
