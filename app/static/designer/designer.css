@@ -228,6 +228,15 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .dim-x::before, .stage .dim-x::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .5; }
 .stage .dim-y { top: 0; bottom: 0; right: -2.7rem; flex-direction: column; justify-content: center; }
 .stage .dim-y::before, .stage .dim-y::after { content: ""; flex: 1; border-left: 1px solid currentColor; opacity: .5; }
+/* Printers that let labels out the other way round than a QL printer, the
+   top first, stand below the label, so that it shows as it comes out */
+.stage.turned { flex-direction: column-reverse; padding-top: 2.8rem; }
+.stage.turned .printer.top { border-radius: 6px 6px 14px 14px; background: linear-gradient(0deg, var(--printer-top), var(--printer-bottom)); align-items: flex-end; padding: 0 .9rem .55rem; }
+.stage.turned .printer.top .mouth { bottom: auto; top: 4px; }
+.stage.turned .feed { margin-top: 0; margin-bottom: -8.5px; }
+.stage.turned .flow { top: auto; bottom: 14px; }
+.stage.turned .cut { bottom: auto; top: -1px; border-bottom: 0; border-top: 2px dashed #9aa3ac; }
+.stage.turned .dim-x { bottom: auto; top: -1.9rem; }
 .stage .wait { position: absolute; inset: auto 0 .6rem 0; text-align: center; font-size: .8rem; color: var(--muted); }
 .stage .err { font-size: .9rem; padding: 1rem; text-align: center; max-width: 40ch; }
 /* Spinner in the corner of the stage while a new preview is made */

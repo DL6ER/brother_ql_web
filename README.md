@@ -8,13 +8,14 @@ A web interface and REST API for Brother QL label printers. Design labels with t
 
 ## Supported printers
 
-| Printers | Labels |
-|---|---|
-| QL-500, QL-550, QL-560, QL-570, QL-580N, QL-600, QL-650TD, QL-700, QL-710W, QL-720NW | up to 62 mm wide |
-| QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
-| QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
-| PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
-| VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
+| Vendor | Printers | Labels |
+|---|---|---|
+| Brother | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
+| Brother | QL-500, QL-550, QL-560, QL-570, QL-580N, QL-600, QL-650TD, QL-700, QL-710W, QL-720NW | up to 62 mm wide |
+| Brother | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
+| Brother | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
+| Brother | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
+| PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 
 USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
 
@@ -92,7 +93,7 @@ The navbar shows the version and build time of the running image, please add the
 
 | Environment variable | Meaning | Default |
 |---|---|---|
-| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` or a VC-500W on the network as `vc500w://<host>`, or `?` to detect printers automatically | `?` |
+| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>`, a VC-500W on the network as `vc500w://<host>`, a PUQU Q00 or Reekon P1 Tagger as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 if left out; in a container only with `network_mode: host`), or `?` to detect printers automatically | `?` |
 | `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer | `QL-800` |
 | `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g. `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1`. There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g. `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |

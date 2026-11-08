@@ -61,7 +61,10 @@ def test_a_driver_states_what_it_does_not_do():
     ('tcp://192.0.2.1:9100', 'tcp://192.0.2.1:9100'),
     ('vc500w://192.0.2.1', 'vc500w://192.0.2.1:9100'),
     ('usb://0x04F9:0x2042', 'usb://0x04f9:0x2042'),
-    ('bt://AA:BB:CC:DD:EE:FF/2', 'bt://aa:bb:cc:dd:ee:ff/2'),
+    # One Bluetooth printer whatever channel names it
+    ('bt://AA:BB:CC:DD:EE:FF/2', 'bt://aa:bb:cc:dd:ee:ff'),
+    ('bt://AA:BB:CC:DD:EE:FF', 'bt://aa:bb:cc:dd:ee:ff'),
+    ('bt://aa:bb:cc:dd:ee:ff/1', 'bt://aa:bb:cc:dd:ee:ff'),
 ])
 def test_every_spelling_of_a_device_has_one_lock(device, key):
     assert devices.lock_key(device) == key

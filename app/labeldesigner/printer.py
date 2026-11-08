@@ -153,16 +153,30 @@ _cached_printers = []
 # The configured printers are asked at the same time, the answer waits at most
 # STATUS_QUERY_WAIT seconds for them. The .local name of a PT-E550W that was off
 # took 10 s not to resolve, the label designer showed nothing meanwhile. A
-# query still running is not started again, its printer does not answer.
+# query still running is not started again; its printer is told as it was
+# last, or as being asked. Its answer is told next time: a PUQU Q00 took 4 s
+# and more to connect over Bluetooth, it was never told as ready otherwise.
 STATUS_QUERY_WAIT = 4.0
+ASKING = 'Asking the printer'
 _status_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix='printer-status')
 _status_queries = {}
 _status_queries_lock = threading.Lock()
+# The last answer of each printer, or why it did not answer, by device
+_last_states = {}
 
 
 def _query_configured(model: str, device: str) -> dict:
     driver, known = drivers.resolve(device, model)
     return driver.status(device, known)
+
+
+def _answer(future, model: str, device: str) -> dict:
+    """The state a finished status query got, also when the printer did not answer."""
+    try:
+        return future.result()
+    except Exception as e:
+        logger.info('Status query of %s failed: %s', device, e)
+        return devices.failed_printer_state(device, e, model)
 
 
 def _configured_states(printers) -> list[dict]:
@@ -174,7 +188,11 @@ def _configured_states(printers) -> list[dict]:
                 futures.append(None)
                 continue
             future = _status_queries.get(device)
-            if future is None or future.done():
+            if future is not None and future.done():
+                # It answered after the last status was told
+                _last_states[device] = _answer(future, model, device)
+                future = None
+            if future is None:
                 future = _status_pool.submit(_query_configured, model, device)
                 _status_queries[device] = future
             futures.append(future)
@@ -183,14 +201,14 @@ def _configured_states(printers) -> list[dict]:
     for (model, device), future in zip(printers, futures):
         if future is None:
             states.append(None)
-            continue
-        try:
-            if not future.done():
-                raise TimeoutError(f'no answer within {STATUS_QUERY_WAIT:g} s')
-            states.append(future.result())
-        except Exception as e:
-            logger.info('Status query of %s failed: %s', device, e)
-            states.append(devices.failed_printer_state(device, e, model))
+        elif future.done():
+            _last_states[device] = _answer(future, model, device)
+            states.append(_last_states[device])
+        elif device in _last_states:
+            states.append(dict(_last_states[device]))
+        else:
+            asking = devices.failed_printer_state(device, TimeoutError(), model)
+            states.append(dict(asking, errors=[], status_type=ASKING))
     return states
 
 

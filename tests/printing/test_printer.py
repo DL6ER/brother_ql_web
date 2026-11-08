@@ -383,11 +383,37 @@ def test_a_printer_that_does_not_answer_does_not_hold_up_the_others(client, monk
             status = client.get('/labeldesigner/api/printer_status').get_json()
             assert time.monotonic() - start < 2
             assert status['printers'][0]['status_type'] == 'Simulator'
-            assert status['printers'][1]['errors'] == ['The printer does not answer']
+            # Not told as not answering while it is still being asked
+            assert (status['printers'][1]['status_type'], status['printers'][1]['errors']) == (printer.ASKING, [])
         # The query still running is not started again
         assert calls == [NET]
     finally:
         release.set()
+    # Once it ended, its answer is told
+    time.sleep(0.1)
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert status['printers'][1]['errors'] == ['The printer does not answer the status query, the log of the server names the reason']
+
+
+def test_an_answer_after_the_wait_is_told_next_time(client, monkeypatch):
+    # A PUQU Q00 took 4 s and more to connect over Bluetooth, longer than the
+    # wait: it was told as not answering every time, though it answered
+    NET = 'tcp://slow.local'
+
+    def slow(device, model, *args, **kwargs):
+        time.sleep(0.3)
+        return dict(network.network_printer(device, model), status_type='Reply to status request')
+    monkeypatch.setattr(network, 'query_network_status', slow)
+    monkeypatch.setattr(printer, 'STATUS_QUERY_WAIT', 0.1)
+    client.application.config['PRINTERS'] = [('PT-E550W', NET)]
+    first = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert first['status_type'] == printer.ASKING
+    time.sleep(0.4)
+    second = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert (second['status_type'], second['errors']) == ('Reply to status request', [])
+    # While it is asked again, its last answer is told
+    third = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert third['status_type'] == 'Reply to status request'
 
 
 def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):

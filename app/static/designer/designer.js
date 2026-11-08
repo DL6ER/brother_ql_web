@@ -83,7 +83,7 @@ const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].m
 // ZINK tape of the VC-500W, which prints in any color
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
 // What the server's driver of a printer model offers, see Driver.capabilities()
-const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '' };
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false };
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 
@@ -330,7 +330,11 @@ const sizeCaps = id => {
 };
 // A printer that does not leave labels uncut tells why, the server refuses it
 const neverWhy = k => k.never_cut || '';
-const usableCut = (c, k) => neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
+// Labels of a printer without a cutter are torn off, they are not cut
+const noCutter = k => k.cutter === false;
+const NO_CUTTER = 'This printer has no cutter';
+const usableCut = (c, k) => noCutter(k) ? Object.assign(c, { cut: 'none' })
+    : neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
 const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCaps());
 // P-touch printers cut after the last label unless chain printing, so not
@@ -341,6 +345,7 @@ const halfOf = (c, k) => k.half_cut && c.half_cut === '1';
 const cutOf = d => d && d.cut ? usableCut({ cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' }, sizeCaps(d.label_size)) : printerCut();
 
 function cutText(c, k) {
+    if (noCutter(k)) return 'No cutter, the labels are torn off.';
     const half = halfOf(c, k), chain = chainOf(c, k);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
@@ -350,6 +355,7 @@ function cutText(c, k) {
 
 // The same in a few words, next to the preview
 function cutShort(c, k) {
+    if (noCutter(k)) return 'Torn off';
     const half = halfOf(c, k) && c.cut !== 'each';
     return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (k.chain && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
 }
@@ -365,7 +371,7 @@ function cutStrip(c, k) {
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     // The last label stays in the printer with chain printing, and on QL
     // printers where it is not cut
-    const end = chainOf(c, k) || c.cut === 'none' ? 'chain' : 'full';
+    const end = noCutter(k) ? 'none' : chainOf(c, k) || c.cut === 'none' ? 'chain' : 'full';
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, k));
@@ -729,9 +735,11 @@ function fitsTape(sizeId) {
 
 // --- Printer status ----------------------------------------------------------
 
-async function refreshPrinters() {
+// look: also look for Bluetooth printers that did not answer before, which
+// the status every 20 s leaves alone
+async function refreshPrinters(look = false) {
     try {
-        const r = await fetch(API + '/printer_status');
+        const r = await fetch(API + '/printer_status' + (look ? '?look=1' : ''));
         const data = await r.json();
         S.printers = Array.isArray(data.printers) ? data.printers : [data];
         const chosen = load(own('designer_printer'), null);
@@ -782,7 +790,10 @@ function detectTape() {
         S.tapeRedUnknown = !!found && !red && !p.text_color;
         if (!found) S.tapeUnknown = p.media_length ? `${p.media_width} x ${p.media_length} mm` : `${p.media_width} mm`;
     }
-    S.tape = found ? found.id : C.default_label_size;
+    // Assumed is the default size, or the first one the printer takes if it
+    // does not take that, e.g. a PUQU Q00 no 62 mm endless tape
+    const fallback = C.label_sizes.find(s => s.id === C.default_label_size && printerTakes(s)) || C.label_sizes.find(printerTakes);
+    S.tape = found ? found.id : fallback ? fallback.id : C.default_label_size;
     S.tapeAssumed = !found;
 }
 
@@ -802,6 +813,8 @@ function tapeLeft(p) {
 function printerState(p) {
     if (!p) return { cls: 'off', text: 'No printer' };
     if (p.errors && p.errors.length) return { cls: 'bad', text: p.errors[0] };
+    // Still being asked, e.g. a printer on Bluetooth that takes a few seconds
+    if (p.status_type === 'Asking the printer') return { cls: 'off', text: 'Asking the printer…' };
     if (p.job) return { cls: '', text: jobText(p.job) };
     if (/simulat/i.test(p.status_type || p.phase_type || '')) return { cls: '', text: 'Ready (simulated)' };
     return { cls: '', text: 'Ready' };
@@ -1278,7 +1291,11 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const dw = Math.round(w * k), dh = Math.round(h * k);
     // Short labels keep the arrow clear of the scissors at the cut
     const short = side ? dw : dh;
+    // Some printers let labels out the other way round than a QL printer,
+    // the top first. Those that leave sideways leave them as a QL printer.
+    const turned = !side && sizeCaps(design.label_size).leaves_turned;
     el.className = 'stage' + (side ? ' side' : '') + (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : '')
+        + (turned ? ' turned' : '')
         + (short < 30 ? ' tiny' : short < 50 ? ' short' : '');
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
@@ -1287,7 +1304,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const printer = side
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
-    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
+    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
     // The cut after the label, in the corner how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
     const cutEnd = chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
@@ -2187,7 +2204,8 @@ function cutSettings(attr, c, k, withCut = true) {
     const onOff = [['1', 'On'], ['0', 'Off']];
     const halfWhy = k.half_cut ? '' : 'This printer has no half cutter';
     const chainWhy = !k.chain ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
-    return (withCut ? seg('cut', 'Cutting', CUTS.map(([v, n]) => [v, n, v === 'none' ? neverWhy(k) : ''])) : '')
+    const cutWhy = noCutter(k) ? NO_CUTTER : '';
+    return (withCut ? seg('cut', 'Cutting', CUTS.map(([v, n]) => [v, n, v === 'none' ? neverWhy(k) : '']), cutWhy, cutWhy ? '' : c.cut) : '')
         + seg('half_cut', 'Half cut between labels', onOff, halfWhy, halfOf(c, k) ? '1' : halfWhy ? '0' : c.half_cut)
         + seg('chain', 'Chain printing, the last label stays in the printer', onOff, chainWhy, chainOf(c, k) ? '1' : chainWhy ? '0' : c.chain);
 }
@@ -2196,7 +2214,7 @@ function cutSettings(attr, c, k, withCut = true) {
 function cutField(d) {
     const pc = CUTS.find(x => x[0] === printerCut().cut)[1].toLowerCase();
     return `<div class="cutting"><label class="label-s" for="edCut">Cutting</label>
-        <select class="field" id="edCut"><option value="">Like the printer: ${esc(pc)}</option>
+        <select class="field" id="edCut"${noCutter(sizeCaps(d.label_size)) ? ` disabled title="${NO_CUTTER}"` : ''}><option value="">Like the printer: ${esc(pc)}</option>
         ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}${v === 'none' && neverWhy(sizeCaps(d.label_size)) ? ' disabled' : ''}>${n}, saved with the label</option>`).join('')}</select>
         ${d.cut ? cutSettings('lcut', cutOf(d), sizeCaps(d.label_size), false) : ''}</div>`;
 }
@@ -2801,7 +2819,7 @@ function bindPrinterPanel() {
         tapeChanged = true;
         redraw();
     });
-    $('#ppRefresh', box).onclick = async () => { await refreshPrinters(); redraw(); };
+    $('#ppRefresh', box).onclick = async () => { await refreshPrinters(true); redraw(); };
     $('#setTape', box).onchange = e => {
         S.settings.tapes = Object.assign({}, S.settings.tapes, { [printerKey()]: e.target.value });
         if (!e.target.value) delete S.settings.tapes[printerKey()];
@@ -2826,11 +2844,15 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 function settingsCard() {
     const p = S.printer;
     const caps = printerCaps(), offersHigh = caps.qualities.includes('high'), noHigh = p && offersHigh && !caps.high_res;
-    // Printers without 600 dpi, e.g. the VC-500W, print those labels in quality
-    const q = !offersHigh && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut();
+    // Printers without 600 dpi, e.g. the VC-500W, print those labels in
+    // quality, those with one quality, e.g. the PUQU Q00, all of them
+    const oneQuality = !caps.qualities.includes('fast'), ONE = ' disabled title="This printer prints in one quality only"';
+    const q = oneQuality || (!offersHigh && S.settings.quality === 'high') ? 'quality' : S.settings.quality, c = printerCut();
     const without600 = Object.keys(C.models).filter(m => C.models[m].qualities.includes('high') && !C.models[m].high_res).sort();
-    const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
-        : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
+    // The assumed tape is named, it is the default only if the printer takes it
+    const assumed = `${esc(sizeName(S.tape))} is assumed.`;
+    const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. ${assumed}`
+        : S.tapeAssumed ? `The printer does not report its tape, ${assumed}` : 'Read from the printer.';
     return `<div class="settings">
         <div><label class="label-s" for="setTape">Tape in the printer</label>
             <select class="field" id="setTape"><option value="">Automatic${S.tapeManual ? '' : ': ' + esc(sizeName(S.tape))}</option>
@@ -2839,8 +2861,8 @@ function settingsCard() {
         <div><div class="row" style="gap:.35rem;margin-bottom:.3rem"><span class="label-s" style="margin:0">Quality</span>
             <button type="button" class="info-btn" id="qInfoBtn" aria-expanded="${!!S.qualityInfo}" aria-controls="qInfo" title="About the quality settings"><i class="fa-solid fa-circle-info"></i><span class="sr-only">About the quality settings</span></button></div>
             <div class="seg">
-            <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
-            <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
+            <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}"${oneQuality ? ONE : ''}>Fast</button>
+            <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}"${oneQuality ? ONE : ''}>Quality</button>
             ${!offersHigh ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
             ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
@@ -2854,7 +2876,7 @@ function settingsCard() {
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
         <div class="cutting">${cutSettings('c', c, caps)}
-            <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))} Labels saved with their own cutting keep it.</span></div></div>
+            <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))}${noCutter(caps) ? '' : ' Labels saved with their own cutting keep it.'}</span></div></div>
     </div>`;
 }
 
@@ -3010,7 +3032,7 @@ addEventListener('pagehide', () => { if (S.edit) storeEdit(); });
 
 (async function start() {
     renderPrinterChip();
-    await Promise.all([refreshPrinters(), loadDemos(), loadSaved(), loadBarcodes()]);
+    await Promise.all([refreshPrinters(true), loadDemos(), loadSaved(), loadBarcodes()]);
     await receiveShared();
     // Printing state from a page that was closed while printing is unknown
     S.history.forEach(h => { if (h.state === 'printing') { h.state = 'failed'; h.message = 'The page was closed while printing'; } });

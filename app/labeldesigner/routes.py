@@ -23,7 +23,7 @@ from werkzeug.datastructures import FileStorage
 from werkzeug.exceptions import HTTPException
 from . import drivers
 from .drivers import DEVICE_PATTERNS, resolution_problem
-from .drivers.devices import flock_within
+from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, get_ptr_status
 from .drivers.labels import FormFactor
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, parse_color
@@ -1103,6 +1103,10 @@ def openapi_spec():
 
 @bp.route('/api/printer_status', methods=['GET'])
 def get_printer_status():
+    # Printers on Bluetooth that did not answer are looked for again only
+    # when asked, see devices.note_answer()
+    if request.args.get('look') == '1':
+        look_again()
     status = get_ptr_status(current_app.config)
     # The VC-500W prints in color, the label designer then offers colors
     for printer in [status] + status.get('printers', []):

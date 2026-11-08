@@ -286,7 +286,8 @@ def test_loaded_label_that_is_not_offered(designer):
     fake_printer(designer, media_width=40, media_length=0)
     assert designer.inner_text('.tape-note') == 'The QL-800 reports 40 mm tape, which is not offered here.'
     designer.click('#printerChip')
-    assert 'The printer reports 40 mm tape, which is not offered here.' in designer.inner_text('.pp')
+    # The assumed tape is named, not called the default
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer reports 40 mm tape, which is not offered here. ' + designer.evaluate('() => sizeName(S.tape)') + ' is assumed.'
 
 
 def test_tape_set_by_hand_is_known(designer):
@@ -341,7 +342,10 @@ def test_cutting_per_printer_and_per_label(designer):
     designer.evaluate("() => openPrinterPanel()")
     # Only P-touch printers half cut and chain print, shown off
     assert designer.locator('[data-c="half_cut"][data-v="0"].on:disabled, [data-c="chain"][data-v="0"].on:disabled').count() == 2
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' }); closeLayer(true); openPrinterPanel(); }")
+    # The 62 mm label is printed on it as set by hand: a PT-E550W does not
+    # report its tape over the network, and tape it takes would be assumed
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'PT-E550W' });
+        S.settings.tapes = Object.assign({}, S.settings.tapes, { [printerKey()]: '62' }); closeLayer(true); openPrinterPanel(); }""")
     # Not cut is chain printing on P-touch printers
     designer.click('[data-c="cut"][data-v="none"]')
     assert designer.locator('[data-c="chain"][data-v="1"].on:disabled').count() == 1
@@ -370,6 +374,75 @@ def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
     assert designer.get_attribute('.pp div:has(> .seg [data-c="half_cut"])', 'title') == 'This printer has no half cutter'
     assert designer.is_enabled('.pp [data-c="chain"][data-v="1"]')
     assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
+
+
+def test_look_for_printers_looks_also_for_those_that_did_not_answer(designer):
+    # The status every 20 s leaves Bluetooth printers that did not answer alone
+    with designer.expect_request('**/api/printer_status*') as request:
+        designer.evaluate('() => refreshPrinters()')
+    assert 'look=1' not in request.value.url
+    designer.evaluate('() => openPrinterPanel()')
+    with designer.expect_request('**/api/printer_status*') as request:
+        designer.click('#ppRefresh')
+    assert 'look=1' in request.value.url
+
+
+def test_printer_still_being_asked_is_not_shown_as_failing(designer):
+    # A printer on Bluetooth takes a few seconds to answer, it was red meanwhile
+    assert designer.evaluate("() => printerState({ status_type: 'Asking the printer', errors: [] })") == {'cls': 'off', 'text': 'Asking the printer…'}
+
+
+def test_labels_of_a_q00_leave_it_turned(designer):
+    # They come out readable, the other way round than from a QL printer
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
+        openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
+    wait_for_preview(designer)
+    assert 'turned' in designer.get_attribute('#edStage', 'class').split()
+    # The printer stands below the label, which leaves it upwards
+    assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'column-reverse'
+    assert designer.locator('#edStage .flow .fa-arrow-up-long').count() == 1
+    # Labels that leave it sideways leave it as from a QL printer, their end
+    # first, the printer to their left
+    designer.evaluate("() => { S.tape = 'puqu50x80'; openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x80'), { text: [L('Q', 40)] }) }); }")
+    wait_for_preview(designer)
+    classes = designer.get_attribute('#edStage', 'class').split()
+    assert 'side' in classes and 'turned' not in classes
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700' }); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
+    wait_for_preview(designer)
+    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+
+
+def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
+    # The labels of a PUQU Q00 are torn off, cutting after each or the last
+    # label was offered all the same
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.settings.cut = 'each'; openPrinterPanel(); }")
+    cuts = designer.locator('.pp [data-c="cut"]')
+    assert cuts.count() == 3 and all(cuts.nth(i).is_disabled() for i in range(3))
+    assert designer.locator('.pp [data-c="cut"].on').count() == 0
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="cut"])', 'title') == 'This printer has no cutter'
+    assert designer.get_attribute('.pp .cut-strip', 'title') == 'No cutter, the labels are torn off.'
+    # Labels saved with their own cutting are torn off as well
+    assert designer.inner_text('.pp .cut-show .muted') == 'No cutter, the labels are torn off.'
+    # Not cut is what is sent, also for a label saved with its own cutting
+    assert designer.evaluate("() => [printerCut().cut, cutOf({ cut: 'each', label_size: 'puqu50x30' }).cut]") == ['none', 'none']
+    assert 'disabled title="This printer has no cutter"' in designer.evaluate("() => cutField({ cut: '', label_size: 'puqu50x30' })")
+    # It prints in one quality, Fast did nothing
+    designer.evaluate("() => { S.settings.quality = 'fast'; closeLayer(true); openPrinterPanel(); }")
+    fast, quality = designer.locator('.pp [data-q="fast"]'), designer.locator('.pp [data-q="quality"]')
+    assert fast.is_disabled() and quality.is_disabled() and 'on' in quality.get_attribute('class').split()
+    assert quality.get_attribute('title') == 'This printer prints in one quality only'
+
+
+def test_assumed_tape_is_one_the_printer_takes(designer):
+    # A PUQU Q00 does not report its labels, 62 mm endless tape was assumed
+    designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'Q00', media_width: null, media_length: 0 }); detectTape(); }")
+    assert designer.evaluate('() => [S.tape, S.tapeAssumed]') == ['puqu50x30', True]
+    # The printer panel names it, "the default is assumed" was 62 mm endless
+    designer.evaluate('() => openPrinterPanel()')
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer does not report its tape, 50 x 30 mm is assumed.'
+    designer.evaluate('() => closeLayer(true)')
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700', media_width: null }); detectTape(); }")
+    assert designer.evaluate('() => S.tape') == '62'
 
 
 def test_printer_of_another_driver_gets_what_it_offers(designer):
