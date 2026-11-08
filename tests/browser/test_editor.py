@@ -724,13 +724,27 @@ def test_links_to_the_internet_ask_first(designer):
     designer.click('#githubLink', button='middle')
     designer.click('#layer [data-open]')
     assert designer.is_hidden('#layer')
-    designer.click('#tplInfoBtn')
-    designer.click('#tplInfo a:has-text("strftime")')
-    assert designer.inner_text('#layer .sheet h2') == 'Open strftime.org?'
-    designer.click('#layer [data-open]')
-    assert designer.evaluate('() => window.opened') == [['https://github.com/DL6ER/brother_ql_web', '_blank', 'noopener'],
-                                                         ['https://strftime.org/', '_blank', 'noopener']]
+    assert designer.evaluate('() => window.opened') == [['https://github.com/DL6ER/brother_ql_web', '_blank', 'noopener']]
     assert len(designer.context.pages) == pages
     # Links within the label designer do not ask
     designer.click('#tabs [data-tab="wizard"]')
     assert designer.is_hidden('#layer')
+
+
+def test_date_and_time_codes_are_explained_offline(designer):
+    # The help on variables links to no page on the internet, the codes of
+    # {{datetime:<format>}} are shown with examples from the server
+    designer.click('#tplInfoBtn')
+    assert designer.locator('#tplInfo a[href]').count() == 0
+    designer.click('#tplInfo [data-dtcodes]')
+    assert designer.inner_text('#layer h2') == 'Date and time codes'
+    assert 'The examples are for Saturday, 7 March 2026, 14:05:09.' in designer.inner_text('#layer .dialog-h p')
+    rows = designer.evaluate("() => [...document.querySelectorAll('#layer .codes tbody tr')].map(r => [...r.cells].map(c => c.innerText))")
+    assert len(rows) == 21
+    assert ['%-d', 'Day of the month, no leading zero', '7'] in rows and ['%V', 'Calendar week, starting on Monday', '10'] in rows
+    designer.keyboard.press('Escape')
+    assert designer.is_hidden('#layer')
+    # The same help in the wizard, open there as well
+    designer.click('#tabs [data-tab="wizard"]')
+    designer.click('#wzVarsBox [data-dtcodes]')
+    assert designer.inner_text('#layer h2') == 'Date and time codes'

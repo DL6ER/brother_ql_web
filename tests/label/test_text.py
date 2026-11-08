@@ -4,6 +4,7 @@ boxes and empty lines."""
 import io
 import json
 import random
+import re
 import unicodedata
 from datetime import datetime
 
@@ -450,3 +451,13 @@ def test_text_line_without_font_uses_the_default_font(tmp_path):
     response = client.post('/labeldesigner/api/preview', data=data)
     assert response.status_code == 400
     assert response.get_json()['message'] == 'Font must be given as "<family>,<style>"'
+
+
+def test_date_and_time_codes_for_the_label_designer(tmp_path):
+    # Their examples come from the strftime() that fills in the labels
+    html = make_client(tmp_path).get('/labeldesigner/').get_data(as_text=True)
+    codes = json.loads(re.search(r'const DESIGNER_CONFIG = (.*);</script>', html).group(1))['datetime_codes']
+    assert codes['example'] == 'Saturday, 7 March 2026, 14:05:09'
+    examples = {code: example for code, _, example in codes['codes']}
+    assert [examples[code] for code in ('%d', '%-d', '%m', '%-m', '%b', '%V', '%I', '%p', '%%')] == [
+        '07', '7', '03', '3', 'Mar', '10', '02', 'PM', '%']

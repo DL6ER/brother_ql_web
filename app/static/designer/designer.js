@@ -1448,6 +1448,16 @@ async function openSymbols(input) {
     };
 }
 
+// The codes of {{datetime:<format>}}, with examples made by the server
+function showDateCodes() {
+    const dc = C.datetime_codes || { example: '', codes: [] };
+    const rows = dc.codes.map(([code, meaning, example]) => `<tr><td><code>${esc(code)}</code></td><td>${esc(meaning)}</td><td>${esc(example)}</td></tr>`).join('');
+    openLayer(`<div class="dialog narrow" role="dialog" aria-label="Date and time codes">
+        <div class="dialog-h"><div class="grow"><h2>Date and time codes</h2><p>For <code>{{datetime:&lt;format&gt;}}</code>, e.g. <code>{{datetime:%d.%m.%Y}}</code>. The examples are for ${esc(dc.example)}.</p></div>
+            <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
+        <table class="codes"><thead><tr><th>Code</th><th>Stands for</th><th>Example</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+}
+
 function varsHelpHTML() {
     return `<p>Variables put content into the label when it is printed. Type them into a line, or insert them with the buttons.</p>
         <ul>
@@ -1458,10 +1468,10 @@ function varsHelpHTML() {
         </ul>
         <p>The variables of the server work as well:</p>
         <ul>
-            <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <a href="https://strftime.org/" target="_blank" rel="noopener">strftime</a> codes, e.g. <code>%H:%M:%S %d.%m.%Y</code>.</li>
+            <li><code>{{datetime:&lt;format&gt;}}</code> - the current date and time. The format uses <button type="button" class="link" data-dtcodes>date and time codes</button>, e.g. <code>%H:%M:%S %d.%m.%Y</code>.</li>
             <li><code>{{counter[:&lt;start&gt;]}}</code> - a number that counts up, starting at &lt;start&gt; (default 1). When you print several labels at once, each gets the next number.</li>
             <li><code>{{uuid}}</code> - a random UUID, <code>{{short-uuid}}</code> - a shorter random UUID.</li>
-            <li><code>{{mdi:&lt;name&gt;}}</code> - the <a href="https://pictogrammers.com/library/mdi/" target="_blank" rel="noopener">Material Design Icon</a> &lt;name&gt;, e.g. <code>{{mdi:lightbulb}}</code>. The Symbol button finds the names.</li>
+            <li><code>{{mdi:&lt;name&gt;}}</code> - the Material Design Icon &lt;name&gt;, e.g. <code>{{mdi:lightbulb}}</code>. The Symbol button finds the names.</li>
             <li><code>{{env:&lt;var&gt;}}</code> - the environment variable &lt;var&gt;, if it is listed in <code>LABEL_TEMPLATE_ENV_VARS</code>.</li>
             <li><code>{{random[:&lt;len&gt;][:shift]}}</code> - a random string of &lt;len&gt; characters (default 64, at most 10000). <code>shift</code> shifts it around to fill gaps.</li>
         </ul>`;
@@ -2978,6 +2988,8 @@ const elsewhere = a => /^https?:$/.test(a.protocol) && a.origin !== location.ori
     e.preventDefault();
     askToLeave(a.href);
 }, true));
+// In the help on variables of the editor and the wizard
+document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-dtcodes]')) showDateCodes(); });
 $('#openSearch').onclick = openSearch;
 $('#printerChip').onclick = openPrinterPanel;
 $('#themeToggle').onclick = () => {

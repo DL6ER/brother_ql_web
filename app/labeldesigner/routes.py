@@ -26,7 +26,7 @@ from .drivers import DEVICE_PATTERNS, resolution_problem
 from .drivers.devices import flock_within
 from .printer import PrinterQueue, get_ptr_status
 from .drivers.labels import FormFactor
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, parse_color
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -237,6 +237,7 @@ def index():
             },
             # What the label designer offers for each printer model
             'models': {model: drivers.for_model(model).capabilities(model) for model in MODELS},
+            'datetime_codes': datetime_codes(),
             'preview_parallel': max(1, min(16, cpus - 1)),
         },
         version=_asset_version(),

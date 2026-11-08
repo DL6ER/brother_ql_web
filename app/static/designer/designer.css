@@ -433,6 +433,11 @@ select.mini.lsp { max-width: 4rem; }
 .dialog-h { display: flex; align-items: flex-start; gap: 1rem; }
 .dialog-h h2 { font-size: 1.4rem; }
 .dialog-h p { margin-top: .25rem; color: var(--muted); }
+/* The date and time codes */
+.codes { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.codes th { text-align: left; font-weight: 600; color: var(--muted); padding: 0 .6rem .35rem 0; }
+.codes td { padding: .35rem .6rem .35rem 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.codes td:last-child { white-space: nowrap; }
 .links { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .opt { border: 1px solid var(--line); border-radius: 12px; padding: 1rem; display: flex; flex-direction: column; gap: .7rem; min-width: 0; }
 .opt h3 { font-size: 1rem; display: flex; align-items: center; gap: .55rem; }

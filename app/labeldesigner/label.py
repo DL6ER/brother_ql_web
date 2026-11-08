@@ -172,6 +172,43 @@ def _is_digits(text: str) -> bool:
     return text.isascii() and text.isdigit()
 
 
+# The codes of {{datetime:<format>}} the label designer explains. Their
+# examples come from the strftime() that fills in the labels, for a day that
+# tells day and month apart.
+DATETIME_CODES = (
+    ('%d', 'Day of the month'),
+    ('%-d', 'Day of the month, no leading zero'),
+    ('%a', 'Weekday, short'),
+    ('%A', 'Weekday'),
+    ('%u', 'Weekday as a number, Monday is 1'),
+    ('%j', 'Day of the year'),
+    ('%m', 'Month'),
+    ('%-m', 'Month, no leading zero'),
+    ('%b', 'Month name, short'),
+    ('%B', 'Month name'),
+    ('%y', 'Year, two digits'),
+    ('%Y', 'Year'),
+    ('%V', 'Calendar week, starting on Monday'),
+    ('%H', 'Hour, 24-hour clock'),
+    ('%I', 'Hour, 12-hour clock'),
+    ('%p', 'AM or PM'),
+    ('%M', 'Minute'),
+    ('%S', 'Second'),
+    ('%x', 'Date'),
+    ('%X', 'Time'),
+    ('%%', 'A % sign'),
+)
+DATETIME_EXAMPLE = datetime.datetime(2026, 3, 7, 14, 5, 9)
+
+
+def datetime_codes() -> dict:
+    """The codes with what they stand for and their example, and the time of
+    the examples."""
+    when = DATETIME_EXAMPLE
+    return {'example': f'{when:%A}, {when.day} {when:%B %Y, %H:%M:%S}',
+            'codes': [[code, meaning, when.strftime(code)] for code, meaning in DATETIME_CODES]}
+
+
 def _iso_date(value: str) -> datetime.date | None:
     """value as a date if it is one like 2026-11-03."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII):
