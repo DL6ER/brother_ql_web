@@ -117,7 +117,7 @@ def test_loaded_label_can_be_chosen(designer):
     # The printer reports 29 x 90 mm labels, the new label is for 62 mm tape
     fake_printer(designer, media_width=29, media_length=90)
     type_line(designer, 0, 'Hello')
-    assert designer.inner_text('.tape-note') == 'The QL-800 has 29 x 90 mm loaded. Switch to it'
+    assert designer.inner_text('.tape-note') == 'The Brother QL-800 has 29 x 90 mm loaded. Switch to it'
     # Printing asks first
     designer.click('#edPrint')
     designer.wait_for_selector('.sheet h2:text-is("This label needs 62 mm endless")')
@@ -146,7 +146,7 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     # Kept after reloading, the label sizes follow its model
     designer.reload()
     wait_for_preview(designer)
-    assert designer.inner_text('#printerChip b') == 'QL-1100'
+    assert designer.inner_text('#printerChip b') == 'Brother QL-1100'
     offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
     assert '103x164' in offered and '62red' not in offered
 
@@ -166,13 +166,13 @@ def test_no_600_dpi_on_the_ql1100(designer):
     assert designer.evaluate("() => formFor(S.edit.design, 1, true).get('high_res')") == '0'
     designer.click('#printerChip')
     assert designer.is_disabled('[data-q="high"]') and 'on' in designer.get_attribute('[data-q="high"]', 'class')
-    assert 'The QL-1100 cannot print at 600 dpi.' in designer.inner_text('.settings')
+    assert 'The Brother QL-1100 cannot print at 600 dpi.' in designer.inner_text('.settings')
     # Nor can a P-touch printer
     designer.keyboard.press('Escape')
     fake_printer(designer, model='PT-P750W', media_width=24)
     designer.click('#printerChip')
     assert designer.is_disabled('[data-q="high"]')
-    assert 'The PT-P750W cannot print at 600 dpi.' in designer.inner_text('.settings')
+    assert 'The Brother PT-P750W cannot print at 600 dpi.' in designer.inner_text('.settings')
 
 
 def test_ptouch_tape_is_shown_at_180_dpi(designer):
@@ -267,7 +267,7 @@ def test_printer_that_is_not_connected_is_reported(designer):
     # without a word
     designer.evaluate("() => localStorage.setItem('designer_printer', JSON.stringify('file:///dev/usb/lp7'))")
     designer.reload()
-    designer.wait_for_selector('#toast:has-text("/dev/usb/lp7 is not connected, labels print on the QL-800")')
+    designer.wait_for_selector('#toast:has-text("/dev/usb/lp7 is not connected, labels print on the Brother QL-800")')
 
 
 def test_black_and_red_roll_is_not_a_mismatch(designer):
@@ -284,7 +284,7 @@ def test_loaded_label_that_is_not_offered(designer):
     assert designer.locator('.tape-note').count() == 0
     assert not designer.evaluate("() => [...document.querySelectorAll('#edSize option')].some(o => o.textContent.includes('in the printer'))")
     fake_printer(designer, media_width=40, media_length=0)
-    assert designer.inner_text('.tape-note') == 'The QL-800 reports 40 mm tape, which is not offered here.'
+    assert designer.inner_text('.tape-note') == 'The Brother QL-800 reports 40 mm tape, which is not offered here.'
     designer.click('#printerChip')
     # The assumed tape is named, not called the default
     assert designer.inner_text('.pp #setTape + .muted') == 'The printer reports 40 mm tape, which is not offered here. ' + designer.evaluate('() => sizeName(S.tape)') + ' is assumed.'
@@ -461,6 +461,20 @@ def test_printer_of_another_driver_gets_what_it_offers(designer):
     assert designer.get_attribute('.pp .cut-strip', 'title') == 'Cut after the last label.'
     never = designer.locator('.pp [data-c="cut"][data-v="none"]')
     assert never.is_disabled() and never.get_attribute('title') == 'It keeps them.'
+    # A driver that names no maker: the model alone
+    assert designer.evaluate("() => printerName(S.printer)") == 'Other-1'
+
+
+def test_printers_are_named_with_their_maker(designer):
+    designer.click('#printerChip')
+    designer.wait_for_selector('.plist')
+    assert 'Brother QL-800' in designer.inner_text('.plist')
+    assert designer.inner_text('#printerChip b') == 'Brother QL-800'
+    # Phones show the model only
+    designer.set_viewport_size({'width': 390, 'height': 800})
+    assert designer.inner_text('#printerChip b') == 'QL-800'
+    # Also a printer of another maker
+    assert designer.evaluate("() => printerName({ model: 'Q00' })") == 'PUQU Q00'
 
 
 def test_cutting_saved_through_the_api(designer, server):

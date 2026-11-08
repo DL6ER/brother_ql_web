@@ -55,6 +55,7 @@ def label_rows(label, label_size: str) -> tuple[Image.Image, list[list[int]]]:
 
 
 class Puqu(Driver):
+    vendor = 'PUQU'
     models = MODELS
     labels = LABELS
     label_names = NAMES
