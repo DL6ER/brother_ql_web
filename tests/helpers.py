@@ -107,3 +107,18 @@ def _pdf(*sizes) -> bytes:
     pdf = io.BytesIO()
     pages[0].save(pdf, format='PDF', save_all=True, append_images=pages[1:], resolution=100)
     return pdf.getvalue()
+
+
+def sent_raster(monkeypatch) -> list:
+    """The raster data of every job printed on a Brother printer, also on the
+    simulator."""
+    from app.labeldesigner.drivers.brother import BrotherRaster
+    sent = []
+    render = BrotherRaster.render
+
+    def capture(self, queue, entries, keep=None):
+        job = render(self, queue, entries, keep)
+        sent.append(job.data)
+        return job
+    monkeypatch.setattr(BrotherRaster, 'render', capture)
+    return sent

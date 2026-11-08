@@ -19,9 +19,15 @@ import pytest
 from PIL import Image
 
 from app import create_app
-from app.labeldesigner import printer, vc500w
+from app.labeldesigner import drivers, printer
 from app.labeldesigner.label import LabelOrientation
 from app.labeldesigner.label_names import LABELS
+from app.labeldesigner.drivers import devices
+from app.labeldesigner.drivers.brother import network
+from app.labeldesigner.drivers.brother import usb
+from app.labeldesigner.drivers.vc500w import image as vc_image
+from app.labeldesigner.drivers.vc500w import protocol as vc500w
+from app.labeldesigner.drivers.vc500w import status as vc_status
 from tests.helpers import make_client
 
 CONFIG = b'''<?xml version="1.0" encoding="UTF-8"?>
@@ -192,7 +198,7 @@ def fake(request, monkeypatch):
     printer_ = FakeVC500W(usb=request.param == 'usb')
     for name, value in (('POLL_INTERVAL', 0.01), ('DATA_DELAY', 0.05), ('FILL_WAIT', 0.05), ('START_TIMEOUT', 0.05)):
         monkeypatch.setattr(vc500w, name, value)
-    monkeypatch.setattr(printer, '_status_cache', {})
+    monkeypatch.setattr(devices, 'status_cache', {})
     monkeypatch.setattr(vc500w, '_answers', {})
     yield printer_
     printer_.close()
@@ -487,7 +493,7 @@ def _image(width, height):
 
 
 def _printed(image, orientation, label_size='vc25', mode='quality'):
-    return printer._vc500w_image(_Label(image, orientation), label_size, mode)
+    return vc_image.label_image(_Label(image, orientation), label_size, mode)
 
 
 def _is(pixel, color):
@@ -628,20 +634,20 @@ def test_connection_through_the_label_designer(client, fake, monkeypatch):
 
 def test_stage_of_a_running_job(client, fake):
     path = client.application.config['PRINTER_PRINTER']
-    key = printer._lock_key(path)
-    printer._status_cache[key] = printer._network_printer(path, 'VC-500W')
-    printer._vc500w_jobs[key] = {'stage': 'Preheating', 'label': 2, 'labels': 3}
-    vc500w._answers[printer._vc500w_target(path)] = collections.deque([True, False])
+    key = devices.lock_key(path)
+    devices.status_cache[key] = network.network_printer(path, 'VC-500W')
+    vc_status.jobs[key] = {'stage': 'Preheating', 'label': 2, 'labels': 3}
+    vc500w._answers[vc_status.target(path)] = collections.deque([True, False])
     try:
-        with printer.device_lock(path):
+        with devices.device_lock(path):
             # Without waiting for the printer the job holds
             started = time.monotonic()
             status = client.get('/labeldesigner/api/printer_status').get_json()
-            assert time.monotonic() - started < printer.STATUS_LOCK_TIMEOUT / 2
+            assert time.monotonic() - started < devices.STATUS_LOCK_TIMEOUT / 2
     finally:
-        printer._vc500w_jobs.clear()
+        vc_status.jobs.clear()
     assert status['printers'][0]['job'] == {'stage': 'Preheating', 'label': 2, 'labels': 3}
-    assert status['printers'][0]['status_type'] == printer.BUSY_STATUS_TYPE
+    assert status['printers'][0]['status_type'] == devices.BUSY_STATUS_TYPE
     # How well it is reached, also while the job holds it
     assert status['printers'][0].get('weak_connection') is (True if path.startswith('vc500w://') else None)
 
@@ -662,20 +668,37 @@ def test_vc500w_among_the_configured_printers(client, fake, monkeypatch):
     assert (simulator['model'], simulator['color_support']) == ('QL-800', False)
 
 
+def test_vc500w_configured_as_a_tcp_printer(tmp_path):
+    # Reached on port 9100 like vc500w://<host>, not asked over SNMP or IPP
+    printer_ = FakeVC500W()
+    try:
+        device = f'tcp://127.0.0.1:{printer_.port}'
+        client = make_client(tmp_path)
+        client.application.config['PRINTERS'] = [('VC-500W', device)]
+        vc = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+        assert (vc['media_width'], vc['tape_remaining_mm'], vc['weak_connection']) == (25, 4596, False)
+        response = client.post('/labeldesigner/api/print', data={
+            'printer': device, 'label_size': 'vc25', 'print_type': 'text', 'text': TEXT})
+        assert response.get_json() == {'success': True}
+        assert len(printer_.images) == 1
+    finally:
+        printer_.close()
+
+
 def test_vc500w_on_usb_is_detected_by_its_device_id(tmp_path, monkeypatch):
     printer_ = FakeVC500W(usb=True)
     try:
         ids = tmp_path / 'lp3'
         ids.write_text('MFG:Brother;MDL:VC-500W;CID:Brother_VC-500W;CMD:LABEL;CLS:PRINTER;SN:000000000000000\n')
-        monkeypatch.setattr(printer, 'USB_DEVICE_ID', str(tmp_path / '{name}'))
+        monkeypatch.setattr(devices, 'USB_DEVICE_ID', str(tmp_path / '{name}'))
         monkeypatch.setattr(printer, 'USB_PRINTER_DEVICES', [printer_.path])
-        monkeypatch.setattr(printer, '_usb_device_id', lambda device: ids.read_text() if printer_.path in device else '')
+        monkeypatch.setattr(devices, 'usb_device_id', lambda device: ids.read_text() if printer_.path in device else '')
         monkeypatch.setattr(printer, '_last_scan_ts', 0)
-        monkeypatch.setattr(printer, '_status_cache', {})
+        monkeypatch.setattr(devices, 'status_cache', {})
 
         def ql_query(*args):
             raise AssertionError('A VC-500W must not get the commands of a QL printer')
-        monkeypatch.setattr(printer, 'get_printer', ql_query)
+        monkeypatch.setattr(usb, 'get_printer', ql_query)
         client = make_client(tmp_path)
         client.application.config['PRINTER_PRINTER'] = '?'
         status = client.get('/labeldesigner/api/printer_status').get_json()
@@ -697,14 +720,14 @@ def test_vc500w_on_the_network_is_detected_by_its_announcement(tmp_path, monkeyp
         monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', True)
         monkeypatch.setattr(printer, '_discovered', None)
         monkeypatch.setattr(printer, '_last_scan_ts', 0)
-        monkeypatch.setattr(printer, '_status_cache', {})
+        monkeypatch.setattr(devices, 'status_cache', {})
         monkeypatch.setattr(printer.mdns, 'discover', lambda: [
             {'name': 'Brother VC-500W._ipp._tcp.local', 'service': '_ipp._tcp.local', 'address': '127.0.0.1',
              'port': 631, 'txt': {'ty': 'print', 'product': '(Brother VC-500W)', 'kind': 'roll'}}])
 
         def ql_query(*args, **kwargs):
             raise AssertionError('A VC-500W must not get the commands of a QL printer')
-        monkeypatch.setattr(printer, 'query_network_status', ql_query)
+        monkeypatch.setattr(network, 'query_network_status', ql_query)
         client = make_client(tmp_path)
         client.application.config['PRINTER_PRINTER'] = '?'
         status = client.get('/labeldesigner/api/printer_status').get_json()
@@ -721,15 +744,18 @@ def test_vc500w_on_the_network_is_detected_by_its_announcement(tmp_path, monkeyp
 def test_device_id_of_a_usb_printer(tmp_path, monkeypatch):
     (tmp_path / 'lp0').write_text('MFG:Brother;MDL:VC-500W;CMD:LABEL;\n')
     (tmp_path / 'lp1').write_text('MFG:Brother;CMD:PT-CBP;MDL:QL-1100;CLS:PRINTER;\n')
-    monkeypatch.setattr(printer, 'USB_DEVICE_ID', str(tmp_path / '{name}'))
-    assert printer.is_vc500w('file:///dev/usb/lp0') and printer.is_vc500w('/dev/usb/lp0')
-    assert not printer.is_vc500w('file:///dev/usb/lp1')
+    monkeypatch.setattr(devices, 'USB_DEVICE_ID', str(tmp_path / '{name}'))
+    vc = drivers.VC500W
+    assert vc.model_of('file:///dev/usb/lp0') == vc.model_of('/dev/usb/lp0') == 'VC-500W'
+    assert drivers.resolve('file:///dev/usb/lp0', 'QL-800') == (vc, 'VC-500W')
+    assert drivers.resolve('file:///dev/usb/lp1', 'QL-1100') == (drivers.BROTHER, 'QL-1100')
     # No device ID, e.g. without /sys
-    assert not printer.is_vc500w('file:///dev/usb/lp2')
-    assert printer.is_vc500w('file:///dev/usb/lp2', 'VC-500W') and printer.is_vc500w('vc500w://192.0.2.1')
-    assert not printer.is_vc500w('simulation', 'VC-500W')
+    assert vc.model_of('file:///dev/usb/lp2') is None
+    assert drivers.resolve('file:///dev/usb/lp2', 'VC-500W') == (vc, 'VC-500W')
+    assert drivers.resolve('vc500w://192.0.2.1', 'QL-800') == (vc, 'VC-500W')
+    assert vc.model_of('simulation') is None
     # Only the device IDs of USB printers are read
-    assert not printer.is_vc500w('/dev/usb/lp/../../..' + str(tmp_path / 'lp0'))
+    assert vc.model_of('/dev/usb/lp/../../..' + str(tmp_path / 'lp0')) is None
 
 
 def test_only_devices_are_opened(tmp_path):
@@ -742,7 +768,7 @@ def test_usb_device_is_never_the_controlling_terminal():
     # In a session without a terminal, like the server in a container
     code = '''
 import errno, os
-from app.labeldesigner import vc500w
+from app.labeldesigner.drivers.vc500w import protocol as vc500w
 master, slave = os.openpty()
 vc500w._Device(os.ttyname(slave), 0.1)
 try:
@@ -800,7 +826,7 @@ def test_cut_options(client, fake, cutting, cuts):
 
 def test_labels_are_never_left_uncut(client, fake, tmp_path):
     # The printer would keep them until the next print, which follows them uncut
-    from app.labeldesigner.label_names import NEVER_CUT
+    from app.labeldesigner.drivers.vc500w import NEVER_CUT
     client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path)
     for cutting in ({'cut': 'none'}, {'cut': 'none', 'half_cut': '0'}):
         response = client.post('/labeldesigner/api/print', data={

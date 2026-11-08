@@ -1,0 +1,110 @@
+"""Brother QL and P-touch printers, which speak Brother's raster protocol,
+on USB (usb.py) and on the network (network.py)."""
+
+import logging
+import re
+
+from brother_ql.backends.helpers import send as send_raster
+from brother_ql.labels import Color
+
+from .. import devices
+from ..base import Driver
+from . import labels as tables, names, network, raster, usb
+
+logger = logging.getLogger(__name__)
+
+
+class BrotherRaster(Driver):
+    models = tuple(tables.MODELS)
+    labels = tables.LABELS
+    label_names = names.LABEL_NAMES
+    hidden_labels = tables.HIDDEN_LABELS
+    device_patterns = (
+        re.compile(r'(file://)?/dev/usb/lp\d+'),
+        re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
+        re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
+    )
+    mac_address_prefixes = network.MAC_ADDRESS_PREFIXES
+
+    def fits(self, label, model):
+        return tables.label_fits(label, model)
+
+    def colors(self, model):
+        return 'red' if model in tables.MODELS and tables.MODELS[model].two_color else 'black'
+
+    def palette(self, label):
+        return 'red' if label.color == Color.BLACK_RED_WHITE else 'black'
+
+    def dpi(self, high_res):
+        return 600 if high_res else 300
+
+    def label_dpi(self, label):
+        # P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
+        # command reference of the PT-E550W, PT-P750W and PT-P710BT)
+        dpi = 180 if label.identifier in tables.PTOUCH_LABELS else 300
+        return dpi, dpi * 2
+
+    def capabilities(self, model):
+        ptouch = model.startswith('PT-')
+        return dict(super().capabilities(model), qualities=['fast', 'quality', 'high'],
+                    high_res=not tables.resolution_problem(model, True), half_cut=model in tables.HALF_CUTTERS,
+                    chain=ptouch, feed_waste=ptouch)
+
+    def resolution_problem(self, model, high_res):
+        return tables.resolution_problem(model, high_res)
+
+    def status(self, device, model, unconfirmed=False):
+        if device.startswith('tcp://'):
+            return network.query_network_status(device, model, label_printers_only=unconfirmed)
+        return usb.query_status(device, model)
+
+    def announced(self, service):
+        return network.announced(service)
+
+    def network_device(self, address):
+        return f'tcp://{address}'
+
+    def render(self, queue, entries, keep=None):
+        return raster.render(queue, entries, keep)
+
+    def send(self, queue, job) -> str:
+        """Send the raster data, the status messages of a USB printer and the
+        IPP status of a network printer tell whether it was printed."""
+        device = queue.device_specifier
+        try:
+            network_printer = device.startswith('tcp://')
+            if network_printer:
+                # Not sent to a printer that cannot take it, e.g. with an
+                # open cover, the job would be lost
+                problem = network.printer_problem(device, queue.model)
+                if problem:
+                    logger.warning('Not printing on %s: %s', device, problem)
+                    return problem
+            logger.info("Sending %d bytes to printer at %s", len(job.data), device)
+            if network_printer:
+                send_raster(job.data, device)
+                logger.info('Sent %d bytes to printer %s', len(job.data), device)
+                # Port 9100 gives no answer, IPP tells how the job ended
+                message = network.job_result(device, queue.model, job.page_lengths)
+                if message:
+                    logger.warning('Printing failed: %s', message)
+                    return message
+                return ""
+            info = usb.send_job(job.data, device, job.page_lengths)
+            logger.info('Sent %d bytes to printer %s', len(job.data), device)
+            logger.info('Printer response: %s', str(info))
+            if info.get('did_print') and info.get('ready_for_next_job'):
+                logger.info('Label printed successfully and printer is ready for next job')
+                return ""
+            message = usb.print_failure(info)
+            logger.warning('Printing failed: %s', message)
+            return message
+        except Exception as e:
+            logger.exception("Exception during sending to printer: %s", e)
+            reason = devices.unanswered_reason(e)
+            if reason:
+                return f"Could not send the label to the printer: {reason}"
+            return "Could not send the label to the printer, the log of the server names the reason"
+
+
+DRIVER = BrotherRaster()

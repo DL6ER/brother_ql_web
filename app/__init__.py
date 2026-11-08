@@ -46,7 +46,7 @@ def _port(value: str) -> int:
 def _printer_list(value: str) -> list[tuple[str, str]]:
     """Parse "MODEL=DEVICE,MODEL=DEVICE" into (model, device) pairs."""
     from .labeldesigner.label_names import MODELS
-    models = [model.identifier for model in MODELS]
+    models = list(MODELS)
     printers = []
     for entry in value.split(','):
         if not entry.strip():
@@ -162,7 +162,7 @@ def parse_args(app, argv=None):
     """Apply command-line arguments to the app config. Only called by run.py,
     WSGI servers like gunicorn pass their own arguments."""
     from .labeldesigner.label_names import MODELS
-    models = [model.identifier for model in MODELS]
+    models = list(MODELS)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--default-label-size', default=app.config['LABEL_DEFAULT_SIZE'],
                         help='Label size inserted in your printer. Defaults to 62.')

@@ -16,8 +16,8 @@ from PIL import Image
 from qrcode.exceptions import DataOverflowError
 
 from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
-from .label_names import NEVER_CUT, label_size_problems
-from .printer import MODELS_WITHOUT_600_DPI, resolution_problem
+from .label_names import cut_problems, label_size_problems
+from .drivers import MODELS, resolution_problem
 
 IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
 # A detected printer whose status names no model brother_ql knows
@@ -60,9 +60,9 @@ MESSAGES = (
     UNKNOWN_MODEL,
     'print_count must be greater than 0',
     *check_digit_problems(),
-    *(resolution_problem(model, True) for model in MODELS_WITHOUT_600_DPI),
+    *(problem for model in MODELS if (problem := resolution_problem(model, True))),
     *label_size_problems(),
-    NEVER_CUT,
+    *cut_problems(),
 )
 
 # Errors whose text names details, by their text. They may span lines, a

@@ -7,7 +7,10 @@ from brother_ql.conversion import convert
 from brother_ql.labels import ALL_LABELS
 from brother_ql.raster import BrotherQLRaster
 
-from app.labeldesigner.label_names import LABEL_NAMES, LABELS, PTOUCH_LABELS, check_label_size, label_printers
+from app.labeldesigner import drivers
+from app.labeldesigner.drivers.brother.labels import PTOUCH_LABELS
+from app.labeldesigner.drivers.vc500w import NEVER_WHY
+from app.labeldesigner.label_names import LABELS, check_label_size, label_printers
 from tests.helpers import make_client
 
 
@@ -17,11 +20,13 @@ def _label(identifier):
 
 def test_every_label_size_has_a_name():
     # A new label size in brother_ql needs a name with its Brother code
-    assert {label.identifier for label in LABELS} == set(LABEL_NAMES)
+    for driver in drivers.DRIVERS:
+        assert {label.identifier for label in driver.labels} == set(driver.label_names)
 
 
 def test_names_are_unique():
-    assert len(set(LABEL_NAMES.values())) == len(LABEL_NAMES)
+    names = [name for driver in drivers.DRIVERS for name in driver.label_names.values()]
+    assert len(set(names)) == len(names) == len(LABELS)
 
 
 def test_label_printers():
@@ -65,6 +70,21 @@ def test_label_designer_shows_brother_codes_and_printers(tmp_path):
     assert sizes['103x164']['models'] == ['QL-1100', 'QL-1110NWB']
     assert sizes['103']['models'] == []
     assert sizes['pt36']['models'] == ['PT-P900W', 'PT-P950NW']
+
+
+def test_label_designer_gets_what_each_printer_offers(tmp_path):
+    html = make_client(tmp_path).get('/labeldesigner/').get_data(as_text=True)
+    config = json.loads(re.search(r'const DESIGNER_CONFIG = (.*);</script>', html).group(1))
+    sizes = {size['id']: size for size in config['label_sizes']}
+    assert (sizes['62']['dpi'], sizes['pt12']['dpi'], sizes['vc25']['dpi']) == ([300, 600], [180, 360], [320, 320])
+    models = config['models']
+    assert set(models) == set(drivers.MODELS)
+    assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'half_cut': False, 'chain': False,
+                                'feed_waste': False, 'job_stages': False, 'colors': 'red', 'never_cut': ''}
+    assert (models['QL-1100']['high_res'], models['PT-P700']['half_cut'], models['PT-P700']['chain']) == (False, False, True)
+    assert models['PT-E550W']['half_cut'] and models['PT-E550W']['feed_waste']
+    assert models['VC-500W'] == {'qualities': ['fast', 'quality'], 'high_res': False, 'half_cut': True, 'chain': False,
+                                 'feed_waste': False, 'job_stages': True, 'colors': 'color', 'never_cut': NEVER_WHY}
 
 
 def test_check_label_size():

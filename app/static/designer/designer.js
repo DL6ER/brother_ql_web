@@ -81,9 +81,11 @@ const isEndless = s => s.form === 'endless' || s.form === 'ptouch_endless';
 // TZe tape, only P-touch printers take it
 const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].models.every(m => m.startsWith('PT-'));
 // ZINK tape of the VC-500W, which prints in any color
-const VC500W = 'VC-500W';
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
-const isVc500w = p => !!p && p.model === VC500W;
+// What the server's driver of a printer model offers, see Driver.capabilities()
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '' };
+const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
+const printerCaps = () => capsOf(S.printer && S.printer.model);
 
 function sizeName(id) {
     const s = SIZES[id];
@@ -308,11 +310,10 @@ function b64ToBlob(b64, mime) {
 }
 
 // 600 dpi, if chosen and the printer can print it
-const highRes = () => S.settings.quality === 'high' && !(S.printer && (C.models_without_600_dpi.includes(S.printer.model) || isVc500w(S.printer)));
-// P-touch printers print at 180 dpi (section 2.3.1 of Brother's raster
-// command reference of the PT-E550W, PT-P750W and PT-P710BT), QL printers
-// at 300 dpi, or 600, the VC-500W at 320 dpi
-const dpiOf = (labelSize, high = highRes()) => isColorTape(labelSize) ? 320 : (isPtouch(labelSize) ? 180 : 300) * (high ? 2 : 1);
+const highRes = () => S.settings.quality === 'high' && (!S.printer || printerCaps().high_res);
+// The dots of a label size per inch as the server tells, e.g. 180 on TZe
+// tape, 300 or 600 on DK rolls
+const dpiOf = (labelSize, high = highRes()) => SIZES[labelSize] ? SIZES[labelSize].dpi[high ? 1 : 0] : 300 * (high ? 2 : 1);
 
 // How the labels of a job are cut: after each label, after the last one or
 // not at all, set for each printer. P-touch printers and the VC-500W also
@@ -321,39 +322,36 @@ const dpiOf = (labelSize, high = highRes()) => isColorTape(labelSize) ? 320 : (i
 // print cuts it off, without the tape fed before it.
 const CUTS = [['each', 'After each label'], ['last', 'After the last label'], ['none', 'Never']];
 const CUT_KEYS = ['cut', 'half_cut', 'chain'];
-const ptPrinter = () => !!(S.printer && String(S.printer.model || '').startsWith('PT-'));
-// P-touch printers with a half cutter, the PT-P700 has none
-const HALF_CUTTERS = ['PT-E550W', 'PT-P750W', 'PT-P900W', 'PT-P950NW'];
-const halfCutter = () => !!(S.printer && HALF_CUTTERS.includes(S.printer.model));
-// How a label size or the printer cuts: 'pt' for P-touch, 'vc' for the
-// VC-500W, '' for QL printers
-const cutterOf = id => isPtouch(id) ? 'pt' : isColorTape(id) ? 'vc' : '';
-const printerCutter = () => ptPrinter() ? 'pt' : isVc500w(S.printer) ? 'vc' : '';
-// The VC-500W does not leave labels uncut, the server refuses it: the next
-// print would follow them without a cut
-const neverWhy = k => k === 'vc' ? 'The VC-500W would keep the labels inside until the next print' : '';
+// How a label size is cut: as the printer cuts it if the printer prints
+// it, else as its first printer would
+const sizeCaps = id => {
+    const models = SIZES[id] ? SIZES[id].models : [], model = S.printer && S.printer.model;
+    return capsOf(models.includes(model) ? model : models[0]);
+};
+// A printer that does not leave labels uncut tells why, the server refuses it
+const neverWhy = k => k.never_cut || '';
 const usableCut = (c, k) => neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
-const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCutter());
+const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCaps());
 // P-touch printers cut after the last label unless chain printing, so not
 // cutting at all is chain printing, as the server decides it too
-const chainOf = (c, k) => k === 'pt' && (c.chain === '1' || c.cut === 'none');
-const halfOf = (c, k) => (k === 'vc' || k === 'pt' && halfCutter()) && c.half_cut === '1';
+const chainOf = (c, k) => k.chain && (c.chain === '1' || c.cut === 'none');
+const halfOf = (c, k) => k.half_cut && c.half_cut === '1';
 // A label saved with its own way of cutting keeps it
-const cutOf = d => d && d.cut ? usableCut({ cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' }, cutterOf(d.label_size)) : printerCut();
+const cutOf = d => d && d.cut ? usableCut({ cut: d.cut, half_cut: d.half_cut || '1', chain: d.chain || '0' }, sizeCaps(d.label_size)) : printerCut();
 
 function cutText(c, k) {
     const half = halfOf(c, k), chain = chainOf(c, k);
     const text = c.cut === 'each' ? 'Cut after each label'
         : (half ? 'Half cut between the labels, ' : '') + (c.cut === 'last' ? (half ? 'cut after the last' : 'Cut after the last label') : (half ? 'not cut' : 'Not cut'));
     return text + '.' + (chain ? ' The last label stays in the printer, the next print cuts it off.' : c.cut === 'none' ? ' The last label stays in the printer.' : '')
-        + (k === 'pt' ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
+        + (k.feed_waste ? ' The tape fed before the first label is waste, short labels get some extra tape.' : '');
 }
 
 // The same in a few words, next to the preview
 function cutShort(c, k) {
     const half = halfOf(c, k) && c.cut !== 'each';
-    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (k === 'pt' && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
+    return { each: 'Cut after each label', last: 'Cut after the last', none: 'Not cut' }[c.cut] + (half ? ', half cuts' : '') + (k.chain && c.chain === '1' && c.cut !== 'none' ? ', chain' : '');
 }
 
 // Three copies leaving the printer, as the display of a P-touch printer
@@ -371,7 +369,7 @@ function cutStrip(c, k) {
     // Copies of the same label, all A
     const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, k));
-    const waste = k === 'pt' ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
+    const waste = k.feed_waste ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
     // The printer on the left, as on its display: the tape leaves it to the
     // right, the waste first
     return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${lab}${mark(between)}${lab}${mark(between)}${lab}${waste}</span>`;
@@ -840,7 +838,7 @@ async function printJob(job) {
     updateCounts();
     toast(`Printing ${entry.copies} ${entry.copies === 1 ? 'label' : 'labels'}...`);
     // A VC-500W takes about 40 s for a label, what it does is shown meanwhile
-    const followed = isVc500w(S.printer) ? S.printer.path : '';
+    const followed = S.printer && printerCaps().job_stages ? S.printer.path : '';
     const follow = followed && setInterval(async () => {
         try {
             const data = await (await fetch(API + '/printer_status')).json();
@@ -1291,13 +1289,13 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : 'arrow-down-long'}"></i></div>`;
     // The cut after the label, in the corner how copies are cut
-    const cutter = cutterOf(design.label_size), cutNow = cutOf(design);
-    const cutEnd = chainOf(cutNow, cutter) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
+    const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
+    const cutEnd = chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
     const paper = blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${p.url}">`;
     el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
         <div class="cut"${cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
         <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>
-        <div class="cuts">${cutStrip(cutNow, cutter)}<span>${esc(cutShort(cutNow, cutter))}</span></div>`;
+        <div class="cuts">${cutStrip(cutNow, caps)}<span>${esc(cutShort(cutNow, caps))}</span></div>`;
     shown();
     if (onWarning && newest()) onWarning(p.warning, false, p);
 }
@@ -2187,8 +2185,8 @@ function cutSettings(attr, c, k, withCut = true) {
     const seg = (k, name, opts, why = '', on = c[k]) => `<div${why ? ` title="${esc(why)}"` : ''}><span class="label-s${why ? ' off' : ''}">${name}</span>
         <div class="seg wrap">${opts.map(([v, n, off]) => `<button type="button" data-${attr}="${k}" data-v="${v}" class="${on === v ? 'on' : ''}"${off ? ` title="${esc(off)}"` : ''}${why || off ? ' disabled' : ''}>${n}</button>`).join('')}</div></div>`;
     const onOff = [['1', 'On'], ['0', 'Off']];
-    const halfWhy = k === 'vc' ? '' : k !== 'pt' ? 'Only for P-touch printers and the VC-500W' : !halfCutter() ? 'This printer has no half cutter' : '';
-    const chainWhy = k !== 'pt' ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
+    const halfWhy = k.half_cut ? '' : 'This printer has no half cutter';
+    const chainWhy = !k.chain ? 'Only for P-touch printers' : c.cut === 'none' ? 'Always on when not cutting, else the printer cuts after the last label' : '';
     return (withCut ? seg('cut', 'Cutting', CUTS.map(([v, n]) => [v, n, v === 'none' ? neverWhy(k) : ''])) : '')
         + seg('half_cut', 'Half cut between labels', onOff, halfWhy, halfOf(c, k) ? '1' : halfWhy ? '0' : c.half_cut)
         + seg('chain', 'Chain printing, the last label stays in the printer', onOff, chainWhy, chainOf(c, k) ? '1' : chainWhy ? '0' : c.chain);
@@ -2199,8 +2197,8 @@ function cutField(d) {
     const pc = CUTS.find(x => x[0] === printerCut().cut)[1].toLowerCase();
     return `<div class="cutting"><label class="label-s" for="edCut">Cutting</label>
         <select class="field" id="edCut"><option value="">Like the printer: ${esc(pc)}</option>
-        ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}${v === 'none' && neverWhy(cutterOf(d.label_size)) ? ' disabled' : ''}>${n}, saved with the label</option>`).join('')}</select>
-        ${d.cut ? cutSettings('lcut', cutOf(d), cutterOf(d.label_size), false) : ''}</div>`;
+        ${CUTS.map(([v, n]) => `<option value="${v}"${d.cut === v ? ' selected' : ''}${v === 'none' && neverWhy(sizeCaps(d.label_size)) ? ' disabled' : ''}>${n}, saved with the label</option>`).join('')}</select>
+        ${d.cut ? cutSettings('lcut', cutOf(d), sizeCaps(d.label_size), false) : ''}</div>`;
 }
 
 function gapField(d) {
@@ -2827,9 +2825,10 @@ const listJoin = a => a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' 
 
 function settingsCard() {
     const p = S.printer;
-    const vc = isVc500w(p), noHigh = p && C.models_without_600_dpi.includes(p.model);
-    // Without 600 dpi the VC-500W prints those labels in quality
-    const q = vc && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut(), cutter = printerCutter();
+    const caps = printerCaps(), offersHigh = caps.qualities.includes('high'), noHigh = p && offersHigh && !caps.high_res;
+    // Printers without 600 dpi, e.g. the VC-500W, print those labels in quality
+    const q = !offersHigh && S.settings.quality === 'high' ? 'quality' : S.settings.quality, c = printerCut();
+    const without600 = Object.keys(C.models).filter(m => C.models[m].qualities.includes('high') && !C.models[m].high_res).sort();
     const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. The default is assumed.`
         : S.tapeAssumed ? 'The printer does not report its tape, the default is assumed.' : 'Read from the printer.';
     return `<div class="settings">
@@ -2842,20 +2841,20 @@ function settingsCard() {
             <div class="seg">
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}">Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}">Quality</button>
-            ${vc ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
+            ${!offersHigh ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
             ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
-                ${vc ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
+                ${caps.colors === 'color' ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
                 <p>A label takes about 40 seconds, most of it to prepare and preheat. With "After each label" take every label out of the printer, the next one waits for that. "After the last label" keeps the labels together on a strip.</p>`
                 : `<p>Fast printing is quicker, the print is a little less sharp.</p>
-                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(C.models_without_600_dpi))} cannot print at 600 dpi.</p>`}
+                <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(without600))} cannot print at 600 dpi.</p>`}
             </div></div>
         <div><label class="label-s" for="setDate">Dates on labels</label>
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
-        <div class="cutting">${cutSettings('c', c, cutter)}
-            <div class="cut-show">${cutStrip(c, cutter)}<span class="muted small">${esc(cutText(c, cutter))} Labels saved with their own cutting keep it.</span></div></div>
+        <div class="cutting">${cutSettings('c', c, caps)}
+            <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))} Labels saved with their own cutting keep it.</span></div></div>
     </div>`;
 }
 

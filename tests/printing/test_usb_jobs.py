@@ -7,7 +7,7 @@ import threading
 import pytest
 from brother_ql.backends import helpers, linux_kernel
 
-from app.labeldesigner import printer
+from app.labeldesigner.drivers.brother import usb
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 REPLY, COMPLETED, PHASE_CHANGE, ERROR = 0x00, 0x01, 0x06, 0x02
@@ -105,13 +105,13 @@ class QL700(FakePrinter):
 @pytest.fixture
 def clock(monkeypatch):
     clock = Clock()
-    monkeypatch.setattr(printer, 'time', clock)
+    monkeypatch.setattr(usb, 'time', clock)
     return clock
 
 
 def send(monkeypatch, fake, page_lengths, data=b'job'):
-    monkeypatch.setattr(printer, 'get_printer', lambda device: fake)
-    info = printer.send_job(data, 'file:///dev/usb/lp0', page_lengths)
+    monkeypatch.setattr(usb, 'get_printer', lambda device: fake)
+    info = usb.send_job(data, 'file:///dev/usb/lp0', page_lengths)
     assert fake.released
     return info
 
@@ -140,16 +140,16 @@ def test_silence_is_given_up_after_the_time_a_page_takes(clock, monkeypatch):
     start = clock.now
     info = send(monkeypatch, fake, [50])
     assert not info['did_print']
-    assert clock.now - start == pytest.approx(printer.STATUS_WAIT + 50 / printer.SLOWEST_PRINT_SPEED, abs=0.1)
-    assert printer._print_failure(info) == 'The printer did not confirm that the label was printed (last status: Phase change, Printing state)'
+    assert clock.now - start == pytest.approx(usb.STATUS_WAIT + 50 / usb.SLOWEST_PRINT_SPEED, abs=0.1)
+    assert usb.print_failure(info) == 'The printer did not confirm that the label was printed (last status: Phase change, Printing state)'
 
 
 def test_printer_that_does_not_answer(clock, monkeypatch):
     fake = FakePrinter(clock, [])
     start = clock.now
     info = send(monkeypatch, fake, [100])
-    assert clock.now - start == pytest.approx(printer.STATUS_WAIT + 100 / printer.SLOWEST_PRINT_SPEED, abs=0.1)
-    assert printer._print_failure(info) == 'The printer did not answer after receiving the label, check whether it was printed'
+    assert clock.now - start == pytest.approx(usb.STATUS_WAIT + 100 / usb.SLOWEST_PRINT_SPEED, abs=0.1)
+    assert usb.print_failure(info) == 'The printer did not answer after receiving the label, check whether it was printed'
 
 
 def test_error_while_printing(clock, monkeypatch):
@@ -157,7 +157,7 @@ def test_error_while_printing(clock, monkeypatch):
     fake = FakePrinter(clock, [(0, status(PHASE_CHANGE, PRINTING)), (5, status(ERROR, error=0x10)), (0, status(COMPLETED))])
     info = send(monkeypatch, fake, [100])
     assert not info['did_print']
-    assert printer._print_failure(info).startswith('The printer reports: Cover opened while printing')
+    assert usb.print_failure(info).startswith('The printer reports: Cover opened while printing')
 
 
 def test_every_label_of_a_job_is_confirmed(clock, monkeypatch):
@@ -202,7 +202,7 @@ def test_every_label_of_a_job_is_confirmed_as_reported(clock, monkeypatch, messa
 def test_labels_reported_while_the_job_is_written(clock, monkeypatch):
     # A QL-700 confirmed 2 of 12 labels, the messages of the others came while
     # the job was written and were never read
-    monkeypatch.setattr(printer, 'WRITE_CHUNK', 1)
+    monkeypatch.setattr(usb, 'WRITE_CHUNK', 1)
     fake = QL700(clock, 12)
     info = send(monkeypatch, fake, [50] * 12, data=bytes(12))
     assert (info['did_print'], info['ready_for_next_job'], info['confirmed']) == (True, True, 12)
@@ -212,14 +212,14 @@ def test_labels_of_a_job_that_were_not_confirmed(clock, monkeypatch):
     fake = FakePrinter(clock, page() + page())
     info = send(monkeypatch, fake, [50, 50, 50])
     assert not info['did_print']
-    assert printer._print_failure(info) == 'The printer confirmed 2 of 3 labels, check whether the others were printed'
+    assert usb.print_failure(info) == 'The printer confirmed 2 of 3 labels, check whether the others were printed'
 
 
 def test_messages_left_from_before_do_not_confirm_a_job(clock, monkeypatch):
     fake = FakePrinter(clock, [], left_over=status(COMPLETED) + status(PHASE_CHANGE, WAITING))
     info = send(monkeypatch, fake, [50])
     assert not info['did_print']
-    assert printer._print_failure(info) == 'The printer did not answer after receiving the label, check whether it was printed'
+    assert usb.print_failure(info) == 'The printer did not answer after receiving the label, check whether it was printed'
 
 
 def test_messages_read_in_pieces_and_with_noise(clock, monkeypatch):
@@ -237,7 +237,7 @@ def test_job_is_written_in_pieces(clock, monkeypatch):
     fake.write = lambda data: writes.append(len(data)) or real_write(data)
     data = bytes(range(256)) * 200
     send(monkeypatch, fake, [50], data=data)
-    assert max(writes) <= printer.WRITE_CHUNK and fake.written == data
+    assert max(writes) <= usb.WRITE_CHUNK and fake.written == data
 
 
 def test_long_labels_printed_through_the_api(clock, monkeypatch, tmp_path):

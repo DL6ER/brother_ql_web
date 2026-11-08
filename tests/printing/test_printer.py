@@ -9,6 +9,10 @@ from PIL import Image
 
 from app.labeldesigner import printer
 from app.labeldesigner.enums import LabelContent, LabelOrientation, LabelType
+from app.labeldesigner.drivers import devices
+from app.labeldesigner.drivers.brother import network
+from app.labeldesigner.drivers.brother import raster
+from app.labeldesigner.drivers.brother import usb
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 DEVICE = 'file:///dev/usb/lp0'
@@ -57,9 +61,9 @@ class ExclusiveUsbPrinter:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(linux_kernel, 'BrotherQLBackendLinuxKernel', ExclusiveUsbPrinter)
-    monkeypatch.setattr(printer, '_status_cache', {})
+    monkeypatch.setattr(devices, 'status_cache', {})
     # Tests holding the device lock should not wait for the status long
-    monkeypatch.setattr(printer, 'STATUS_LOCK_TIMEOUT', 0.2)
+    monkeypatch.setattr(devices, 'STATUS_LOCK_TIMEOUT', 0.2)
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
     return client
@@ -92,11 +96,11 @@ def test_print_during_status_query(client, monkeypatch):
 
 
 def test_device_lock_is_exclusive():
-    with printer.device_lock(DEVICE) as first:
+    with devices.device_lock(DEVICE) as first:
         assert first
-        with printer.device_lock(DEVICE, timeout=0) as second:
+        with devices.device_lock(DEVICE, timeout=0) as second:
             assert not second
-    with printer.device_lock(DEVICE, timeout=0) as again:
+    with devices.device_lock(DEVICE, timeout=0) as again:
         assert again
 
 
@@ -106,13 +110,13 @@ def test_device_lock_is_exclusive():
     ('usb://0x04F9:0x209B', 'usb://0x04f9:0x209b'),
 ])
 def test_device_lock_covers_all_spellings(held, requested):
-    with printer.device_lock(held):
-        with printer.device_lock(requested, timeout=0) as acquired:
+    with devices.device_lock(held):
+        with devices.device_lock(requested, timeout=0) as acquired:
             assert not acquired
 
 
 def test_device_lock_uses_private_directory(tmp_path):
-    with printer.device_lock(DEVICE):
+    with devices.device_lock(DEVICE):
         lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
         assert lock_dir.is_dir()
         assert lock_dir.stat().st_mode & 0o777 == 0o700
@@ -123,14 +127,14 @@ def test_device_lock_refuses_shared_directory(tmp_path):
     lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
     lock_dir.mkdir(mode=0o777)
     lock_dir.chmod(0o777)
-    with printer.device_lock(DEVICE) as acquired:
+    with devices.device_lock(DEVICE) as acquired:
         assert acquired
         assert list(lock_dir.iterdir()) == []
 
 
 def test_print_gives_up_when_printer_stays_busy(client, monkeypatch):
-    monkeypatch.setattr(printer, 'DEVICE_LOCK_TIMEOUT', 0.2)
-    with printer.device_lock(DEVICE):
+    monkeypatch.setattr(devices, 'DEVICE_LOCK_TIMEOUT', 0.2)
+    with devices.device_lock(DEVICE):
         response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
     assert response.status_code == 503
     assert response.get_json()['message'] == 'Printer is busy with another print job, please try again'
@@ -141,7 +145,7 @@ def test_failed_status_query_releases_device(client, monkeypatch):
         raise OSError('read failed')
     monkeypatch.setattr(ExclusiveUsbPrinter, 'read', broken_read)
     try:
-        printer.query_status(DEVICE)
+        usb.query_status(DEVICE)
     except OSError:
         # The traceback still references the printer, the device must be closed anyway
         assert not ExclusiveUsbPrinter.in_use.locked()
@@ -150,7 +154,7 @@ def test_failed_status_query_releases_device(client, monkeypatch):
 
 
 def test_status_during_print_keeps_configured_model(client):
-    with printer.device_lock(DEVICE):
+    with devices.device_lock(DEVICE):
         status = client.get('/labeldesigner/api/printer_status').get_json()
     assert status['model'] == client.application.config['PRINTER_MODEL']
     assert status['red_support'] is True
@@ -159,29 +163,29 @@ def test_status_during_print_keeps_configured_model(client):
 
 def test_lock_files_are_bounded(tmp_path):
     for i in range(300):
-        with printer.device_lock(f'tcp://printer-{i}.example', timeout=0):
+        with devices.device_lock(f'tcp://printer-{i}.example', timeout=0):
             pass
     assert len(list((tmp_path / f'brother_ql_web-{os.getuid()}').iterdir())) <= 300
     # However many devices requests name, there are at most 4096 lock files
-    assert len({printer._lock_slot(f'tcp://printer-{i}.example') for i in range(50000)}) <= 4096
+    assert len({devices._lock_slot(f'tcp://printer-{i}.example') for i in range(50000)}) <= 4096
 
 
 def test_device_lock_without_flock_support(monkeypatch):
     def no_flock(fd, operation):
         raise OSError(errno.ENOLCK, os.strerror(errno.ENOLCK))
-    monkeypatch.setattr(printer.fcntl, 'flock', no_flock)
-    with printer.device_lock(DEVICE) as acquired:
+    monkeypatch.setattr(devices.fcntl, 'flock', no_flock)
+    with devices.device_lock(DEVICE) as acquired:
         assert acquired
-        with printer.device_lock(DEVICE, timeout=0) as second:
+        with devices.device_lock(DEVICE, timeout=0) as second:
             assert not second
 
 
 def test_status_during_print_does_not_show_old_state(client):
-    printer._status_cache[printer._lock_key(DEVICE)] = {
+    devices.status_cache[devices.lock_key(DEVICE)] = {
         'model': 'QL-800', 'media_width': 62, 'media_length': 0,
         'errors': ['No media when printing'], 'status_type': 'Error occurred', 'phase_type': 'Waiting to receive',
     }
-    with printer.device_lock(DEVICE):
+    with devices.device_lock(DEVICE):
         status = client.get('/labeldesigner/api/printer_status').get_json()
     assert status['errors'] == []
     assert status['status_type'] == 'Printing'
@@ -189,7 +193,7 @@ def test_status_during_print_does_not_show_old_state(client):
 
 
 def test_overlapping_status_queries(client, monkeypatch):
-    monkeypatch.setattr(printer, 'STATUS_LOCK_TIMEOUT', 2.5)
+    monkeypatch.setattr(devices, 'STATUS_LOCK_TIMEOUT', 2.5)
     monkeypatch.setattr(ExclusiveUsbPrinter, 'status_seconds', 0.5)
     result = {}
     thread = threading.Thread(target=lambda: result.update(first=client.application.test_client().get('/labeldesigner/api/printer_status').get_json()))
@@ -211,7 +215,7 @@ def test_busy_printer_is_scanned_again(client, monkeypatch):
     def lp0(status):
         return next(p for p in status['printers'] if p['path'] == DEVICE)
 
-    with printer.device_lock(DEVICE):
+    with devices.device_lock(DEVICE):
         assert lp0(client.get('/labeldesigner/api/printer_status').get_json())['status_type'] == 'Printing'
     # Right after the job the printer is queried again instead of the cached busy state
     assert lp0(client.get('/labeldesigner/api/printer_status').get_json())['status_type'] == 'Reply to status request'
@@ -234,11 +238,11 @@ def test_printer_without_status_answer_stays_listed(client, monkeypatch):
     monkeypatch.setattr(printer, '_last_scan_ts', 0)
     monkeypatch.setattr(printer, '_cached_printers', [])
     client.application.config['PRINTER_PRINTER'] = '?'
-    printer._status_cache[printer._lock_key(DEVICE)] = {'model': 'QL-1100', 'media_width': 104, 'media_length': 164}
+    devices.status_cache[devices.lock_key(DEVICE)] = {'model': 'QL-1100', 'media_width': 104, 'media_length': 164}
 
     def no_answer(device):
         raise TimeoutError('No complete status response within 2.0 s')
-    monkeypatch.setattr(printer, 'get_status', no_answer)
+    monkeypatch.setattr(usb, 'get_status', no_answer)
 
     status = client.get('/labeldesigner/api/printer_status').get_json()
     lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
@@ -263,7 +267,7 @@ def test_printer_without_status_answer_stays_listed(client, monkeypatch):
     (ValueError('Unexpected status in /app/instance'), 'The printer does not answer the status query, the log of the server names the reason'),
 ])
 def test_why_a_printer_does_not_answer_is_told_in_plain_words(error, reason):
-    assert printer.unanswered(error) == reason
+    assert devices.unanswered(error) == reason
 
 
 def test_print_error_of_the_printer_is_reported(client, monkeypatch):
@@ -287,7 +291,7 @@ def test_print_error_of_the_printer_is_reported(client, monkeypatch):
      'The label was printed, but the printer did not report that it is ready for the next one'),
 ])
 def test_print_failure_messages(info, message):
-    assert printer._print_failure(info) == message
+    assert usb.print_failure(info) == message
 
 
 def test_detected_printer_busy_before_first_answer_has_unknown_model(client, monkeypatch):
@@ -297,7 +301,7 @@ def test_detected_printer_busy_before_first_answer_has_unknown_model(client, mon
     monkeypatch.setattr(printer, '_last_scan_ts', 0)
     monkeypatch.setattr(printer, '_cached_printers', [])
     client.application.config['PRINTER_PRINTER'] = '?'
-    with printer.device_lock(DEVICE):
+    with devices.device_lock(DEVICE):
         status = client.get('/labeldesigner/api/printer_status').get_json()
     lp0 = next(p for p in status['printers'] if p['path'] == DEVICE)
     assert lp0['status_type'] == 'Printing'
@@ -370,7 +374,7 @@ def test_a_printer_that_does_not_answer_does_not_hold_up_the_others(client, monk
         calls.append(device)
         release.wait(10)
         raise OSError('Name or service not known')
-    monkeypatch.setattr(printer, 'query_network_status', hangs)
+    monkeypatch.setattr(network, 'query_network_status', hangs)
     monkeypatch.setattr(printer, 'STATUS_QUERY_WAIT', 0.2)
     client.application.config['PRINTERS'] = [('QL-570', 'simulation'), ('PT-E550W', NET)]
     try:
@@ -394,7 +398,7 @@ def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):
                             'Could not send the label to the printer, the log of the server names the reason')):
         def fail(*args, **kwargs):
             raise error
-        monkeypatch.setattr(printer, 'send_job', fail)
+        monkeypatch.setattr(usb, 'send_job', fail)
         caplog.clear()
         response = client.post('/labeldesigner/api/print', data=EXAMPLE_FORMDATA)
         assert (response.status_code, response.get_json()['message']) == (503, message)
@@ -404,7 +408,7 @@ def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):
 def test_status_errors_are_told_without_their_text(client, monkeypatch, caplog):
     def fail(*args, **kwargs):
         raise RuntimeError('/app/instance/secret.json is gone')
-    monkeypatch.setattr(printer, 'query_status', fail)
+    monkeypatch.setattr(usb, 'query_status', fail)
     status = printer.get_ptr_status(client.application.config)
     assert status['errors'] == ['The status of the printer could not be read, the log of the server names the reason']
     assert any('/app/instance/secret.json is gone' in record.getMessage() for record in caplog.records)
@@ -433,27 +437,27 @@ class _Label:
 ])
 def test_labels_are_converted_as_they_are_generated(monkeypatch, model, label_size, width, expected):
     events = []
-    monkeypatch.setattr(printer, 'create_label', lambda qlr, images, *args, **kwargs: events.append(f'convert {len(images)}'))
+    monkeypatch.setattr(raster, 'create_label', lambda qlr, images, *args, **kwargs: events.append(f'convert {len(images)}'))
     queue = printer.PrinterQueue(model, 'file:///dev/usb/lp0', label_size)
     for _ in range(3):
         queue.add_label_to_queue(_Label(events, width))
-    queue._rasterize_entries([dict(entry, cut=False) for entry in queue._print_queue])
+    raster.render(queue, [dict(entry, cut=False) for entry in queue._print_queue])
     assert events == expected
 
 
 def test_cut_count_of_a_ptouch_job_fits_its_byte(monkeypatch):
     # ESC i A counts up to 255 labels, cut_once with more cuts every 255
     counts = []
-    monkeypatch.setattr(printer, 'create_label', lambda qlr, images, *args, **kwargs: counts.append(qlr.cut_every))
+    monkeypatch.setattr(raster, 'create_label', lambda qlr, images, *args, **kwargs: counts.append(qlr.cut_every))
     queue = printer.PrinterQueue('PT-E550W', 'file:///dev/usb/lp0', 'pt12')
     job = {'settings': (0, True, False, False), 'images': [None] * 300, 'cuts': [False] * 300}
-    queue._add_job(printer._Raster('PT-E550W'), job)
+    raster._add_job(queue, raster.Raster('PT-E550W'), job)
     assert counts == [255]
 
 
 def test_copies_on_ql_printers_are_sent_at_once(client, monkeypatch):
     sent = []
-    monkeypatch.setattr(printer, 'send_job', lambda data, device, page_lengths: sent.append(len(page_lengths)) or {'did_print': True, 'ready_for_next_job': True})
+    monkeypatch.setattr(usb, 'send_job', lambda data, device, page_lengths: sent.append(len(page_lengths)) or {'did_print': True, 'ready_for_next_job': True})
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='12', cut_once='1'))
     assert response.get_json()['success'] is True
     assert sent == [12]

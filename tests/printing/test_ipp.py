@@ -10,6 +10,10 @@ import pytest
 
 from app import create_app
 from app.labeldesigner import ipp, printer
+from app.labeldesigner.drivers import brother
+from app.labeldesigner.drivers import devices
+from app.labeldesigner.drivers.brother import network
+from app.labeldesigner.drivers.brother import usb
 
 FIXTURES = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'fixtures', 'ipp')
 
@@ -62,8 +66,8 @@ def test_ready_ql_810w_is_decoded():
     # Several values become a list
     assert 'om_brother-label-62x100mm_62x100mm' in attributes['media-supported']
     # The 62 mm wide DK-11209, as the USB status reports it
-    assert printer._ipp_media(loaded) == (62, 29, 'Die-cut labels')
-    assert printer._ipp_errors(attributes) == []
+    assert network._ipp_media(loaded) == (62, 29, 'Die-cut labels')
+    assert network._ipp_errors(attributes) == []
 
 
 def test_address_labels_are_fed_short_edge_first():
@@ -71,23 +75,23 @@ def test_address_labels_are_fed_short_edge_first():
     attributes = ipp.decode_response(fixture('ql810w-ready-29x90.bin'))
     loaded = attributes['media-col-ready']
     assert loaded['media-source-properties']['media-source-feed-direction'] == 'short-edge-first'
-    assert printer._ipp_media(loaded) == (29, 90, 'Die-cut labels')
+    assert network._ipp_media(loaded) == (29, 90, 'Die-cut labels')
 
 
 def test_stopped_ql_810w_reports_an_error():
     # After a job for endless labels on a die-cut roll
     attributes = ipp.decode_response(fixture('ql810w-stopped-other-error.bin'))
     assert attributes['printer-state'] == ipp.STOPPED
-    assert printer._ipp_errors(attributes) == ['See the lights or display of the printer']
+    assert network._ipp_errors(attributes) == ['See the lights or display of the printer']
 
 
 def test_open_cover_of_a_ql_810w():
     # The QL-810W gives no reason more specific than "other"
     attributes = ipp.decode_response(fixture('ql810w-cover-open.bin'))
     assert attributes['printer-state'] == ipp.STOPPED
-    assert printer._ipp_errors(attributes) == ['See the lights or display of the printer']
+    assert network._ipp_errors(attributes) == ['See the lights or display of the printer']
     # The labels are still named
-    assert printer._ipp_media(attributes['media-col-ready']) == (62, 29, 'Die-cut labels')
+    assert network._ipp_media(attributes['media-col-ready']) == (62, 29, 'Die-cut labels')
 
 
 def test_endless_roll_in_a_ql_810w_is_not_reported():
@@ -96,8 +100,8 @@ def test_endless_roll_in_a_ql_810w_is_not_reported():
     attributes = ipp.decode_response(fixture('ql810w-ready-endless.bin'))
     assert attributes['media-ready'] == ''
     assert 'media-col-ready' not in attributes
-    assert printer._ipp_media(attributes.get('media-col-ready')) == (None, 0, None)
-    assert printer._ipp_errors(attributes) == []
+    assert network._ipp_media(attributes.get('media-col-ready')) == (None, 0, None)
+    assert network._ipp_errors(attributes) == []
 
 
 def test_request_asks_for_the_status_attributes():
@@ -118,13 +122,13 @@ def test_request_asks_for_the_status_attributes():
 ])
 def test_reasons_that_stop_the_printer(reasons, expected):
     attributes = ipp.decode_response(response(state(ipp.STOPPED if expected else ipp.IDLE), keywords('printer-state-reasons', *reasons)))
-    assert printer._ipp_errors(attributes) == expected
+    assert network._ipp_errors(attributes) == expected
 
 
 def test_stopped_printer_without_reason():
     # A QL-810W at the end of every job, no error
     attributes = ipp.decode_response(response(state(ipp.STOPPED), keywords('printer-state-reasons', 'none')))
-    assert printer._ipp_errors(attributes) == []
+    assert network._ipp_errors(attributes) == []
 
 
 @pytest.mark.parametrize('x, y, media_type, expected', [
@@ -134,7 +138,7 @@ def test_stopped_printer_without_reason():
 ])
 def test_loaded_media(x, y, media_type, expected):
     attributes = ipp.decode_response(response(media(x, y, media_type)))
-    assert printer._ipp_media(attributes['media-col-ready']) == expected
+    assert network._ipp_media(attributes['media-col-ready']) == expected
 
 
 def test_error_status_is_refused():
@@ -164,13 +168,13 @@ def fake_printer(monkeypatch):
 
     server = HTTPServer(('127.0.0.1', 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
-    monkeypatch.setattr(printer, 'IPP_PORT', server.server_port)
-    monkeypatch.setattr(printer, '_status_cache', {})
+    monkeypatch.setattr(network, 'IPP_PORT', server.server_port)
+    monkeypatch.setattr(devices, 'status_cache', {})
     # No SNMP, unless a test brings an agent
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as unused:
         unused.bind(('127.0.0.1', 0))
-        monkeypatch.setattr(printer, 'SNMP_PORT', unused.getsockname()[1])
-    monkeypatch.setattr(printer, '_snmp_unavailable', {})
+        monkeypatch.setattr(network, 'SNMP_PORT', unused.getsockname()[1])
+    monkeypatch.setattr(network, '_snmp_unavailable', {})
     yield answer
     server.shutdown()
 
@@ -192,14 +196,14 @@ def test_network_printer_without_ipp(monkeypatch):
     with socket.socket() as unused:
         unused.bind(('127.0.0.1', 0))
         port = unused.getsockname()[1]
-    monkeypatch.setattr(printer, 'IPP_PORT', port)
-    status = printer.query_network_status('tcp://127.0.0.1', 'QL-720NW')
+    monkeypatch.setattr(network, 'IPP_PORT', port)
+    status = network.query_network_status('tcp://127.0.0.1', 'QL-720NW')
     assert status['model'] == 'QL-720NW' and status['errors'] == [] and status['media_width'] is None
 
 
 def test_network_printer_that_does_not_answer_keeps_its_last_status(fake_printer, monkeypatch):
     fake_printer['body'] = fixture('ql810w-ready-62x29.bin')
-    printer.query_network_status('tcp://127.0.0.1', 'QL-800')
+    network.query_network_status('tcp://127.0.0.1', 'QL-800')
 
     def no_answer(*args, **kwargs):
         raise TimeoutError('timed out')
@@ -225,8 +229,8 @@ def network_job(fake_printer, monkeypatch, tmp_path):
     the fake printer, what is sent to port 9100 is collected."""
     from tests.helpers import EXAMPLE_FORMDATA, make_client
     sent = []
-    monkeypatch.setattr(printer, 'send', lambda data, device: sent.append(device) or {})
-    monkeypatch.setattr(printer, 'NETWORK_JOB_POLL', 0.01)
+    monkeypatch.setattr(brother, 'send_raster', lambda data, device: sent.append(device) or {})
+    monkeypatch.setattr(network, 'NETWORK_JOB_POLL', 0.01)
     client = make_client(tmp_path)
 
     def print_label():
@@ -250,8 +254,8 @@ def test_network_job_waits_as_long_as_its_labels_take(network_job, monkeypatch, 
     # Besides the time any job may take, as long as the labels take at the
     # slowest printers
     answer, sent, print_label = network_job
-    monkeypatch.setattr(printer, 'NETWORK_JOB_TIMEOUT', 0)
-    monkeypatch.setattr(printer, 'SLOWEST_PRINT_SPEED', speed)
+    monkeypatch.setattr(network, 'NETWORK_JOB_TIMEOUT', 0)
+    monkeypatch.setattr(usb, 'SLOWEST_PRINT_SPEED', speed)
     answer['bodies'] = [READY, PRINTING, PRINTING, PRINTING, READY]
     response = print_label()
     if success:
@@ -281,7 +285,7 @@ def test_network_printer_without_ipp_prints_as_before(network_job, monkeypatch):
     answer, sent, print_label = network_job
     with socket.socket() as unused:
         unused.bind(('127.0.0.1', 0))
-        monkeypatch.setattr(printer, 'IPP_PORT', unused.getsockname()[1])
+        monkeypatch.setattr(network, 'IPP_PORT', unused.getsockname()[1])
     assert print_label().get_json() == {'success': True}
     assert sent == ['tcp://127.0.0.1']
 
@@ -296,7 +300,7 @@ def test_announced_label_printers_are_detected(fake_printer, monkeypatch):
     monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', True)
     monkeypatch.setattr(printer, '_discovered', None)
     # Right after the start of a container the monotonic clock is small
-    monkeypatch.setattr(printer.time, 'monotonic', lambda: 5.0)
+    monkeypatch.setattr(usb.time, 'monotonic', lambda: 5.0)
     monkeypatch.setattr(printer, '_last_scan_ts', 0)
     monkeypatch.setattr(printer.mdns, 'discover', lambda: [
         _announced('127.0.0.1', '_pdl-datastream._tcp.local', 9100, 'QL-810W'),
