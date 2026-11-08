@@ -387,6 +387,11 @@ def test_look_for_printers_looks_also_for_those_that_did_not_answer(designer):
     assert 'look=1' in request.value.url
 
 
+def test_printer_still_being_asked_is_not_shown_as_failing(designer):
+    # A printer on Bluetooth takes a few seconds to answer, it was red meanwhile
+    assert designer.evaluate("() => printerState({ status_type: 'Asking the printer', errors: [] })") == {'cls': 'off', 'text': 'Asking the printer…'}
+
+
 def test_labels_of_a_q00_leave_it_turned(designer):
     # They come out readable, the other way round than from a QL printer
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';

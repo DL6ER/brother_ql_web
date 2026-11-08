@@ -813,6 +813,8 @@ function tapeLeft(p) {
 function printerState(p) {
     if (!p) return { cls: 'off', text: 'No printer' };
     if (p.errors && p.errors.length) return { cls: 'bad', text: p.errors[0] };
+    // Still being asked, e.g. a printer on Bluetooth that takes a few seconds
+    if (p.status_type === 'Asking the printer') return { cls: 'off', text: 'Asking the printer…' };
     if (p.job) return { cls: '', text: jobText(p.job) };
     if (/simulat/i.test(p.status_type || p.phase_type || '')) return { cls: '', text: 'Ready (simulated)' };
     return { cls: '', text: 'Ready' };
