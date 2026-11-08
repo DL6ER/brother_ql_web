@@ -45,6 +45,8 @@ class Driver:
     device_patterns: tuple = ()
     # Exceptions that mean that a printer did not answer
     errors: tuple = (OSError,)
+    # The messages it refuses a job with, as they are shown to the user
+    refusals: tuple = ()
     # MAC address prefixes of its network printers, for those found in the
     # ARP table that do not announce themselves
     mac_address_prefixes: tuple = ()
