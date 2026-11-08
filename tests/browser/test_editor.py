@@ -710,3 +710,27 @@ def test_undo_history_keeps_an_image_once(designer):
     designer.reload()
     wait_for_preview(designer)
     assert designer.evaluate('() => S.edit.design.image.data.length') == data
+
+
+def test_links_to_the_internet_ask_first(designer):
+    # The label designer works without the internet, a link to a page there
+    # asks before it opens it, also with the middle button
+    designer.evaluate("() => { window.opened = []; window.open = (...args) => { window.opened.push(args); }; }")
+    pages = len(designer.context.pages)
+    designer.click('#githubLink')
+    assert designer.inner_text('#layer .sheet h2') == 'Open github.com?'
+    designer.click('#layer [data-close]')
+    assert designer.is_hidden('#layer')
+    designer.click('#githubLink', button='middle')
+    designer.click('#layer [data-open]')
+    assert designer.is_hidden('#layer')
+    designer.click('#tplInfoBtn')
+    designer.click('#tplInfo a:has-text("strftime")')
+    assert designer.inner_text('#layer .sheet h2') == 'Open strftime.org?'
+    designer.click('#layer [data-open]')
+    assert designer.evaluate('() => window.opened') == [['https://github.com/DL6ER/brother_ql_web', '_blank', 'noopener'],
+                                                         ['https://strftime.org/', '_blank', 'noopener']]
+    assert len(designer.context.pages) == pages
+    # Links within the label designer do not ask
+    designer.click('#tabs [data-tab="wizard"]')
+    assert designer.is_hidden('#layer')

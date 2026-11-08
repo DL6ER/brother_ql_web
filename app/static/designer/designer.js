@@ -970,6 +970,17 @@ function closeLayer(silent) {
 function sheet(inner, onClose, onGone) {
     openLayer(`<div class="sheet"><div class="grab"></div>${inner}</div>`, 'sheet-layer', onClose, onGone);
 }
+// The label designer works without the internet, a link to a page there asks
+// before it opens it
+function askToLeave(url) {
+    const host = new URL(url).host;
+    sheet(`<div class="okc warn"><i class="fa-solid fa-globe"></i></div>
+        <h2>Open ${esc(host)}?</h2>
+        <p>The link opens a page on the internet in a new tab. The label designer itself works without the internet.</p>
+        <button class="btn-print" type="button" data-open><i class="fa-solid fa-arrow-up-right-from-square"></i>Open ${esc(host)}</button>
+        <button class="btn quiet" type="button" data-close>Cancel</button>`);
+    $('#layer [data-open]').onclick = () => { closeLayer(true); window.open(url, '_blank', 'noopener'); };
+}
 
 // --- Data loading --------------------------------------------------------------
 
@@ -2959,6 +2970,14 @@ document.addEventListener('keydown', e => {
     if (mod && e.key.toLowerCase() === 'k') { e.preventDefault(); openSearch(); }
     else if (e.key === 'Escape' && !$('#layer').hidden) closeLayer();
 });
+// Every link to another site, also one opened with the middle button
+const elsewhere = a => /^https?:$/.test(a.protocol) && a.origin !== location.origin;
+['click', 'auxclick'].forEach(type => document.addEventListener(type, e => {
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a || !elsewhere(a) || (type === 'auxclick' && e.button !== 1)) return;
+    e.preventDefault();
+    askToLeave(a.href);
+}, true));
 $('#openSearch').onclick = openSearch;
 $('#printerChip').onclick = openPrinterPanel;
 $('#themeToggle').onclick = () => {
