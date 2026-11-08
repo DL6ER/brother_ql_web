@@ -244,6 +244,23 @@ def test_printer_that_is_off_is_not_looked_for_at_every_status_query(client, mon
     assert len(calls) == 3
 
 
+def test_printer_that_is_off_does_not_pile_up_tracebacks(client, monkeypatch):
+    # The same error is raised at every status query, its traceback grew by
+    # each of them
+    import traceback
+
+    def unreachable(device):
+        raise OSError(112, 'Host is down')
+    monkeypatch.setattr(protocol, 'connect', unreachable)
+
+    def frames():
+        client.get('/labeldesigner/api/printer_status')
+        return len(traceback.extract_tb(devices.unanswered_before(DEVICE).__traceback__))
+    frames()
+    second = frames()
+    assert [frames() for _ in range(3)] == [second] * 3
+
+
 def test_printer_that_answers_again_is_asked_again(client, fake, monkeypatch):
     devices.note_answer(DEVICE, OSError(112, 'Host is down'))
     printer = fake()

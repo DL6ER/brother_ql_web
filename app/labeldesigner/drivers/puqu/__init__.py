@@ -80,7 +80,8 @@ class Puqu(Driver):
         # One that did not answer is not looked for at every status query
         error = devices.unanswered_before(device)
         if error:
-            raise error
+            # The traceback of the last time only, it grew at every query
+            raise error.with_traceback(None)
         try:
             state = self._status(device, model)
         except self.errors as e:
