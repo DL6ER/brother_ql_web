@@ -681,7 +681,7 @@ const S = {
     fitsOnly: true,
     libCatChosen: false, typedGen: 0,
     // tapes: the tape set by hand for each printer
-    settings: Object.assign({ quality: 'quality', cut: 'each', tapes: {}, dateFmt: '' }, load(own('designer_settings'), {})),
+    settings: Object.assign({ quality: 'quality', cut: 'each', tapes: {}, dateFmt: '', largePreview: false }, load(own('designer_settings'), {})),
     wizardText: '',
     libCat: 'saved', libSel: null,
     fillValues: {},
@@ -1245,8 +1245,8 @@ function route() {
 
 // A small spinner in the corner of the stage while a new preview is coming
 const SPIN = '<span class="spin" aria-hidden="true"><i class="fa-solid fa-circle-notch"></i></span>';
-function stageHTML(id) {
-    return `<div class="stage busy" id="${id}">${SPIN}<div class="wait">Making the preview...</div></div>`;
+function stageHTML(id, zoom = false) {
+    return `<div class="stage busy" id="${id}"${zoom ? ' data-zoom' : ''}>${SPIN}<div class="wait">Making the preview...</div></div>`;
 }
 // Shows the spinner at once, while an update still waits. The preview shown
 // stays until a newer one is there.
@@ -1276,6 +1276,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         p = await preview(design, values, null, true);
     } catch (e) {
         if (outdated() || !newest()) return;
+        el._view = null;
+        el._fit = null;
         el.className = 'stage';
         el.innerHTML = `${SPIN}<div class="err"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(e.message)}</div>`;
         shown();
@@ -1294,20 +1296,72 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
     const lengthMm = isEndless(size) ? along : size.tape[1];
-    // Fit the label into the stage
-    const box = el.getBoundingClientRect();
-    // The printer takes room on top, or on the left for labels that leave it sideways
-    const maxW = Math.max(140, box.width - 110 - (side ? 70 : 0)), maxH = Math.max(110, Math.min(440, window.innerHeight * .5) - (side ? 0 : 60));
-    const k = Math.min(0.85, maxW / w, maxH / h);
-    const dw = Math.round(w * k), dh = Math.round(h * k);
-    // Short labels keep the arrow clear of the scissors at the cut
-    const short = side ? dw : dh;
     // Some printers let labels out the other way round than a QL printer,
     // the top first. Those that leave sideways leave them as a QL printer.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
-    el.className = 'stage' + (side ? ' side' : '') + (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : '')
-        + (turned ? ' turned' : '')
-        + (short < 30 ? ' tiny' : short < 50 ? ' short' : '');
+    // The cut after the label, and how copies are cut
+    const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
+    // Kept to fit the label again when the stage changes its size
+    el._view = {
+        url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
+        form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
+        dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
+        cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
+        cuts: `${cutStrip(cutNow, caps)}<span>${esc(cutShort(cutNow, caps))}</span>`,
+    };
+    if ('zoom' in el.dataset && !el._watched) { el._watched = true; stageSizes.observe(el); }
+    placeOnStage(el, true);
+    el.classList.remove('busy');
+    shown();
+    if (onWarning && newest()) onWarning(p.warning, false, p);
+}
+
+// The large preview shows labels at most about four times their real size,
+// small labels do not turn into large dots
+const LARGE_PX_PER_MM = 16;
+// Only the editor offers it, where the stage takes the height of the window
+const largePreview = el => 'zoom' in el.dataset && !!S.settings.largePreview && matchMedia('(min-width: 761px)').matches;
+// The large preview also follows the height of its stage, e.g. when fields to
+// fill in show above it. Widths change with a scroll bar the label itself can
+// bring, they follow the window only.
+const stageSizes = new ResizeObserver(entries => entries.forEach(({ target: el, contentRect: r }) => {
+    if (!el.isConnected) return stageSizes.unobserve(el);
+    const height = Math.round(r.height);
+    if (height === el._height) return;
+    el._height = height;
+    if (largePreview(el)) placeOnStage(el);
+}));
+window.addEventListener('resize', () => $$('.stage').forEach(el => placeOnStage(el)));
+
+// Fits the label shown into its stage. Drawn again only when its size
+// changes, or always with redraw.
+function placeOnStage(el, redraw = false) {
+    const v = el._view;
+    if (!v || !el.isConnected) return;
+    const { w, h, side, turned } = v, large = largePreview(el);
+    const box = el.getBoundingClientRect();
+    // The printer takes room on top, or on the left for labels that leave it sideways
+    const maxW = Math.max(140, box.width - 110 - (side ? 70 : 0)), maxH = Math.max(110, Math.min(440, window.innerHeight * .5) - (side ? 0 : 60));
+    let k = Math.min(0.85, maxW / w, maxH / h);
+    if (large) {
+        // The label fills the stage, next to the printer and with how copies
+        // are cut below it, and is never smaller than otherwise
+        const cs = getComputedStyle(el);
+        const roomW = box.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (side ? 50 : 72);
+        const roomH = box.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (side ? 64 : 86);
+        k = Math.max(k, Math.min(LARGE_PX_PER_MM * 25.4 / v.dpi, roomW / w, roomH / h));
+    }
+    const dw = Math.round(w * k), dh = Math.round(h * k);
+    // Dots of black and red labels stay sharp where they are shown large
+    const sharp = large && !v.color && k * (window.devicePixelRatio || 1) >= 2;
+    const fit = [dw, dh, large, sharp].join();
+    if (!redraw && fit === el._fit) return;
+    el._fit = fit;
+    // Short labels keep the arrow clear of the scissors at the cut
+    const short = side ? dw : dh;
+    const busy = el.classList.contains('busy');
+    el.className = 'stage' + (side ? ' side' : '') + v.form + (turned ? ' turned' : '') + (large ? ' large' : '')
+        + (short < 30 ? ' tiny' : short < 50 ? ' short' : '') + (busy ? ' busy' : '');
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
     const led = `<span class="led ${st.cls}" title="${esc(st.text)}"></span>`;
@@ -1316,16 +1370,15 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
-    // The cut after the label, in the corner how copies are cut
-    const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
-    const cutEnd = chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full';
-    const paper = blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${p.url}">`;
-    el.innerHTML = `${SPIN}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
-        <div class="cut"${cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
-        <div class="dim-x">${side ? lengthMm : size.tape[0]} mm</div><div class="dim-y">${side ? size.tape[0] : lengthMm} mm</div></div>
-        <div class="cuts">${cutStrip(cutNow, caps)}<span>${esc(cutShort(cutNow, caps))}</span></div>`;
-    shown();
-    if (onWarning && newest()) onWarning(p.warning, false, p);
+    const paper = v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`;
+    // How copies are cut: in the corner, or below the large label
+    const cuts = `<div class="cuts">${v.cuts}</div>`;
+    const zoom = 'zoom' in el.dataset ? `<button class="btn quiet icon zoom" type="button" aria-pressed="${large}" title="${large ? 'Smaller preview' : 'Larger preview'}">
+        <i class="fa-solid fa-${large ? 'compress' : 'expand'}"></i><span class="sr-only">Large preview</span></button>` : '';
+    el.innerHTML = `${SPIN}${zoom}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
+        <div class="cut"${v.cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
+        <div class="dim-x">${v.dims[0]} mm</div><div class="dim-y">${v.dims[1]} mm</div>${large ? cuts : ''}</div>
+        ${large ? '' : cuts}`;
 }
 
 // Red parts on tape without red print black
@@ -2153,7 +2206,7 @@ function renderEditor() {
                 </div>
             </div>
             <div class="fill-in" id="edFields"></div>
-            ${stageHTML('edStage')}
+            ${stageHTML('edStage', true)}
         </section>
     </div>`;
     bindEditor();
@@ -2532,6 +2585,13 @@ const redrawEditor = busyThen(() => $('#edStage'), drawEditor);
 function bindEditor() {
     const E = S.edit, d = E.design;
     $('#edTitle').oninput = e => { E.title = e.target.value; storeEdit(); };
+    $('#edStage').onclick = e => {
+        if (!e.target.closest('.zoom')) return;
+        S.settings.largePreview = !S.settings.largePreview;
+        store(own('designer_settings'), S.settings);
+        placeOnStage(e.currentTarget, true);
+        $('#edStage .zoom').focus();
+    };
     $('#edNew').onclick = () => {
         const before = S.edit;
         setEdit(newEdit());

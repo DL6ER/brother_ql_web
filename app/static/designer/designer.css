@@ -203,6 +203,11 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage.side .cut i { left: -.32rem; top: -4px; transform: none; }
 .stage.diecut .cut, .stage .cut[hidden] { display: none; }
 .stage .cuts { position: absolute; left: .9rem; bottom: .75rem; display: flex; align-items: center; gap: .55rem; font-size: .75rem; color: var(--muted); }
+.stage.large .cuts { left: 50%; bottom: auto; top: calc(100% + 2.3rem); transform: translateX(-50%); white-space: nowrap; }
+.stage.large.turned .cuts { top: auto; bottom: calc(100% + 2.3rem); }
+.stage .paper img.dots { image-rendering: pixelated; }
+.stage .zoom { position: absolute; right: .6rem; bottom: .6rem; z-index: 3; color: var(--muted); }
+.stage .zoom:hover { color: var(--ink); }
 /* Copies as cut: labels, cuts (a gap), half cuts (dashed) and the printer,
    which keeps the last label with chain printing */
 .cut-strip { display: inline-flex; align-items: center; flex: none; }
@@ -522,6 +527,7 @@ select.mini.lsp { max-width: 4rem; }
     .ed-panel { border-right: 0; overflow: visible; }
     .ed-canvas { padding: 1rem; }
     .ed-canvas .stage { min-height: 200px; }
+    .stage .zoom { display: none; }
     /* Undo and Save in one row, the copies right next to Print below */
     .ed-top .row { flex-wrap: wrap; width: 100%; gap: .4rem; margin-left: 0; }
     .ed-top #edSave .lbl, .ed-top #edUndo .lbl { display: none; }

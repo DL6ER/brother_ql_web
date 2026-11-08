@@ -1,7 +1,7 @@
 """Previews in the label designer: the queue, time limits, thumbnails and
 what a failed one tells."""
 
-from tests.browser.helpers import fits_note, preview_size, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, preview_size, type_line, wait_for_preview
 
 
 def test_preview_of_typed_text(designer):
@@ -449,3 +449,105 @@ def test_a_wrong_check_digit_is_told(designer):
     designer.fill('#edCode', '4006381333931')
     wait_for_preview(designer)
     assert designer.is_enabled('#edPrint')
+
+
+def paper(page):
+    """Width and height of the label on the editor's stage."""
+    return tuple(page.eval_on_selector('#edStage .paper', 'el => [el.offsetWidth, el.offsetHeight]'))
+
+
+def in_stage(page):
+    """Whether the printer, the label, its sizes and how copies are cut are all inside the stage."""
+    return page.evaluate("""() => {
+        const stage = $('#edStage').getBoundingClientRect();
+        return $$('#edStage .printer, #edStage .paper, #edStage .dim-x, #edStage .dim-y, #edStage .cuts').every(el => {
+            const r = el.getBoundingClientRect();
+            return r.left >= stage.left && r.right <= stage.right && r.top >= stage.top && r.bottom <= stage.bottom;
+        });
+    }""")
+
+
+def test_large_preview_fills_the_stage(designer):
+    # Taller than wide, the height of the window limits it
+    designer.evaluate("() => { setSize(S.edit.design, '29'); S.edit.design.text = 'ABCDEFGH'.split('').map(c => L(c, 60)); renderEditor(); }")
+    wait_for_preview(designer)
+    small = paper(designer)
+    assert designer.get_attribute('#edStage .zoom', 'aria-pressed') == 'false'
+    assert designer.query_selector('#edStage > .cuts')
+    designer.click('#edStage .zoom')
+    large = paper(designer)
+    assert large[1] > small[1] * 1.4
+    assert designer.get_attribute('#edStage .zoom', 'aria-pressed') == 'true'
+    assert in_stage(designer)
+    # How copies are cut shows right below the label
+    assert designer.query_selector('#edStage .feed .cuts')
+    # Kept for the next visit
+    kept(designer)
+    designer.reload()
+    wait_for_preview(designer)
+    assert paper(designer) == large
+    designer.click('#edStage .zoom')
+    assert paper(designer) == small
+
+
+def test_stage_fits_the_label_again_when_the_window_changes(designer):
+    designer.select_option('#edSize', '62x100')
+    wait_for_preview(designer)
+    asked = []
+    designer.on('request', lambda request: asked.append(request.url) if '/preview' in request.url else None)
+    small = paper(designer)
+    designer.set_viewport_size({'width': 1000, 'height': 600})
+    designer.wait_for_function('h => $("#edStage .paper").offsetHeight < h', arg=small[1])
+    designer.click('#edStage .zoom')
+    large = paper(designer)
+    designer.set_viewport_size({'width': 1400, 'height': 900})
+    designer.wait_for_function('h => $("#edStage .paper").offsetHeight > h', arg=large[1])
+    assert in_stage(designer)
+    # Phones show the label as without it, and no button for it
+    designer.set_viewport_size({'width': 700, 'height': 900})
+    designer.wait_for_function('() => !$("#edStage").classList.contains("large")')
+    assert designer.is_hidden('#edStage .zoom')
+    phone = paper(designer)
+    designer.evaluate("() => { S.settings.largePreview = false; placeOnStage($('#edStage'), true); }")
+    assert paper(designer) == phone
+    assert asked == []
+
+
+def test_large_preview_follows_the_height_of_its_stage(designer):
+    designer.evaluate("() => { setSize(S.edit.design, '29'); S.edit.design.text = 'ABCDEFGH'.split('').map(c => L(c, 60)); renderEditor(); }")
+    wait_for_preview(designer)
+    designer.click('#edStage .zoom')
+    large = paper(designer)
+    # E.g. fields to fill in above it
+    designer.evaluate("() => { $('#edFields').hidden = false; $('#edFields').style.height = '200px'; }")
+    designer.wait_for_function('h => $("#edStage .paper").offsetHeight < h', arg=large[1])
+    assert in_stage(designer)
+    # Not its width: a scroll bar the label itself brings would draw it
+    # smaller and larger again and again
+    shown = paper(designer)
+    designer.evaluate("() => { $('#edStage').style.marginRight = '300px'; }")
+    designer.wait_for_timeout(200)
+    assert paper(designer) == shown
+
+
+def test_large_preview_of_a_small_label_keeps_its_dots_small(designer):
+    designer.select_option('#edSize', '12')
+    type_line(designer, 0, 'A')
+    designer.click('#edStage .zoom')
+    # At most 16 px per mm of the label, at 300 dpi
+    width, _ = preview_size(designer)
+    assert paper(designer)[0] == round(width * 16 * 25.4 / 300)
+    # Shown sharp from two screen pixels per dot on
+    assert designer.get_attribute('#edStage .paper img', 'class') is None
+    designer.evaluate("() => { Object.defineProperty(window, 'devicePixelRatio', { get: () => 2 }); placeOnStage($('#edStage'), true); }")
+    assert designer.get_attribute('#edStage .paper img', 'class') == 'dots'
+
+
+def test_wizard_has_no_large_preview(designer):
+    designer.click('#edStage .zoom')
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="names"]')
+    designer.click('#libGrid .thumb:has(.t:text-is("Employee badge with barcode"))')
+    wait_for_preview(designer, '#libStage')
+    assert designer.query_selector('#libStage .zoom') is None
+    assert 'large' not in designer.get_attribute('#libStage', 'class')
