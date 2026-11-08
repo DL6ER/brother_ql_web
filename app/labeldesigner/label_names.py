@@ -1,15 +1,15 @@
 """Label sizes in the label designer: their names and which printer models
 print them. Each driver (drivers/) has the label sizes of its printers."""
 
-from brother_ql.labels import Label
+from .drivers.labels import Label
 
 from . import drivers
 from .drivers import LABELS, MODELS
 
 
 def label_name(label: Label) -> str:
-    """Name of a label size, brother_ql's own name for sizes its driver does
-    not name."""
+    """Name of a label size, made of its size where its driver does not name
+    it."""
     driver = drivers.for_label(label.identifier)
     return driver.label_names.get(label.identifier, label.name) if driver else label.name
 
@@ -41,7 +41,7 @@ def label_printers(label: Label) -> list:
 
 def label_size_problem(label_size: str, model: str) -> str:
     """Why the printer model cannot print the label size, or an empty string
-    if it can. Unknown models are left to brother_ql."""
+    if it can. Unknown models are left to the Brother driver."""
     label = next((label for label in LABELS if label.identifier == label_size), None)
     if label is None:
         return f'Unknown label size: {label_size}'

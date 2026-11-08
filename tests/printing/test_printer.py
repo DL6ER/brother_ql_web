@@ -4,12 +4,12 @@ import threading
 import time
 
 import pytest
-from brother_ql.backends import linux_kernel
 from PIL import Image
 
 from app.labeldesigner import printer
 from app.labeldesigner.enums import LabelContent, LabelOrientation, LabelType
 from app.labeldesigner.drivers import devices
+from app.labeldesigner.drivers.brother import backends
 from app.labeldesigner.drivers.brother import network
 from app.labeldesigner.drivers.brother import raster
 from app.labeldesigner.drivers.brother import usb
@@ -60,7 +60,7 @@ class ExclusiveUsbPrinter:
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr(linux_kernel, 'BrotherQLBackendLinuxKernel', ExclusiveUsbPrinter)
+    monkeypatch.setattr(backends, 'KernelPrinter', ExclusiveUsbPrinter)
     monkeypatch.setattr(devices, 'status_cache', {})
     # Tests holding the device lock should not wait for the status long
     monkeypatch.setattr(devices, 'STATUS_LOCK_TIMEOUT', 0.2)
@@ -222,12 +222,12 @@ def test_busy_printer_is_scanned_again(client, monkeypatch):
 
 
 def test_label_offset_corrections():
-    from brother_ql.devicedependent import label_type_specs
+    from app.labeldesigner.drivers.brother.labels import BY_ID
     # Measured on a QL-1100: -6 centers the 103 x 164 mm die-cut label
-    assert label_type_specs['103x164']['right_margin_dots'] == -6
-    # Other labels keep the offsets of brother_ql
-    assert label_type_specs['104']['right_margin_dots'] == -8
-    assert label_type_specs['102x152']['right_margin_dots'] == 12
+    assert BY_ID['103x164'].offset_r == -6
+    # The others as in brother_ql's label table
+    assert BY_ID['104'].offset_r == -8
+    assert BY_ID['102x152'].offset_r == 12
 
 
 def test_printer_without_status_answer_stays_listed(client, monkeypatch):
@@ -437,7 +437,7 @@ class _Label:
 ])
 def test_labels_are_converted_as_they_are_generated(monkeypatch, model, label_size, width, expected):
     events = []
-    monkeypatch.setattr(raster, 'create_label', lambda qlr, images, *args, **kwargs: events.append(f'convert {len(images)}'))
+    monkeypatch.setattr(raster, 'convert', lambda job, images, *args, **kwargs: events.append(f'convert {len(images)}'))
     queue = printer.PrinterQueue(model, 'file:///dev/usb/lp0', label_size)
     for _ in range(3):
         queue.add_label_to_queue(_Label(events, width))
@@ -448,7 +448,7 @@ def test_labels_are_converted_as_they_are_generated(monkeypatch, model, label_si
 def test_cut_count_of_a_ptouch_job_fits_its_byte(monkeypatch):
     # ESC i A counts up to 255 labels, cut_once with more cuts every 255
     counts = []
-    monkeypatch.setattr(raster, 'create_label', lambda qlr, images, *args, **kwargs: counts.append(qlr.cut_every))
+    monkeypatch.setattr(raster, 'convert', lambda job, images, *args, **kwargs: counts.append(kwargs['cut_every']))
     queue = printer.PrinterQueue('PT-E550W', 'file:///dev/usb/lp0', 'pt12')
     job = {'settings': (0, True, False, False), 'images': [None] * 300, 'cuts': [False] * 300}
     raster._add_job(queue, raster.Raster('PT-E550W'), job)

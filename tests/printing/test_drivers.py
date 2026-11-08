@@ -1,11 +1,15 @@
 """The printer drivers behind the interface of drivers/base.py, and which
 one drives a printer."""
 
+import socket
+import threading
+
 import pytest
 
 from app.labeldesigner import drivers
 from app.labeldesigner.drivers import devices
 from app.labeldesigner.drivers.base import Driver
+from app.labeldesigner.drivers.brother import network
 from app.labeldesigner.label_names import label_name, label_printers
 
 
@@ -34,7 +38,7 @@ def test_driver_of_a_printer():
     assert drivers.resolve('tcp://192.0.2.1', 'VC-500W') == (drivers.VC500W, 'VC-500W')
     assert drivers.resolve('simulation', 'VC-500W') == (drivers.VC500W, 'VC-500W')
     assert drivers.resolve('tcp://192.0.2.1', 'QL-810W') == (drivers.BROTHER, 'QL-810W')
-    # Unknown models are left to brother_ql
+    # Unknown models are left to the Brother driver
     assert drivers.resolve('file:///dev/usb/lp0', 'QL-9999') == (drivers.BROTHER, 'QL-9999')
     assert drivers.for_label('99x99') is None
 
@@ -61,3 +65,25 @@ def test_a_driver_states_what_it_does_not_do():
 ])
 def test_every_spelling_of_a_device_has_one_lock(device, key):
     assert devices.lock_key(device) == key
+
+
+def test_job_is_written_to_port_9100_of_a_network_printer():
+    server = socket.create_server(('127.0.0.1', 0))
+    received = []
+
+    def accept():
+        connection, _ = server.accept()
+        with connection:
+            data = b''
+            while chunk := connection.recv(65536):
+                data += chunk
+            received.append(data)
+    thread = threading.Thread(target=accept)
+    thread.start()
+    job = bytes(range(256)) * 1000
+    try:
+        network.send(job, f'tcp://127.0.0.1:{server.getsockname()[1]}')
+        thread.join(5)
+    finally:
+        server.close()
+    assert received == [job]

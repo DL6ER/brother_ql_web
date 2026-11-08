@@ -3,12 +3,11 @@ import pytest
 import re
 
 from PIL import Image
-from brother_ql.conversion import convert
-from brother_ql.labels import ALL_LABELS
-from brother_ql.raster import BrotherQLRaster
 
 from app.labeldesigner import drivers
-from app.labeldesigner.drivers.brother.labels import PTOUCH_LABELS
+from app.labeldesigner.drivers.brother.commands import Raster
+from app.labeldesigner.drivers.brother.labels import LABELS as BROTHER_LABELS, PTOUCH_LABELS
+from app.labeldesigner.drivers.brother.raster import convert
 from app.labeldesigner.drivers.vc500w import NEVER_WHY
 from app.labeldesigner.label_names import LABELS, check_label_size, label_printers
 from tests.helpers import make_client
@@ -19,7 +18,7 @@ def _label(identifier):
 
 
 def test_every_label_size_has_a_name():
-    # A new label size in brother_ql needs a name with its Brother code
+    # A new label size of a driver needs a name, with its product code
     for driver in drivers.DRIVERS:
         assert {label.identifier for label in driver.labels} == set(driver.label_names)
 
@@ -55,10 +54,10 @@ def test_tapes_of_the_small_print_head_are_not_offered_to_the_pt_p900_series(ide
 
 
 def test_every_offered_label_size_can_be_printed():
-    for label in ALL_LABELS:
+    for label in BROTHER_LABELS:
         for model in label_printers(label):
             image = Image.new('1', (label.dots_printable[0], label.dots_printable[1] or 100), 1)
-            convert(BrotherQLRaster(model), [image], label.identifier, cut=True)
+            convert(Raster(model), [image], label.identifier, cut=True)
 
 
 def test_label_designer_shows_brother_codes_and_printers(tmp_path):
@@ -92,7 +91,7 @@ def test_check_label_size():
     check_label_size('103x164', 'QL-1100')
     # "103" is not offered in the label designer, but saved labels may use it
     check_label_size('103', 'QL-1100')
-    # Models brother_ql does not know are left to brother_ql
+    # Unknown models are left to the Brother driver
     check_label_size('62', 'QL-9999')
     with pytest.raises(ValueError, match=r'^The label size 103 x 164 mm die-cut \(DK-11247 / DK-1247\) cannot be printed on a QL-800$'):
         check_label_size('103x164', 'QL-800')
@@ -104,12 +103,14 @@ def test_check_label_size():
 
 @pytest.mark.parametrize('identifier, pins', [('pt6', range(48, 80)), ('pt9', range(39, 89)), ('pt12', range(29, 99))])
 def test_narrow_tze_tapes_use_the_pins_of_the_raster_command_reference(identifier, pins):
-    # brother_ql has no 6 and 9 mm tapes, the label designer adds them
+    # Placed on the print head as in Brother's raster command reference
     printers = label_printers(_label(identifier))
     assert 'PT-E550W' in printers
     assert 'PT-P900W' not in printers
     image = Image.new('1', (len(pins), 40), 0)
-    data = convert(BrotherQLRaster('PT-E550W'), [image], identifier, cut=True, rotate=0)
+    raster = Raster('PT-E550W')
+    convert(raster, [image], identifier, cut=True, rotate=0)
+    data = raster.data
     used = set()
     i = data.index(b'M\x00') + 2
     while data[i] == 0x47:

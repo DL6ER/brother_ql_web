@@ -34,7 +34,7 @@ class Driver:
 
     # Printer models, as PRINTER_MODEL, PRINTERS and requests name them
     models: tuple = ()
-    # Label sizes (brother_ql's Label), in the order the label designer
+    # Label sizes (labels.Label), in the order the label designer
     # lists them, and the names it shows for them
     labels: tuple = ()
     label_names: dict = {}

@@ -2,7 +2,7 @@
 reports it (width_inches_media). Labels are as wide as the tape, the printer
 gets them BLEED dots wider, their edges repeated beyond those of the tape."""
 
-from brother_ql.labels import FormFactor, Label
+from ..labels import FormFactor, Label
 
 from .protocol import DPI
 
@@ -17,7 +17,7 @@ def _dots(inches: float) -> int:
 
 LABELS = tuple(
     Label(f'vc{width}', (width, 0), FormFactor.ENDLESS, (_dots(tape) + BLEED, 0), (_dots(tape), 0), 0,
-          restricted_to_models=[MODEL])
+          models=(MODEL,))
     for width, tape in TAPES.items())
 
 # Continuous ZINK tape

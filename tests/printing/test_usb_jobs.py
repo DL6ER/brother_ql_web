@@ -5,9 +5,8 @@ takes no time."""
 import threading
 
 import pytest
-from brother_ql.backends import helpers, linux_kernel
 
-from app.labeldesigner.drivers.brother import usb
+from app.labeldesigner.drivers.brother import backends, usb
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 REPLY, COMPLETED, PHASE_CHANGE, ERROR = 0x00, 0x01, 0x06, 0x02
@@ -241,9 +240,7 @@ def test_job_is_written_in_pieces(clock, monkeypatch):
 
 
 def test_long_labels_printed_through_the_api(clock, monkeypatch, tmp_path):
-    # The job is printed while it is received, which takes 30 s: brother_ql
-    # did not confirm it
-    monkeypatch.setattr(helpers, 'time', clock)
+    # The job is printed while it is received, which takes 30 s
     jobs = []
 
     class Backend(FakePrinter):
@@ -258,7 +255,7 @@ def test_long_labels_printed_through_the_api(clock, monkeypatch, tmp_path):
                 clock.sleep(30)
                 self.due = clock.now
                 self.messages = page() * self.written.count(b'\x1biz')
-    monkeypatch.setattr(linux_kernel, 'BrotherQLBackendLinuxKernel', Backend)
+    monkeypatch.setattr(backends, 'KernelPrinter', Backend)
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = 'file:///dev/usb/lp0'
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, print_count='7'))

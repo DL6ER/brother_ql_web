@@ -3,16 +3,16 @@ answers nothing, the status comes over SNMP or IPP."""
 
 import http.client
 import logging
+import socket
 import time
 from urllib.parse import urlsplit
-
-from brother_ql.reader import interpret_response
 
 from ... import ipp, snmp
 from .. import devices
 from ..base import network_status
 from . import usb
-from .labels import MODELS
+from .models import MODELS
+from .status import StatusError, parse_status
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ NO_LABELS = IPP_REASON_MESSAGES['media-empty']
 FEED_ERROR = ('The labels cannot be fed. Feed them into the slot (or insert a new roll) and close the cover, '
               'then the printer prints the waiting label by itself. Do not print it again')
 
-# Messages for the errors of the status, by the names brother_ql gives them
+# Messages for the errors of the status, by their names in status.py
 STATUS_ERROR_MESSAGES = {
     'No media when printing': NO_LABELS,
     'End of media (die-cut size only)': 'The labels are used up',
@@ -83,6 +83,15 @@ STATUS_ERROR_MESSAGES = {
     'Cover opened while printing (Except QL-500)': IPP_REASON_MESSAGES['cover-open'],
     'Media cannot be fed (also when the media end is detected)': FEED_ERROR,
 }
+
+
+def send(data: bytes, device_specifier: str):
+    """Send a job to port 9100 of a network printer, which answers nothing."""
+    address = urlsplit(device_specifier)
+    with socket.create_connection((address.hostname, address.port or 9100), timeout=10) as connection:
+        connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        connection.sendall(data)
+        connection.shutdown(socket.SHUT_RDWR)
 
 
 def network_printer(device_specifier: str, model: str) -> dict:
@@ -175,9 +184,8 @@ def _snmp_network_status(device_specifier: str, host: str, default_model: str) -
                                                port=SNMP_PORT, timeout=SNMP_TIMEOUT)
         if not isinstance(data, bytes) or not isinstance(printer_status, int):
             raise snmp.SNMPError(f'No status: {data!r}, {printer_status!r}')
-        state = interpret_response(data)
-    except (OSError, snmp.SNMPError, NameError) as e:
-        # brother_ql raises NameError for an answer that is no status
+        state = parse_status(data)
+    except (OSError, snmp.SNMPError, StatusError) as e:
         logger.debug('No status over SNMP from %s: %s', host, e)
         _snmp_unavailable[host] = time.monotonic()
         return None
@@ -204,7 +212,7 @@ def _snmp_network_status(device_specifier: str, host: str, default_model: str) -
 
 
 def label_printer_model(name: str) -> str | None:
-    """The brother_ql model of a name like "Brother QL-810W", None for other
+    """The model of a name like "Brother QL-810W", None for other
     devices, e.g. office printers."""
     model = (name or '').removeprefix('Brother ').strip()
     return model if model in MODELS else None
