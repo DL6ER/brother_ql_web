@@ -8,6 +8,7 @@ import datetime
 import tempfile
 import threading
 import contextlib
+import concurrent.futures
 import http.client
 from urllib.parse import urlsplit
 from brother_ql.backends.helpers import send
@@ -704,6 +705,51 @@ def query_status(device_specifier: str, default_model: str = 'Unknown') -> dict:
     return state
 
 
+# The configured printers are asked at the same time, the answer waits at most
+# STATUS_QUERY_WAIT seconds for them. The .local name of a PT-E550W that was off
+# took 10 s not to resolve, the label designer showed nothing meanwhile. A
+# query still running is not started again, its printer does not answer.
+STATUS_QUERY_WAIT = 4.0
+_status_pool = concurrent.futures.ThreadPoolExecutor(max_workers=8, thread_name_prefix='printer-status')
+_status_queries = {}
+_status_queries_lock = threading.Lock()
+
+
+def _query_configured(model: str, device: str) -> dict:
+    if device.startswith('tcp://'):
+        return query_network_status(device, model)
+    return query_status(device, model)
+
+
+def _configured_states(printers) -> list[dict]:
+    """The status of each configured (model, device), in their order."""
+    with _status_queries_lock:
+        futures = []
+        for model, device in printers:
+            if device == 'simulation':
+                futures.append(None)
+                continue
+            future = _status_queries.get(device)
+            if future is None or future.done():
+                future = _status_pool.submit(_query_configured, model, device)
+                _status_queries[device] = future
+            futures.append(future)
+    concurrent.futures.wait([f for f in futures if f], timeout=STATUS_QUERY_WAIT)
+    states = []
+    for (model, device), future in zip(printers, futures):
+        if future is None:
+            states.append(None)
+            continue
+        try:
+            if not future.done():
+                raise TimeoutError(f'no answer within {STATUS_QUERY_WAIT:g} s')
+            states.append(future.result())
+        except Exception as e:
+            logger.info('Status query of %s failed: %s', device, e)
+            states.append(_failed_printer_state(device, e, model))
+    return states
+
+
 # Why a printer did not answer, in the words of those who use it. The error
 # itself is logged where it is caught.
 _UNANSWERED = (
@@ -1040,17 +1086,8 @@ def get_ptr_status(config: Config):
             # model, a failed query must not move it to another printer. The
             # simulator is listed only when configured, e.g. QL-700=simulation.
             printers = []
-            for model, device in config['PRINTERS']:
-                try:
-                    if device == 'simulation':
-                        state = SIMULATOR_PRINTER.copy()
-                    elif device.startswith('tcp://'):
-                        state = query_network_status(device, model)
-                    else:
-                        state = query_status(device, model)
-                except Exception as e:
-                    logger.info('Status query of %s failed: %s', device, e)
-                    state = _failed_printer_state(device, e)
+            for (model, device), state in zip(config['PRINTERS'], _configured_states(config['PRINTERS'])):
+                state = state or SIMULATOR_PRINTER.copy()
                 state.update({'path': device, 'model': model})
                 state['red_support'] = model in [m.identifier for m in ALL_MODELS if m.two_color]
                 printers.append(state)

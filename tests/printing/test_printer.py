@@ -360,6 +360,32 @@ def test_configured_printers(client, monkeypatch):
         assert routes._printer(LP1, 'QL-800') == (LP1, 'QL-800')
 
 
+def test_a_printer_that_does_not_answer_does_not_hold_up_the_others(client, monkeypatch):
+    # The .local name of a PT-E550W that was off took 10 s not to resolve,
+    # the label designer showed nothing meanwhile
+    NET = 'tcp://off.local'
+    release, calls = threading.Event(), []
+
+    def hangs(device, model, *args, **kwargs):
+        calls.append(device)
+        release.wait(10)
+        raise OSError('Name or service not known')
+    monkeypatch.setattr(printer, 'query_network_status', hangs)
+    monkeypatch.setattr(printer, 'STATUS_QUERY_WAIT', 0.2)
+    client.application.config['PRINTERS'] = [('QL-570', 'simulation'), ('PT-E550W', NET)]
+    try:
+        for _ in range(2):
+            start = time.monotonic()
+            status = client.get('/labeldesigner/api/printer_status').get_json()
+            assert time.monotonic() - start < 2
+            assert status['printers'][0]['status_type'] == 'Simulator'
+            assert status['printers'][1]['errors'] == ['The printer does not answer']
+        # The query still running is not started again
+        assert calls == [NET]
+    finally:
+        release.set()
+
+
 def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):
     # The text of an error may show paths of the server, only the log has it
     for error, message in ((FileNotFoundError(errno.ENOENT, 'No such file or directory', '/dev/usb/lp0'),
