@@ -318,7 +318,8 @@ def test_codes_are_made_once_while_a_label_is_edited(tmp_path, monkeypatch):
     original = label.QRCode.make
     monkeypatch.setattr(label.QRCode, 'make', lambda self, *args, **kwargs: made.append(1) or original(self, *args, **kwargs))
     client = make_client(tmp_path)
-    data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='QR', code_text=f'https://example.com/{random.random()}')
+    # Red is drawn on black and red tape only
+    data = dict(EXAMPLE_FORMDATA, label_size='62red', print_type='qrcode_text', barcode_type='QR', code_text=f'https://example.com/{random.random()}')
 
     def preview(text, **settings):
         response = client.post('/labeldesigner/api/preview', data=dict(data, text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': text, 'size': '40'}]), **settings))

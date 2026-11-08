@@ -25,7 +25,8 @@ def answer() -> bytes:
     # The instance name starts in the PTR record
     instance_offset = 12 + len(question) + 2 + 10
     instance_pointer = struct.pack('>H', 0xC000 | instance_offset)
-    host = name('BRWACF23C60C9B7', 'local')
+    # Brother names the host after the MAC address, here one for documentation (RFC 7042)
+    host = name('BRW00005E005301', 'local')
     srv = record(instance_pointer, mdns.TYPE_SRV, struct.pack('>HHH', 0, 0, 9100) + host)
     txt = record(instance_pointer, mdns.TYPE_TXT, b''.join(
         bytes([len(entry)]) + entry for entry in (b'txtvers=1', b'ty=Brother QL-810W', b'usb_MDL=QL-810W')))
