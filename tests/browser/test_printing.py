@@ -372,6 +372,22 @@ def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
     assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
 
 
+def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
+    # The labels of a PUQU Q00 are torn off, cutting after each or the last
+    # label was offered all the same
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.settings.cut = 'each'; openPrinterPanel(); }")
+    cuts = designer.locator('.pp [data-c="cut"]')
+    assert cuts.count() == 3 and all(cuts.nth(i).is_disabled() for i in range(3))
+    assert designer.locator('.pp [data-c="cut"].on').count() == 0
+    assert designer.get_attribute('.pp div:has(> .seg [data-c="cut"])', 'title') == 'This printer has no cutter'
+    assert designer.get_attribute('.pp .cut-strip', 'title') == 'No cutter, the labels are torn off.'
+    # Labels saved with their own cutting are torn off as well
+    assert designer.inner_text('.pp .cut-show .muted') == 'No cutter, the labels are torn off.'
+    # Not cut is what is sent, also for a label saved with its own cutting
+    assert designer.evaluate("() => [printerCut().cut, cutOf({ cut: 'each', label_size: 'puqu50x30' }).cut]") == ['none', 'none']
+    assert 'disabled title="This printer has no cutter"' in designer.evaluate("() => cutField({ cut: '', label_size: 'puqu50x30' })")
+
+
 def test_printer_of_another_driver_gets_what_it_offers(designer):
     # The label designer knows printers only by what their driver tells
     designer.evaluate("""() => {
