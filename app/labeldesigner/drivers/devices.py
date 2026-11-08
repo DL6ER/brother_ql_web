@@ -79,9 +79,9 @@ def lock_key(device_specifier: str) -> str:
     A printer addressed both as usb://<vendor>:<product> and as
     /dev/usb/lp<N> cannot be recognized as the same device without asking
     it, so it should be addressed in one way only. A host without port is
-    one on port 9100. A Bluetooth printer is one device whatever RFCOMM
-    channel names it, and drivers differ in the channel they take when none
-    is named, so its key is its MAC address only."""
+    one on port 9100, also an IPv6 address in brackets. A Bluetooth printer
+    is one device whatever RFCOMM channel names it, and drivers differ in the
+    channel they take when none is named, so its key is its MAC address only."""
     key = device_specifier.strip()
     if key.startswith('file://'):
         key = key[len('file://'):]
@@ -89,7 +89,8 @@ def lock_key(device_specifier: str) -> str:
         key = 'bt://' + key.lower().split('/')[2]
     elif '://' in key:
         key = key.lower()
-        if ':' not in key.split('://', 1)[1]:
+        address = key.split('://', 1)[1]
+        if ':' not in (address.rpartition(']')[2] if address.startswith('[') else address):
             key += ':9100'
     return key
 

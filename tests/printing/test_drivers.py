@@ -59,6 +59,8 @@ def test_a_driver_states_what_it_does_not_do():
     ('/dev/usb/lp0', '/dev/usb/lp0'),
     ('TCP://Printer.local', 'tcp://printer.local:9100'),
     ('tcp://192.0.2.1:9100', 'tcp://192.0.2.1:9100'),
+    ('tcp://[2001:DB8::1]', 'tcp://[2001:db8::1]:9100'),
+    ('tcp://[2001:db8::1]:9100', 'tcp://[2001:db8::1]:9100'),
     ('vc500w://192.0.2.1', 'vc500w://192.0.2.1:9100'),
     ('usb://0x04F9:0x2042', 'usb://0x04f9:0x2042'),
     # One Bluetooth printer whatever channel names it
@@ -90,3 +92,31 @@ def test_job_is_written_to_port_9100_of_a_network_printer():
     finally:
         server.close()
     assert received == [job]
+
+
+def test_job_is_written_to_a_network_printer_at_an_ipv6_address():
+    try:
+        server = socket.create_server(('::1', 0), family=socket.AF_INET6)
+    except OSError:
+        pytest.skip('No IPv6 on this machine')
+    received = []
+
+    def accept():
+        connection, _ = server.accept()
+        with connection:
+            received.append(connection.recv(65536))
+    thread = threading.Thread(target=accept)
+    thread.start()
+    try:
+        network.send(b'job', f'tcp://[::1]:{server.getsockname()[1]}')
+        thread.join(5)
+    finally:
+        server.close()
+    assert received == [b'job']
+
+
+@pytest.mark.parametrize('device, offered', [('tcp://[2001:db8::1]', True), ('tcp://[2001:db8::1]:9100', True),
+                                             ('tcp://[::ffff:192.0.2.1]', True), ('tcp://[2001:db8::1]:6379', False),
+                                             ('tcp://2001:db8::1', False)])
+def test_network_printer_at_an_ipv6_address(device, offered):
+    assert any(pattern.fullmatch(device) for pattern in drivers.DEVICE_PATTERNS) is offered
