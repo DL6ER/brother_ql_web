@@ -77,7 +77,7 @@ def test_print_requires_post(tmp_path):
     assert response.status_code == 405
 
 
-@pytest.mark.parametrize('device', ['file://{target}', '{target}', 'tcp://127.0.0.1:6379'])
+@pytest.mark.parametrize('device', ['file://{target}', '{target}', 'tcp://127.0.0.1:6379', 'tcp://[::1]:6379', 'tcp://[::1]/x'])
 def test_print_rejects_unsupported_printer_devices(tmp_path, device):
     client = make_client(tmp_path)
     target = tmp_path / 'important.json'

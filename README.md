@@ -93,7 +93,7 @@ The navbar shows the version and build time of the running image, please add the
 
 | Environment variable | Meaning | Default |
 |---|---|---|
-| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>`, a VC-500W on the network as `vc500w://<host>`, a PUQU Q00 or Reekon P1 Tagger as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 if left out; in a container only with `network_mode: host`), or `?` to detect printers automatically | `?` |
+| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` (an IPv6 address in brackets), a VC-500W on the network as `vc500w://<host>`, a PUQU Q00 or Reekon P1 Tagger as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 if left out; in a container only with `network_mode: host`), or `?` to detect printers automatically | `?` |
 | `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer | `QL-800` |
 | `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g. `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1`. There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g. `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |

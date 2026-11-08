@@ -24,6 +24,8 @@ class BrotherRaster(Driver):
         re.compile(r'(file://)?/dev/usb/lp\d+'),
         re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
         re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
+        # An IPv6 address in brackets
+        re.compile(r'tcp://\[[0-9A-Fa-f:.]+\](:9100)?'),
     )
     mac_address_prefixes = network.MAC_ADDRESS_PREFIXES
 
