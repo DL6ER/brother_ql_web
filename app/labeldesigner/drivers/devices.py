@@ -42,6 +42,37 @@ _fallback_locks_guard = threading.Lock()
 # The last status of each printer, by lock key
 status_cache = {}
 
+# A printer on Bluetooth that did not answer is not looked for again by the
+# status queries, only when printing on it or when asked to look for printers
+# (look_again). Looking for two PUQU Q00 that had switched themselves off kept
+# the radio of a Raspberry Pi 3B busy at every status query, and its Wi-Fi,
+# which shares it, slowed down to seconds.
+_unanswered = {}
+
+
+def unanswered_before(device_specifier: str) -> Exception | None:
+    """Why the printer did not answer last time, if it did not."""
+    return _unanswered.get(lock_key(device_specifier))
+
+
+# Errors of a printer that was not found, e.g. switched off. Only those are
+# noted: a status query that took too long once made a Q00 that was on look
+# off until "Look for printers".
+NOT_FOUND = (errno.EHOSTDOWN, errno.EHOSTUNREACH)
+
+
+def note_answer(device_specifier: str, error: Exception | None = None):
+    """Note that the printer answered, or that it was not found."""
+    if error is not None and getattr(error, 'errno', None) in NOT_FOUND:
+        _unanswered[lock_key(device_specifier)] = error
+    else:
+        _unanswered.pop(lock_key(device_specifier), None)
+
+
+def look_again():
+    """Look for the printers that did not answer at the next status query."""
+    _unanswered.clear()
+
 
 def lock_key(device_specifier: str) -> str:
     """The same key for every spelling of a device that requests may use.

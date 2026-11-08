@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from app.labeldesigner.drivers import puqu
+from app.labeldesigner.drivers import devices, puqu
 from app.labeldesigner.drivers.puqu import protocol
 from app.labeldesigner.label import LabelOrientation
 from tests.helpers import make_client
@@ -58,6 +58,12 @@ class FakePrinter:
 
     def headers(self):
         return [data for data in self.sent if data[:1] == b'\x3a' and data != protocol.STATE_QUERY]
+
+
+@pytest.fixture(autouse=True)
+def answered(monkeypatch):
+    # Printers that did not answer in another test are looked for again
+    monkeypatch.setattr(devices, '_unanswered', {})
 
 
 @pytest.fixture
@@ -216,3 +222,46 @@ def test_only_its_printers_print_its_labels(client):
     response = client.post('/labeldesigner/api/print', data={
         'label_size': '62', 'print_type': 'text', 'text': TEXT})
     assert response.get_json()['success'] is False
+
+
+def test_printer_that_is_off_is_not_looked_for_at_every_status_query(client, monkeypatch):
+    # Looking for two that had switched themselves off kept the radio of a
+    # Raspberry Pi 3B busy, its Wi-Fi slowed down to seconds
+    calls = []
+
+    def unreachable(device):
+        calls.append(device)
+        raise OSError(112, 'Host is down')
+    monkeypatch.setattr(protocol, 'connect', unreachable)
+    for _ in range(3):
+        printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+        assert printer_['errors'] == ['The printer cannot be reached']
+    assert calls == [DEVICE]
+    # A print looks for it all the same, and "Look for printers"
+    client.post('/labeldesigner/api/print', data={'label_size': 'puqu50x30', 'print_type': 'text', 'text': TEXT})
+    assert len(calls) == 2
+    client.get('/labeldesigner/api/printer_status?look=1')
+    assert len(calls) == 3
+
+
+def test_printer_that_answers_again_is_asked_again(client, fake, monkeypatch):
+    devices.note_answer(DEVICE, OSError(112, 'Host is down'))
+    printer = fake()
+    assert client.post('/labeldesigner/api/print', data={
+        'label_size': 'puqu50x30', 'print_type': 'text', 'text': TEXT}).get_json() == {'success': True}
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+    assert len(printer.connected) == 2
+
+
+def test_printer_that_took_too_long_once_is_asked_again(client, monkeypatch):
+    # Only a printer that was not found is left alone, a Q00 that was on
+    # looked off after one status query that took too long
+    calls = []
+
+    def slow(device):
+        calls.append(device)
+        raise TimeoutError('timed out')
+    monkeypatch.setattr(protocol, 'connect', slow)
+    for _ in range(2):
+        assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == ['The printer does not answer']
+    assert len(calls) == 2

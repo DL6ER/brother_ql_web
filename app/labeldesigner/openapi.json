@@ -320,6 +320,18 @@
         "summary": "Status of the printers",
         "description": "With automatic detection (`PRINTER_PRINTER` not set), `printers` lists the detected printers and the simulator, the top-level fields describe the first one.",
         "operationId": "printerStatus",
+        "parameters": [
+          {
+            "name": "look",
+            "in": "query",
+            "required": false,
+            "description": "`1` also looks for printers on Bluetooth that did not answer before. The status queries leave them alone otherwise, as looking for one that is switched off keeps the radio busy, on a Raspberry Pi also its Wi-Fi. Printing on one looks for it too.",
+            "schema": {
+              "type": "string",
+              "enum": ["1"]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "The status.",

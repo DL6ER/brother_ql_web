@@ -77,6 +77,19 @@ class Puqu(Driver):
         return dict(super().capabilities(model), qualities=['quality'], cutter=False, leaves_turned=True)
 
     def status(self, device, model, unconfirmed=False):
+        # One that did not answer is not looked for at every status query
+        error = devices.unanswered_before(device)
+        if error:
+            raise error
+        try:
+            state = self._status(device, model)
+        except self.errors as e:
+            devices.note_answer(device, e)
+            raise
+        devices.note_answer(device)
+        return state
+
+    def _status(self, device, model):
         state = network_status(device, model)
         state.update({'media_type': 'Die-cut labels', 'phase_type': 'Waiting to receive'})
         with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
@@ -103,6 +116,7 @@ class Puqu(Driver):
         device = queue.device_specifier
         try:
             error = protocol.print_labels(device, job, [len(rows) / DOTS_PER_MM for rows in job])
+            devices.note_answer(device)
         except protocol.PuquError as e:
             logger.warning('Printing on %s failed: %s', device, e)
             return 'The printer does not answer'

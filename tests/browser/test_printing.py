@@ -376,6 +376,17 @@ def test_no_half_cut_on_a_ptouch_printer_without_a_half_cutter(designer):
     assert designer.get_attribute('.pp .cut-strip', 'title').startswith('Cut after the last label.')
 
 
+def test_look_for_printers_looks_also_for_those_that_did_not_answer(designer):
+    # The status every 20 s leaves Bluetooth printers that did not answer alone
+    with designer.expect_request('**/api/printer_status*') as request:
+        designer.evaluate('() => refreshPrinters()')
+    assert 'look=1' not in request.value.url
+    designer.evaluate('() => openPrinterPanel()')
+    with designer.expect_request('**/api/printer_status*') as request:
+        designer.click('#ppRefresh')
+    assert 'look=1' in request.value.url
+
+
 def test_labels_of_a_q00_leave_it_turned(designer):
     # They come out readable, the other way round than from a QL printer
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';

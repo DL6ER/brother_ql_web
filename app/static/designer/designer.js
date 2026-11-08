@@ -735,9 +735,11 @@ function fitsTape(sizeId) {
 
 // --- Printer status ----------------------------------------------------------
 
-async function refreshPrinters() {
+// look: also look for Bluetooth printers that did not answer before, which
+// the status every 20 s leaves alone
+async function refreshPrinters(look = false) {
     try {
-        const r = await fetch(API + '/printer_status');
+        const r = await fetch(API + '/printer_status' + (look ? '?look=1' : ''));
         const data = await r.json();
         S.printers = Array.isArray(data.printers) ? data.printers : [data];
         const chosen = load(own('designer_printer'), null);
@@ -2815,7 +2817,7 @@ function bindPrinterPanel() {
         tapeChanged = true;
         redraw();
     });
-    $('#ppRefresh', box).onclick = async () => { await refreshPrinters(); redraw(); };
+    $('#ppRefresh', box).onclick = async () => { await refreshPrinters(true); redraw(); };
     $('#setTape', box).onchange = e => {
         S.settings.tapes = Object.assign({}, S.settings.tapes, { [printerKey()]: e.target.value });
         if (!e.target.value) delete S.settings.tapes[printerKey()];
@@ -3028,7 +3030,7 @@ addEventListener('pagehide', () => { if (S.edit) storeEdit(); });
 
 (async function start() {
     renderPrinterChip();
-    await Promise.all([refreshPrinters(), loadDemos(), loadSaved(), loadBarcodes()]);
+    await Promise.all([refreshPrinters(true), loadDemos(), loadSaved(), loadBarcodes()]);
     await receiveShared();
     // Printing state from a page that was closed while printing is unknown
     S.history.forEach(h => { if (h.state === 'printing') { h.state = 'failed'; h.message = 'The page was closed while printing'; } });
