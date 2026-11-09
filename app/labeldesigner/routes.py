@@ -26,6 +26,7 @@ from .drivers import DEVICE_PATTERNS, resolution_problem
 from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, get_ptr_status
 from .drivers.labels import FormFactor
+from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
@@ -549,6 +550,8 @@ def repo_save():
                 raise ValueError('Unknown label_size')
             for model in label_printers(label):
                 check_cut(cut, model)
+        size = data.get('label_size', DEFAULT_LABEL_SIZE)
+        _cable_flag(data, next(label.form_factor for label in LABELS if label.identifier == size))
     except ValueError as e:
         _log_refused_request('Saving the label', e)
         return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
@@ -1210,6 +1213,23 @@ def create_printer_from_request(request: Request):
 _LOAD_IMAGE = object()
 
 
+def _cable_flag(d: dict, kind: FormFactor) -> float | None:
+    """The diameter of the cable in mm for a cable flag, None without."""
+    if _whole_or(d.get('cable_flag'), 0) <= 0:
+        return None
+    if _label_type(kind) != LabelType.ENDLESS_LABEL:
+        raise ValueError(CABLE_FLAG_REFUSED)
+    return cable_diameter(d.get('cable_diameter'))
+
+
+def _flag_wrap(label_size: str, diameter: float | None, high_res: bool) -> dict:
+    """The wrap of a cable flag in dots along the tape and its dpi."""
+    if diameter is None:
+        return {}
+    dpi = label_dpi(label_size, high_res)
+    return {'flag_wrap': wrap_dots(diameter, dpi), 'flag_dpi': dpi}
+
+
 def _label_type(kind: FormFactor) -> LabelType:
     """The label type of a form factor. P-touch tapes are endless,
     they were taken for round die-cut labels and came out 1 dot long."""
@@ -1245,9 +1265,11 @@ def _image_mode(d: dict) -> str:
 
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
     label_size = d.get('label_size', DEFAULT_LABEL_SIZE)
-    kind = next((label.form_factor for label in LABELS if label.identifier == label_size), None)
-    if kind is None:
+    size = next((label for label in LABELS if label.identifier == label_size), None)
+    if size is None:
         raise LookupError("Unknown label_size")
+    kind = size.form_factor
+    diameter = _cable_flag(d, kind)
     context = {
         'label_size': label_size,
         'print_type': d.get('print_type', 'text'),
@@ -1394,6 +1416,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
+        **_flag_wrap(label_size, diameter, context['high_res']),
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
             and context['image_fit'] and not label.has_lines()):

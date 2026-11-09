@@ -1,5 +1,6 @@
 from .enums import LabelContent, LabelOrientation, LabelType
 from . import icons
+from .cable_flag import flag_strip
 import os
 import uuid
 from qrcode import QRCode, constants
@@ -280,6 +281,8 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        flag_wrap: int = 0,
+        flag_dpi: int = 300,
     ):
         """Initialize a SimpleLabel object. warnings are problems found
         before, e.g. a font that is not installed. blanks are the values
@@ -338,6 +341,9 @@ class SimpleLabel:
         self._shrink_text = shrink_text
         # Text made as large as fits, the lines keep the ratio of their sizes
         self._fill_text = fill_text
+        # A cable flag with a wrap of this many dots at flag_dpi, 0 for none
+        self._flag_wrap = flag_wrap
+        self._flag_dpi = flag_dpi
         # The text measured at each set of line sizes, see _measure(), shared
         # by the copies of a print job where given
         self._shared_layouts = layouts
@@ -661,6 +667,15 @@ class SimpleLabel:
             return date.isoformat()
 
     def generate(self):
+        img = self._generate_label()
+        if not self._flag_wrap:
+            return img
+        # Both halves from one render, so random texts and counters match
+        strip = flag_strip(img, self._flag_wrap, self._flag_dpi, self._label_orientation == LabelOrientation.ROTATED)
+        check_image_size(*strip.size)
+        return strip
+
+    def _generate_label(self):
         # Process possible templates in the text and the code
         self.process_templates()
         # A preview shows a code of the blanks still to fill in, printed it
