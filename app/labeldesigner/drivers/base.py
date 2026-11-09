@@ -84,15 +84,16 @@ class Driver:
     def capabilities(self, model: str) -> dict:
         """What the label designer offers for the model: the qualities it
         shows (fast, quality, high for 600 dpi), whether the model prints at
-        600 dpi, whether it has a cutter, half cuts between labels and chain
-        prints, whether it feeds tape before the first label, reports the
-        stage of a job it prints, its colors, why it does not leave labels
-        uncut, if it does not, whether labels that leave it top first come
-        out turned around from how the label designer shows them leaving a
-        QL printer, and the maker of the model."""
-        return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'half_cut': False, 'chain': False,
-                'feed_waste': False, 'job_stages': False, 'colors': self.colors(model), 'never_cut': '',
-                'leaves_turned': False, 'vendor': self.vendor}
+        600 dpi, whether it has a cutter, else whether its labels are cut
+        off by hand with a lever, half cuts between labels and chain prints,
+        whether it feeds tape before the first label, reports the stage of a
+        job it prints, its colors, why it does not leave labels uncut, if it
+        does not, whether labels that leave it top first come out turned
+        around from how the label designer shows them leaving a QL printer,
+        and the maker of the model."""
+        return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
+                'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': self.colors(model),
+                'never_cut': '', 'leaves_turned': False, 'vendor': self.vendor}
 
     def resolution_problem(self, model: str, high_res: bool) -> str:
         """Why the model cannot print at the resolution, or an empty string."""

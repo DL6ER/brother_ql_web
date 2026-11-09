@@ -78,16 +78,19 @@ def test_label_designer_gets_what_each_printer_offers(tmp_path):
     assert (sizes['62']['dpi'], sizes['pt12']['dpi'], sizes['vc25']['dpi']) == ([300, 600], [180, 360], [320, 320])
     models = config['models']
     assert set(models) == set(drivers.MODELS)
-    assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'cutter': True, 'half_cut': False, 'chain': False,
-                                'feed_waste': False, 'job_stages': False, 'colors': 'red', 'never_cut': '', 'leaves_turned': False,
-                                'vendor': 'Brother'}
+    assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'cutter': True, 'manual_cutter': False,
+                                'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': 'red',
+                                'never_cut': '', 'leaves_turned': False, 'vendor': 'Brother'}
     assert (models['QL-1100']['high_res'], models['PT-P700']['half_cut'], models['PT-P700']['chain']) == (False, False, True)
     assert models['PT-E550W']['half_cut'] and models['PT-E550W']['feed_waste']
-    assert models['VC-500W'] == {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'half_cut': True, 'chain': False,
-                                 'feed_waste': False, 'job_stages': True, 'colors': 'color', 'never_cut': NEVER_WHY,
-                                 'leaves_turned': False, 'vendor': 'Brother'}
-    # The labels of the PUQU Q00 are torn off
+    assert models['VC-500W'] == {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
+                                 'half_cut': True, 'chain': False, 'feed_waste': False, 'job_stages': True, 'colors': 'color',
+                                 'never_cut': NEVER_WHY, 'leaves_turned': False, 'vendor': 'Brother'}
+    # The labels of the PUQU Q00 are torn off, those of the QL-500 cut with
+    # its lever
     assert models['Q00']['cutter'] is False and models['Q00']['leaves_turned'] is True
+    assert (models['Q00']['manual_cutter'], models['QL-500']['cutter'], models['QL-500']['manual_cutter']) == (False, False, True)
+    assert {model for model, caps in models.items() if not caps['cutter']} == {'QL-500', 'Q00'}
     assert models['Q00']['vendor'] == 'PUQU'
 
 
