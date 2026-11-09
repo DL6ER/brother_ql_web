@@ -23,7 +23,7 @@ USB printers are detected automatically, also one on another computer through [U
 
 - **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
-- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
+- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once and stepped through in the preview, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 500 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges and price tags
