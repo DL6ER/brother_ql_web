@@ -1,0 +1,12 @@
+[Unit]
+Description=Labelhaus
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/labelhaus
+ExecStart=/opt/labelhaus/.venv/bin/gunicorn --workers 3 --error-logfile /var/log/gunicorn/labelhaus.log --bind 0.0.0.0:5000 -m 007 wsgi:app
+
+[Install]
+WantedBy=multi-user.target

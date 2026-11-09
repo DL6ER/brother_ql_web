@@ -115,7 +115,7 @@ def _private_lock_dir() -> str:
     """Directory for the lock files that only this user can access. In a
     shared directory like /tmp other users could hold the locks or leave files
     behind that this user cannot open."""
-    path = os.path.join(LOCK_DIR, f'brother_ql_web-{os.getuid()}')
+    path = os.path.join(LOCK_DIR, f'labelhaus-{os.getuid()}')
     os.makedirs(path, mode=0o700, exist_ok=True)
     info = os.lstat(path)
     if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
