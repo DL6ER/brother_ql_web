@@ -1,8 +1,8 @@
 services:
-  brother_ql_web:
-    image: ghcr.io/dl6er/brother-ql-web:latest # newest release, see "Image tags" in the README
+  labelburg:
+    image: ghcr.io/dl6er/labelburg:latest # newest release, see "Image tags" in the README
     # build: . # building locally from source (see git clone below))
-    container_name: brother_ql_web
+    container_name: labelburg
     restart: always
     ports:
       - "8013:8013"

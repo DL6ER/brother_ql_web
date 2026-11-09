@@ -23,7 +23,8 @@ jobs:
       contents: read
       packages: write
     env:
-      IMAGE: ghcr.io/dl6er/brother-ql-web
+      # The images were called brother-ql-web until v3.0.0, they keep getting every tag
+      IMAGES: ghcr.io/dl6er/labelburg ghcr.io/dl6er/brother-ql-web
       RELEASE: ${{ github.event.release.tag_name || inputs.release }}
     steps:
       # Without a release the image becomes :dev. A release vX.Y.Z becomes
@@ -36,19 +37,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ -z "$RELEASE" ]; then
-            echo "tags=$IMAGE:dev" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if ! echo "$RELEASE" | grep -Eq '^v[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.]+)?$'; then
+            tags=dev
+          elif ! echo "$RELEASE" | grep -Eq '^v[0-9]+\.[0-9]+(\.[0-9]+)?(-[0-9A-Za-z.]+)?$'; then
             echo "::error::$RELEASE is not a release tag like v1.0 or v1.0.1"
             exit 1
+          else
+            version="${RELEASE#v}"
+            tags="$version"
+            if [ "$RELEASE" = "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" ]; then
+              tags="$tags $(echo "$version" | cut -d. -f1,2) ${version%%.*} latest"
+            fi
           fi
-          version="${RELEASE#v}"
-          tags="$version"
-          if [ "$RELEASE" = "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" ]; then
-            tags="$tags $(echo "$version" | cut -d. -f1,2) ${version%%.*} latest"
-          fi
-          echo "tags=$(for tag in $tags; do echo "$IMAGE:$tag"; done | sort -u | paste -sd, -)" >> "$GITHUB_OUTPUT"
+          echo "tags=$(for image in $IMAGES; do for tag in $tags; do echo "$image:$tag"; done; done | sort -u | paste -sd, -)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout repository
         uses: actions/checkout@v7

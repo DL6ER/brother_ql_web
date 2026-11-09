@@ -46,6 +46,8 @@ MAX_FILL_SIZE = 2000
 MAX_FILLED_RATIO = 16
 # Where an image or code can be next to the text
 IMAGE_POSITIONS = ('above', 'below', 'left', 'right')
+# The contents of labels with an image, by its colors
+IMAGE_CONTENTS = (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED)
 # The date format of a blank, e.g. %d.%m.%Y. A long one would make a long
 # date of every blank.
 MAX_DATE_FORMAT_LENGTH = 100
@@ -281,6 +283,7 @@ class SimpleLabel:
         blank_fields: dict | None = None,
         mark_blanks: bool = False,
         layouts: dict | None = None,
+        with_code: bool = False,
         flag_wrap: int = 0,
         flag_dpi: int = 300,
     ):
@@ -291,7 +294,8 @@ class SimpleLabel:
         "default": "1"}} or {"Frozen on": {"type": "date", "format":
         "%d.%m.%Y"}}. With mark_blanks the text shows blanks without a value
         as their name and a question mark, as the label designer previews
-        them."""
+        them. with_code puts a code next to the image of an image label, on
+        the other side of the text."""
         # Input validation
         if width < 0 or height < 0:
             raise ValueError("Width and height must be non-negative.")
@@ -362,6 +366,11 @@ class SimpleLabel:
         self._image_position = check_image_position(image_position)
         # How much the image or code was enlarged or shrunk to fit the label
         self._image_scale = 1.0
+        # The code of an image label with a code as well: its scale, and its
+        # size once it is placed
+        self._with_code = with_code
+        self._code_scale = 1.0
+        self._code_size: tuple[int, int] | None = None
         # The distance used, known once the label is generated
         self.image_text_gap = 0
         # Known once the label is generated as well: where the image or code
@@ -399,8 +408,9 @@ class SimpleLabel:
         so that it stays readable."""
         sizes = [self._line_size(line) for line in self.text if self._has_words(line)]
         gap = round(0.4 * max(sizes)) if sizes else 0
-        if self._label_content == LabelContent.TEXT_QRCODE and self.barcode_type == "QR":
-            gap = max(gap, round(2 * self._qr_size * self._image_scale))
+        if self.barcode_type == "QR" and (self._label_content == LabelContent.TEXT_QRCODE or self._with_code):
+            scale = self._code_scale if self._with_code else self._image_scale
+            gap = max(gap, round(2 * self._qr_size * scale))
         return gap
 
     @property
@@ -474,7 +484,7 @@ class SimpleLabel:
         # with their font, a code keeps their name. Only labels that draw a
         # code: the label designer keeps the code when the layout changes to
         # text, its templates must neither refuse nor log anything then.
-        if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE):
+        if self._draws_code():
             code = {}
             self._shown_code = self._expand_templates(self._code_text, code, with_icons=False, marks=self._mark_blanks)
             self.code_text = code.get('unmarked', self._shown_code)
@@ -682,13 +692,16 @@ class SimpleLabel:
         # would be empty
         self._code_of_marks = False
 
-        # Generate codes or load images if requested
+        # Generate codes or load images if requested. An image label with a
+        # code has both.
+        if self._with_code and self._image is None:
+            raise ValueError("The label has no image")
+        code = None
+        if self._draws_code():
+            code = self._generate_qr() if self.barcode_type == "QR" else self._generate_barcode()
         if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE):
-            if self.barcode_type == "QR":
-                img = self._generate_qr()
-            else:
-                img = self._generate_barcode()
-        elif self._label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED):
+            img, code = code, None
+        elif self._label_content in IMAGE_CONTENTS:
             img = self._image
         else:
             img = None
@@ -697,83 +710,19 @@ class SimpleLabel:
         width, height = self._width, self._height
         margin_left, margin_right, margin_top, margin_bottom = self._label_margin
 
-        # Resize image to fit if image_fit is True
+        # The parts of a side of the label that the image or code may take
+        # when fitted, next to the text and a code on the other side of it
+        parts = 1 + self.has_lines() + (code is not None)
         if img is not None:
-            if self._image_crop:
-                img = self._crop_image_to_content(img)
-
-            # First rotate the image if requested
-            if self._image_rotation != 0 and self._image_rotation != 360:
-                # expand=True enlarges the canvas to fit the rotated image
-                angle = math.radians(self._image_rotation)
-                cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
-                check_image_size(img.width * cos + img.height * sin, img.width * sin + img.height * cos)
-                img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
-
-            # Rotation with expand=True may add an empty border around content.
-            if self._image_crop:
-                img = self._crop_image_to_content(img)
-
-            # Resize image to fit if image_fit is True
-            if self._image_fit:
-                # Calculate the maximum allowed dimensions
-                max_width = max(width - margin_left - margin_right, 1)
-                max_height = max(height - margin_top - margin_bottom, 1)
-                # Next to text, along a side of the label that does not grow
-                # with the text, the image takes at most half of it, the text
-                # the rest
-                if self.has_lines():
-                    grows_wide, grows_high = self._grows()
-                    if self._image_side(True) in ('left', 'right'):
-                        if not grows_wide:
-                            max_width = max(max_width // 2, 1)
-                    elif not grows_high:
-                        max_height = max(max_height // 2, 1)
-
-                # Get image dimensions
-                img_width, img_height = img.size
-
-                # Print the original image size
-                logger.debug(f"Maximal allowed dimensions: {max_width}x{max_height} mm")
-                logger.debug(f"Original image size: {img_width}x{img_height} px")
-
-                # Resize the image to fit within the maximum dimensions
-                scale = 1.0
-                if self._label_orientation == LabelOrientation.STANDARD:
-                    if self._label_type in (LabelType.ENDLESS_LABEL,):
-                        # Only width is considered for endless label without rotation
-                        scale = max_width / img_width
-                    else:
-                        # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height)
-                else:
-                    if self._label_type in (LabelType.ENDLESS_LABEL,):
-                        # Only height is considered for endless label without rotation
-                        scale = max_height / img_height
-                    else:
-                        # Both dimensions are considered for standard label
-                        scale = min(max_width / img_width, max_height / img_height)
-                logger.debug(f"Scaling image by factor: {scale}")
-                self._image_scale = scale
-                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
-                logger.debug(f"Resized image size: {new_size} px")
-                check_image_size(*new_size)
-                img = img.resize(new_size, Image.Resampling.LANCZOS)
-                # Update image dimensions
-                img_width, img_height = img.size
-            else:
-                # Use image_scaling_factor if provided
-                img_width, img_height = img.size
-                scale = self._image_scaling_factor / 100.0
-                self._image_scale = scale
-                logger.debug(f"Manual image scaling factor: {scale}")
-                new_size = (max(1, int(img_width * scale)), max(1, int(img_height * scale)))
-                logger.debug(f"Resized image size: {new_size} px")
-                check_image_size(*new_size)
-                img = img.resize(new_size, Image.Resampling.LANCZOS)
-                img_width, img_height = img.size
+            img, self._image_scale = self._sized(img, width, height, parts)
+            img_width, img_height = img.size
         else:
             img_width, img_height = (0, 0)
+        # The code next to an image keeps its size where it is not fitted:
+        # the crop, rotation and scale are those of the image
+        if code is not None:
+            code, self._code_scale = self._sized(code, width, height, parts, own_look=False)
+        self._code_size = code.size if code is not None else None
 
         if self.want_text(img):
             self._text_scale = 1.0
@@ -788,8 +737,8 @@ class SimpleLabel:
             textsize = (0, 0, 0, 0)
 
         # Distance between image or code and text, only where the label has
-        # both
-        gap = self._gap(img_width, img_height) if bboxes else 0
+        # both, and between an image and a code without text
+        gap = self._gap(img_width, img_height) if bboxes or code is not None else 0
         self.image_text_gap = gap
         # Text made as small as it gets that still does not fit has no room,
         # e.g. below a code that takes the whole height of a die-cut label
@@ -797,12 +746,19 @@ class SimpleLabel:
                    and not self._fits_room(textsize, *self._text_space(width, height, img_width, img_height, gap)))
 
         # The image or code is at the margin on its side of the text, the
-        # text in the middle of the room left. An endless label grows along
-        # the tape to hold both, the text starts at the margin there.
-        # Without an image or code there is no side for it
-        side = self._image_side(with_text=self.has_lines() and img is not None)
-        self.image_side = side if img is not None and self.has_lines() else None
+        # code of a label with both at the other one, the text in the middle
+        # of the room left. An endless label grows along the tape to hold
+        # them, the text starts at the margin or next to an image or code
+        # there. Without an image or code there is no side for it.
+        paired = img is not None and (self.has_lines() or code is not None)
+        side = self._image_side(with_text=paired)
+        self.image_side = side if paired else None
         beside = side in ('left', 'right')
+        # Left or above the text, and right or below it
+        first, last = (img, code) if side in ('left', 'above') else (code, img)
+        (first_width, first_height), (last_width, last_height) = (item.size if item is not None else (0, 0) for item in (first, last))
+        first_gap = gap if first is not None else 0
+        last_gap = gap if last is not None and (bboxes or first is None) else 0
         grows_wide, grows_high = self._grows()
         text_height = textsize[3] - textsize[1]
         # Where a letter reaches left of where the lines start, e.g. a "j",
@@ -810,38 +766,31 @@ class SimpleLabel:
         text_width = self._text_width(textsize)
         bearing = -min(textsize[0], 0)
         if grows_high:
-            height = (max(img_height, text_height) if beside else img_height + gap + text_height) + margin_top + margin_bottom
+            height = (max(first_height, text_height, last_height) if beside
+                      else first_height + first_gap + text_height + last_gap + last_height) + margin_top + margin_bottom
         if grows_wide:
-            width = (img_width + gap + text_width if beside else max(img_width, text_width)) + margin_left + margin_right
+            width = (first_width + first_gap + text_width + last_gap + last_width if beside
+                     else max(first_width, text_width, last_width)) + margin_left + margin_right
 
         if beside:
             # In the middle of the room between the margins, at its start if
             # the text is wider
-            room = width - margin_left - margin_right - img_width - gap
-            start = margin_left + max((room - text_width)//2, 0) + bearing
+            room = width - margin_left - margin_right - first_width - first_gap - last_width - last_gap
+            horizontal_offset_text = margin_left + first_width + first_gap + max((room - text_width)//2, 0) + bearing
             # From its top, e.g. of an icon reaching above the first line
             vertical_offset_text = (height - textsize[3] - textsize[1])//2 + (margin_top - margin_bottom)//2
-            vertical_offset_image = (height - img_height)//2 + (margin_top - margin_bottom)//2
-            if side == 'left':
-                horizontal_offset_image = margin_left
-                horizontal_offset_text = start + img_width + gap
-            else:
-                horizontal_offset_image = width - margin_right - img_width
-                horizontal_offset_text = start
+            first_offset = margin_left, (height - first_height)//2 + (margin_top - margin_bottom)//2
+            last_offset = width - margin_right - last_width, (height - last_height)//2 + (margin_top - margin_bottom)//2
         else:
-            start = margin_top if grows_high else (height - img_height - gap - text_height)//2 + (margin_top - margin_bottom)//2
+            start = margin_top if grows_high else (height - first_height - first_gap - text_height - last_gap - last_height)//2 + (margin_top - margin_bottom)//2
             # Across, in the middle between the margins
             horizontal_offset_text = max((width - text_width)//2 + (margin_left - margin_right)//2, 0) + bearing
-            horizontal_offset_image = (width - img_width)//2 + (margin_left - margin_right)//2
-            if side == 'above':
-                vertical_offset_image = margin_top
-                vertical_offset_text = start + img_height + gap - textsize[1]
-            else:
-                vertical_offset_image = height - margin_bottom - img_height
-                vertical_offset_text = start - textsize[1]
+            vertical_offset_text = start + first_height + first_gap - textsize[1]
+            first_offset = (width - first_width)//2 + (margin_left - margin_right)//2, margin_top
+            last_offset = (width - last_width)//2 + (margin_left - margin_right)//2, height - margin_bottom - last_height
 
         text_offset = horizontal_offset_text, vertical_offset_text
-        image_offset = horizontal_offset_image, vertical_offset_image
+        image_offset, code_offset = (first_offset, last_offset) if first is img else (last_offset, first_offset)
 
         # Ensure height and width are at least 1 to avoid generating valishing
         # preview images for empty inputs. PIL cannot store images with 0
@@ -855,19 +804,24 @@ class SimpleLabel:
         if self._code_of_marks:
             self.warnings.append('The code is empty until its blanks are filled in.')
         what = 'code' if self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE) else 'image'
+        # What is placed next to the text, by name
+        boxes = [(name, (x, y, x + item.width, y + item.height))
+                 for name, item, (x, y) in ((what, img, image_offset), ('code', code, code_offset)) if item is not None]
         if self.want_text(img) and bboxes:
             x, y = text_offset
+            text_box = (x + textsize[0], y + textsize[1], x + textsize[2], y + textsize[3])
+            overlapped = next((name for name, box in boxes if self._overlaps(text_box, box)), None)
             if no_room:
                 self.warnings.append('The text does not fit on the label at any size.')
-            elif x + textsize[0] < 0 or y + textsize[1] < 0 or x + textsize[2] > width or y + textsize[3] > height:
+            elif text_box[0] < 0 or text_box[1] < 0 or text_box[2] > width or text_box[3] > height:
                 self.warnings.append('The text does not fit on the label, part of it is cut off.')
-            elif img is not None and self._overlaps((x + textsize[0], y + textsize[1], x + textsize[2], y + textsize[3]),
-                                                    (*image_offset, image_offset[0] + img_width, image_offset[1] + img_height)):
-                self.warnings.append(f'The text does not fit next to the {what}, it overlaps it.')
-        if img is not None:
-            x, y = image_offset
-            if x < 0 or y < 0 or x + img_width > width or y + img_height > height:
-                self.warnings.append(f'The {what} does not fit on the label, part of it is cut off.')
+            elif overlapped:
+                self.warnings.append(f'The text does not fit next to the {overlapped}, it overlaps it.')
+        for name, box in boxes:
+            if box[0] < 0 or box[1] < 0 or box[2] > width or box[3] > height:
+                self.warnings.append(f'The {name} does not fit on the label, part of it is cut off.')
+        if len(boxes) == 2 and self._overlaps(boxes[0][1], boxes[1][1]):
+            self.warnings.append('The code does not fit next to the image, it overlaps it.')
 
         logger.debug(f"Image resolution: {int(width)} x {int(height)} px")
         check_image_size(width, height)
@@ -875,6 +829,8 @@ class SimpleLabel:
 
         if img is not None:
             imgResult.paste(img, image_offset)
+        if code is not None:
+            imgResult.paste(code, code_offset)
 
         if self.want_text(img):
             self._draw_text(imgResult, bboxes, text_offset)
@@ -896,6 +852,76 @@ class SimpleLabel:
             # Draw (rounded) rectangle
             draw.rounded_rectangle(rect, radius=self._border_roundness, outline=self._border_color, width=self._border_thickness)
         return imgResult
+
+    def _sized(self, img: Image.Image, width: int, height: int, parts: int, own_look: bool = True) -> tuple[Image.Image, float]:
+        """img as it is placed on the label and how much it was enlarged or
+        shrunk: with own_look cropped, rotated and scaled as set, fitted to
+        the label where image_fit is set. Next to text, along a side of the
+        label that does not grow with the text, it takes one of parts of it."""
+        margin_left, margin_right, margin_top, margin_bottom = self._label_margin
+        if own_look and self._image_crop:
+            img = self._crop_image_to_content(img)
+
+        # First rotate the image if requested
+        if own_look and self._image_rotation != 0 and self._image_rotation != 360:
+            # expand=True enlarges the canvas to fit the rotated image
+            angle = math.radians(self._image_rotation)
+            cos, sin = abs(math.cos(angle)), abs(math.sin(angle))
+            check_image_size(img.width * cos + img.height * sin, img.width * sin + img.height * cos)
+            img = img.rotate(-self._image_rotation, expand=True, fillcolor="white")
+
+        # Rotation with expand=True may add an empty border around content.
+        if own_look and self._image_crop:
+            img = self._crop_image_to_content(img)
+
+        # Resize image to fit if image_fit is True
+        if self._image_fit:
+            # Calculate the maximum allowed dimensions
+            max_width = max(width - margin_left - margin_right, 1)
+            max_height = max(height - margin_top - margin_bottom, 1)
+            # Next to text, along a side of the label that does not grow
+            # with the text, the image takes its part of it, the text the
+            # rest: half of it, a third with a code on the other side
+            if parts > 1:
+                grows_wide, grows_high = self._grows()
+                if self._image_side(True) in ('left', 'right'):
+                    if not grows_wide:
+                        max_width = max(max_width // parts, 1)
+                elif not grows_high:
+                    max_height = max(max_height // parts, 1)
+
+            # Get image dimensions
+            img_width, img_height = img.size
+
+            # Print the original image size
+            logger.debug(f"Maximal allowed dimensions: {max_width}x{max_height} mm")
+            logger.debug(f"Original image size: {img_width}x{img_height} px")
+
+            # Resize the image to fit within the maximum dimensions
+            scale = 1.0
+            if self._label_orientation == LabelOrientation.STANDARD:
+                if self._label_type in (LabelType.ENDLESS_LABEL,):
+                    # Only width is considered for endless label without rotation
+                    scale = max_width / img_width
+                else:
+                    # Both dimensions are considered for standard label
+                    scale = min(max_width / img_width, max_height / img_height)
+            else:
+                if self._label_type in (LabelType.ENDLESS_LABEL,):
+                    # Only height is considered for endless label without rotation
+                    scale = max_height / img_height
+                else:
+                    # Both dimensions are considered for standard label
+                    scale = min(max_width / img_width, max_height / img_height)
+            logger.debug(f"Scaling image by factor: {scale}")
+        else:
+            # Use image_scaling_factor if provided
+            scale = self._image_scaling_factor / 100.0 if own_look else 1.0
+            logger.debug(f"Manual image scaling factor: {scale}")
+        new_size = (max(1, int(img.width * scale)), max(1, int(img.height * scale)))
+        logger.debug(f"Resized image size: {new_size} px")
+        check_image_size(*new_size)
+        return img.resize(new_size, Image.Resampling.LANCZOS), scale
 
     @staticmethod
     def _crop_image_to_content(img: Image.Image) -> Image.Image:
@@ -1190,7 +1216,15 @@ class SimpleLabel:
         Without text it is where it is without a choice."""
         if self._image_position and with_text:
             return self._image_position
+        # An image with a code is left of the text, the code right of it
+        if self._with_code:
+            return 'left'
         return 'above' if self._label_orientation == LabelOrientation.STANDARD else 'left'
+
+    def _draws_code(self) -> bool:
+        """Whether the label has a code: alone, with text, or next to an
+        image as well."""
+        return self._label_content in (LabelContent.QRCODE_ONLY, LabelContent.TEXT_QRCODE) or self._with_code
 
     def has_lines(self) -> bool:
         """Whether the label is laid out with text: a line that is not empty
@@ -1217,9 +1251,10 @@ class SimpleLabel:
 
     def _text_space(self, width, height, img_width, img_height, gap, largest=False):
         """Width and height the text may take within the margins, beside,
-        above or below an image or code at the distance gap. None where an
-        endless label grows with the text, with largest as far as a label
-        may be large."""
+        above or below an image or code at the distance gap, and a code on
+        the other side of an image label with both. None where an endless
+        label grows with the text, with largest as far as a label may be
+        large."""
         margin_left, margin_right, margin_top, margin_bottom = self._label_margin
         grows_wide, grows_high = self._grows()
         if largest and grows_wide:
@@ -1227,8 +1262,10 @@ class SimpleLabel:
         if largest and grows_high:
             height, grows_high = min(MAX_LABEL_PIXELS // max(width, 1), MAX_FILLED_RATIO * width), False
         beside = self._image_side() in ('left', 'right')
-        max_width = None if grows_wide else width - margin_left - margin_right - (img_width + gap if beside else 0)
-        max_height = None if grows_high else height - margin_top - margin_bottom - (0 if beside else img_height + gap)
+        # A code next to an image is on the other side of the text
+        code_width, code_height = (self._code_size[0] + gap, self._code_size[1] + gap) if self._code_size else (0, 0)
+        max_width = None if grows_wide else width - margin_left - margin_right - (img_width + gap + code_width if beside else 0)
+        max_height = None if grows_high else height - margin_top - margin_bottom - (0 if beside else img_height + gap + code_height)
         return max_width, max_height
 
     def _shrink_text_next_to_image(self, bboxes, textsize, width, height, img_width, img_height):

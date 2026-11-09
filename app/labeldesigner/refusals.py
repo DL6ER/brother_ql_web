@@ -59,6 +59,7 @@ MESSAGES = (
     f'Barcode value must not exceed {MAX_BARCODE_LENGTH} characters',
     'The code is empty until its blanks are filled in.',
     'The QR code is empty',
+    'The label has no image',
     IMAGE_MODE_REFUSED,
     UNKNOWN_MODEL,
     'print_count must be greater than 0',

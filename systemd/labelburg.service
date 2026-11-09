@@ -1,0 +1,12 @@
+[Unit]
+Description=Labelburg
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/labelburg
+ExecStart=/opt/labelburg/.venv/bin/python /opt/labelburg/run.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

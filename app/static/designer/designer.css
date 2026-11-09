@@ -91,16 +91,19 @@ main { min-height: 0; overflow: auto; }
 
 /* Top bar */
 .top { background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 1rem; padding: 0 1.1rem; min-width: 0; z-index: 5; }
-.brand { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.brand { display: flex; flex-direction: column; justify-content: center; flex: none; }
 .brand .build { font-size: .68rem; color: var(--muted); text-decoration: none; margin: -.15rem 0 0 calc(30px + .55rem); white-space: nowrap; }
 .brand .build:hover { color: var(--ink); }
 .logo { display: flex; align-items: center; gap: .55rem; font-weight: 700; font-size: 1.1rem; font-stretch: 88%; text-decoration: none; }
-.logo .mark { width: 30px; height: 30px; border-radius: 8px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-size: .8rem; }
+.logo .mark { flex: none; width: 30px; height: 30px; border-radius: 8px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; }
+.logo .mark svg { width: 17px; height: 17px; }
+.logo .mark .peel { fill: var(--label-red); }
 .tabs { display: flex; gap: .2rem; }
 .tabs a { display: inline-flex; align-items: center; gap: .45rem; padding: .45rem .85rem; border-radius: 8px; color: var(--muted); font-weight: 500; text-decoration: none; }
 .tabs a i { font-size: .85rem; }
 .tabs a.on { background: var(--surface-2); color: var(--ink); font-weight: 650; }
-.cmd { margin-left: auto; display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: .45rem .7rem; color: var(--muted); width: 320px; cursor: text; text-align: left; }
+.cmd { margin-left: auto; display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: .45rem .7rem; color: var(--muted); width: 320px; min-width: 0; cursor: text; text-align: left; }
+.cmd .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kbd { font-size: .72rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .02rem .35rem; color: var(--muted); background: var(--surface); white-space: nowrap; font-weight: 500; }
 .chip-printer { display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); border-radius: 9px; padding: .3rem .7rem; font-size: .9rem; background: var(--surface); white-space: nowrap; cursor: pointer; }
 .chip-printer:hover { border-color: var(--muted); }
@@ -206,6 +209,11 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage.side .cut i { left: -.32rem; top: -4px; transform: none; }
 .stage.diecut .cut, .stage .cut[hidden] { display: none; }
 .stage .cuts { position: absolute; left: .9rem; bottom: .75rem; display: flex; align-items: center; gap: .55rem; font-size: .75rem; color: var(--muted); }
+.stage.large .cuts { left: 50%; bottom: auto; top: calc(100% + 2.3rem); transform: translateX(-50%); white-space: nowrap; }
+.stage.large.turned .cuts { top: auto; bottom: calc(100% + 2.3rem); }
+.stage .paper img.dots { image-rendering: pixelated; }
+.stage .zoom { position: absolute; right: .6rem; bottom: .6rem; z-index: 3; color: var(--muted); }
+.stage .zoom:hover { color: var(--ink); }
 /* Copies as cut: labels, cuts (a gap), half cuts (dashed) and the printer,
    which keeps the last label with chain printing */
 .cut-strip { display: inline-flex; align-items: center; flex: none; }
@@ -332,11 +340,12 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .ed-head input:hover { border-color: var(--line); }
 .ed-head input:focus { outline: none; border-color: var(--select); }
 .ed-head .btn { flex: none; }
-.layouts { display: grid; grid-template-columns: repeat(4, 1fr); gap: .45rem; }
-.lay { border: 1px solid var(--line); border-radius: 9px; padding: .5rem .3rem .4rem; display: flex; flex-direction: column; align-items: center; gap: .35rem; font-size: .76rem; color: var(--muted); background: var(--surface); cursor: pointer; }
-.lay .sch { width: 54px; height: 26px; border-radius: 3px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); display: flex; gap: 3px; padding: 4px; }
+.layouts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+.lay { border: 1px solid var(--line); border-radius: 9px; padding: .5rem .3rem .4rem; display: flex; flex-direction: column; align-items: center; gap: .35rem; font-size: .76rem; text-align: center; color: var(--muted); background: var(--surface); cursor: pointer; }
+.lay .sch { width: 54px; max-width: 100%; height: 26px; border-radius: 3px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); display: flex; gap: 3px; padding: 4px; }
 .lay .sch i { display: block; border-radius: 1px; background: var(--muted); opacity: .55; }
 .lay .sch .q { width: 18px; }
+.lay .sch .q.s { width: 12px; }
 .lay .sch .t { flex: 1; background: repeating-linear-gradient(180deg, var(--muted) 0 3px, transparent 3px 6px); }
 .lay.on { border-color: var(--select); box-shadow: 0 0 0 1px var(--select); color: var(--ink); font-weight: 600; }
 .block { border: 1px solid var(--line); border-radius: 11px; }
@@ -525,6 +534,7 @@ select.mini.lsp { max-width: 4rem; }
     .ed-panel { border-right: 0; overflow: visible; }
     .ed-canvas { padding: 1rem; }
     .ed-canvas .stage { min-height: 200px; }
+    .stage .zoom { display: none; }
     /* Undo and Save in one row, the copies right next to Print below */
     .ed-top .row { flex-wrap: wrap; width: 100%; gap: .4rem; margin-left: 0; }
     .ed-top #edSave .lbl, .ed-top #edUndo .lbl { display: none; }

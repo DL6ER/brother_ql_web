@@ -87,8 +87,12 @@ def test_images_and_their_sources():
     assert used == files
     with open(os.path.join(demos.IMAGE_DIR, 'SOURCES.md'), encoding='utf-8') as fh:
         sources = fh.read()
-    assert set(re.findall(r'^\| `([^`]+)` \| \[.+\]\(https://commons\.wikimedia\.org/wiki/File:.+\) \| .+ \| (?:Public domain|CC0) \|$',
-                          sources, re.M)) == files
+    commons = set(re.findall(r'^\| `([^`]+)` \| \[.+\]\(https://commons\.wikimedia\.org/wiki/File:.+\) \| .+ \| (?:Public domain|CC0) \|$',
+                             sources, re.M))
+    # The icon of this project, under its license
+    own = set(re.findall(r'^\| `([^`]+)` \| \[Labelburg\]\(https://github\.com/DL6ER/labelburg\), the icon of this project \| Labelburg \| GPLv3 \|$',
+                         sources, re.M))
+    assert own == {'labelburg.png'} and commons | own == files
 
 
 @pytest.mark.parametrize('demo, title', [('office/003-cable-12.json', 'Cable flag'), ('office/003-cable-12-de.json', 'Kabelfahne'),
@@ -143,3 +147,42 @@ def test_print(client, monkeypatch, label_id):
     colors = {color for _, color in label.generate().convert('RGB').getcolors(1 << 20)}
     assert (0, 0, 0) in colors
     assert any(r > 120 and g < 60 and b < 60 for r, g, b in colors) == label_id.endswith('62red.json')
+
+
+@pytest.mark.parametrize('label_id, tagline', [('events/016-labelburg-sticker-vc50.json', ['Design and print labels', '100% offline']),
+                                               ('events/016-labelburg-sticker-vc50-de.json', ['Etiketten gestalten', 'und drucken', '100 % offline'])])
+def test_sticker_of_this_project(client, label_id, tagline):
+    # Made with the layout of image, code and text, editable like any label
+    from qrcode import constants
+    from app.labeldesigner.label import _qr_image
+    url = 'https://github.com/DL6ER/labelburg'
+    data = client.get('/labeldesigner/api/demos/load', query_string={'id': label_id}).get_json()
+    assert (data['label_size'], data['print_type'], data['code_text'], data['image_name']) == ('vc50', 'image_qrcode_text', url, 'labelburg.png')
+    with open(os.path.join(demos.IMAGE_DIR, 'labelburg.png'), 'rb') as fh:
+        assert base64.b64decode(data['image_data']) == fh.read()
+    assert [line['text'] for line in json.loads(data['text'])] == ['Labelburg', *tagline, 'github.com/DL6ER/labelburg']
+    # Offered for the 50 mm tape of the VC-500W, among the events
+    listed = {label['id']: label for category in client.get('/labeldesigner/api/demos/list').get_json()['categories']
+              for label in category['labels'] if category['id'] == 'events'}
+    assert listed[label_id]['label_size_id'] == 'vc50'
+    response = client.get('/labeldesigner/api/demos/preview', query_string={'id': label_id})
+    assert response.status_code == 200
+    assert response.headers.get('X-Label-Warning') is None and response.headers['X-Label-Image-Position'] == 'left'
+    preview = Image.open(io.BytesIO(response.data))
+    # In color, as high as the tape and about 140 mm long at 320 dpi
+    assert preview.mode == 'RGB' and preview.height == 617
+    assert 135 < preview.width / 320 * 25.4 < 145
+    margin_top, margin_bottom, margin_left, margin_right = (int(data[f'margin_{side}']) for side in ('top', 'bottom', 'left', 'right'))
+    high = 617 - margin_top - margin_bottom
+    top = (617 - high) // 2 + (margin_top - margin_bottom) // 2
+    # The icon left, filling the tape between the margins
+    icon = preview.crop((margin_left, top, margin_left + high, top + high))
+    with Image.open(os.path.join(demos.IMAGE_DIR, 'labelburg.png')) as original:
+        expected = original.convert('RGB').resize((high, high), Image.Resampling.LANCZOS)
+    assert icon.tobytes() == expected.tobytes()
+    # The QR code right, as large, its modules whole dots
+    code = preview.crop((preview.width - margin_right - high, top, preview.width - margin_right, top + high))
+    assert code.tobytes() == _qr_image(url, constants.ERROR_CORRECT_M, int(data['qrcode_size']), 'black').convert('RGB').tobytes()
+    # The address in red, the tagline in gray
+    colors = {color for _, color in preview.getcolors(1 << 20)}
+    assert {(0xc8, 0x10, 0x2e), (0x3d, 0x44, 0x4b)} <= colors

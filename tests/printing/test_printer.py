@@ -117,14 +117,14 @@ def test_device_lock_covers_all_spellings(held, requested):
 
 def test_device_lock_uses_private_directory(tmp_path):
     with devices.device_lock(DEVICE):
-        lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
+        lock_dir = tmp_path / f'labelburg-{os.getuid()}'
         assert lock_dir.is_dir()
         assert lock_dir.stat().st_mode & 0o777 == 0o700
 
 
 def test_device_lock_refuses_shared_directory(tmp_path):
     # A directory other users can write to is not used for the lock files
-    lock_dir = tmp_path / f'brother_ql_web-{os.getuid()}'
+    lock_dir = tmp_path / f'labelburg-{os.getuid()}'
     lock_dir.mkdir(mode=0o777)
     lock_dir.chmod(0o777)
     with devices.device_lock(DEVICE) as acquired:
@@ -165,7 +165,7 @@ def test_lock_files_are_bounded(tmp_path):
     for i in range(300):
         with devices.device_lock(f'tcp://printer-{i}.example', timeout=0):
             pass
-    assert len(list((tmp_path / f'brother_ql_web-{os.getuid()}').iterdir())) <= 300
+    assert len(list((tmp_path / f'labelburg-{os.getuid()}').iterdir())) <= 300
     # However many devices requests name, there are at most 4096 lock files
     assert len({devices._lock_slot(f'tcp://printer-{i}.example') for i in range(50000)}) <= 4096
 

@@ -1,8 +1,8 @@
-# brother_ql_web
+# Labelburg
 
-[![Python tests](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/codeql.yml) [![Build and push images to GHCR.io](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/brother_ql_web/actions/workflows/devcontainer-ghcr.yml)
+[![Python tests](https://github.com/DL6ER/labelburg/actions/workflows/ci.yml/badge.svg)](https://github.com/DL6ER/labelburg/actions/workflows/ci.yml) [![CodeQL Advanced](https://github.com/DL6ER/labelburg/actions/workflows/codeql.yml/badge.svg)](https://github.com/DL6ER/labelburg/actions/workflows/codeql.yml) [![Build and push images to GHCR.io](https://github.com/DL6ER/labelburg/actions/workflows/devcontainer-ghcr.yml/badge.svg)](https://github.com/DL6ER/labelburg/actions/workflows/devcontainer-ghcr.yml)
 
-A web interface and REST API for Brother QL label printers. Design labels with text, QR codes, barcodes and images in the browser, check them in an exact preview and print them, from a computer or a phone. It runs as a Docker container.
+Design and print labels 100% offline. Labelburg is a web interface and REST API for the label printers of Brother (QL, P-touch, VC-500W) and PUQU. Design labels with text, QR codes, barcodes and images in the browser, check them in an exact preview and print them, from a computer or a phone. It runs as a Docker container.
 
 ![Label designer](./screenshots/image1.png)
 
@@ -23,7 +23,7 @@ USB printers are detected automatically, also one on another computer through [U
 
 - **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
-- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone or together with text, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
+- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 500 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges and price tags
@@ -48,9 +48,9 @@ With Docker Compose, e.g. with the example [`docker-compose.yml`](./docker-compo
 
 ``` yaml
 services:
-  brother_ql_web:
-    image: ghcr.io/dl6er/brother-ql-web:latest
-    container_name: brother_ql_web
+  labelburg:
+    image: ghcr.io/dl6er/labelburg:latest
+    container_name: labelburg
     restart: always
     ports:
       - "8013:8013"
@@ -85,7 +85,7 @@ To detect printers automatically, also ones plugged in later and network printer
 | `1.0.1` | exactly this release | never |
 | `dev` | the current state of `master` | with every change and every night |
 
-`latest` is the right choice for most installations. `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Pre-releases (e.g. `1.1.0-rc.1`) only get their exact tag. To update, run `docker compose pull && docker compose up -d`. All releases are listed on the [releases page](https://github.com/DL6ER/brother_ql_web/releases).
+`latest` is the right choice for most installations. `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Pre-releases (e.g. `1.1.0-rc.1`) only get their exact tag. To update, run `docker compose pull && docker compose up -d`. All releases are listed on the [releases page](https://github.com/DL6ER/labelburg/releases). Every tag is also pushed as `ghcr.io/dl6er/brother-ql-web`, the name of the images until v3.0.0, so existing installations keep getting updates.
 
 The navbar shows the version and build time of the running image, please add them when you report an issue.
 
@@ -169,11 +169,11 @@ To build the image yourself, with the commit and build time shown in the navbar:
 docker compose build --build-arg GIT_COMMIT=$(git rev-parse HEAD) --build-arg BUILD_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
 
-Pull requests are welcome: [fork the repository](https://github.com/DL6ER/brother_ql_web/fork), make your changes with tests and open a pull request with a clear description.
+Pull requests are welcome: [fork the repository](https://github.com/DL6ER/labelburg/fork), make your changes with tests and open a pull request with a clear description.
 
 ## Credits and license
 
-This fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web) carries the printer code of [`pklaus/brother_ql`](https://github.com/pklaus/brother_ql) and its fork [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree), both GPLv3, in its Brother driver, and builds on improvements from [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web), [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web), for which we are grateful.
+Labelburg, called brother_ql_web until v3.0.0, is a fork of [`pklaus/brother_ql_web`](https://github.com/pklaus/brother_ql_web). It carries the printer code of [`pklaus/brother_ql`](https://github.com/pklaus/brother_ql) and its fork [`matmair/brother_ql-inventree`](https://github.com/matmair/brother_ql-inventree), both GPLv3, in its Brother driver, and builds on improvements from [`tbnobody/brother_ql_web`](https://github.com/tbnobody/brother_ql_web), [`dersimn/brother_ql_web`](https://github.com/dersimn/brother_ql_web) and [`davidramiro/brother_ql_web`](https://github.com/davidramiro/brother_ql_web), for which we are grateful. Brother, P-touch and PUQU are trademarks of their owners, Labelburg is not affiliated with them.
 
 It is published under the terms of the GPLv3, see [LICENSE](./LICENSE). It includes software of third parties under other licenses:
 

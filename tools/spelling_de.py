@@ -12,7 +12,7 @@ import sys
 DEMOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'app', 'labeldesigner', 'demos')
 # Correct, but not in the dictionary: technical terms, compound words and
 # abbreviations, also in capitals
-KNOWN = {'AED', 'Brandfördernd', 'Chili', 'Defibrillator', 'Ibuprofen', 'Inventaretikett', 'mg', 'Minze', 'ml', 'Nr', 'Olivenöl',
+KNOWN = {'AED', 'Brandfördernd', 'Chili', 'Defibrillator', 'Ibuprofen', 'Inventaretikett', 'Labelburg', 'mg', 'Minze', 'ml', 'Nr', 'Olivenöl',
          'Oxidationsmittel', 'Patchfeld', 'Pesto', 'QR', 'Rack', 'Reagenz', 'Regaletikett', 'Rutschgefahr', 'Umweltgefährlich',
          'Verbandkasten'}
 
@@ -27,6 +27,8 @@ def label_words():
         text = re.sub(r'-\n(?=[a-zäöüß])', '', text)
         # Templates like {{datetime:%d.%m.%Y}}
         text = re.sub(r'\{\{[^}]*\}\}', ' ', text)
+        # Addresses like github.com/DL6ER/labelburg
+        text = re.sub(r'\S+\.(?:com|de|net|org)/\S*', ' ', text)
         yield os.path.relpath(path, DEMOS), set(re.findall(r'[A-Za-zÄÖÜäöüß]+', text))
 
 

@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "brother_ql_web",
+    "title": "Labelburg",
     "version": "1",
     "description": "Everything the label designer does is available through this API. The label designer itself sends the same requests.\n\nRequests that print, save or delete labels are refused when a browser sends them from another website. Scripts and tools like `curl` are not affected. With `TRUSTED_HOSTS` set, requests for other host names are refused.\n\nErrors are returned with status 400 (or 404, 413, 500) and a JSON object with `message`."
   },
@@ -1706,7 +1706,7 @@
           "image_text_gap": {
             "type": "integer",
             "minimum": 0,
-            "description": "Distance between the image or code and the text in dots, for labels with both. Empty or left out chooses two fifths of the largest text size, for a QR code at least two of its modules."
+            "description": "Distance between the image or code and the text in dots, for labels with both, with `image_qrcode_text` on both sides of the text (between image and code without text). Empty or left out chooses two fifths of the largest text size, for a QR code at least two of its modules."
           },
           "image_position": {
             "type": "string",
@@ -1716,7 +1716,7 @@
               "left",
               "right"
             ],
-            "description": "Where the image or code is next to the text, for labels with both. Left out or empty: above it across the tape, left of it along the tape (`orientation` `rotated`). An endless label grows along the tape to hold both. Fitted to the label (`image_fit`), it takes at most half of the label along the side of the text, the text the rest, where the label does not grow with the text. Where it is follows the lines of text as written, also those of blanks left empty."
+            "description": "Where the image or code is next to the text, for labels with both. Left out or empty: above it across the tape, left of it along the tape (`orientation` `rotated`). With `image_qrcode_text` the image is there, left of the text if left out, and the code on the other side. An endless label grows along the tape to hold both. Fitted to the label (`image_fit`), it takes at most half of the label along the side of the text, the text the rest, where the label does not grow with the text, with `image_qrcode_text` the image and the code a third each. Where it is follows the lines of text as written, also those of blanks left empty."
           },
           "print_type": {
             "type": "string",
@@ -1724,10 +1724,11 @@
               "text",
               "qrcode",
               "qrcode_text",
-              "image"
+              "image",
+              "image_qrcode_text"
             ],
             "default": "text",
-            "description": "`qrcode` prints a code, `qrcode_text` a code with text, `image` an uploaded image or PDF (with optional text)."
+            "description": "`qrcode` prints a code, `qrcode_text` a code with text, `image` an uploaded image or PDF (with optional text), `image_qrcode_text` an image and a code with the text between them (see `image_position`), refused without an image."
           },
           "text": {
             "type": "string",
@@ -1765,7 +1766,7 @@
           "image": {
             "type": "string",
             "format": "binary",
-            "description": "Image or PDF for `print_type=image`, as file upload. Printing takes several (the field repeated), each printed as a label of its own, of a PDF the pages `pdf_pages` selects. The preview uses the first."
+            "description": "Image or PDF for `print_type=image` and `image_qrcode_text`, as file upload. Printing takes several (the field repeated), each printed as a label of its own, of a PDF the pages `pdf_pages` selects. The preview uses the first."
           },
           "image_mode": {
             "type": "string",
@@ -1792,7 +1793,7 @@
               1
             ],
             "default": 1,
-            "description": "Fit the image to the label, on endless tape across it. On die-cut labels an image without text is also turned to the orientation that shows it largest. Next to text see `image_position`."
+            "description": "Fit the image to the label, on endless tape across it, with `image_qrcode_text` the code as well. On die-cut labels an image without text or code is also turned to the orientation that shows it largest. Next to text see `image_position`."
           },
           "image_crop": {
             "type": "integer",
@@ -1806,7 +1807,7 @@
           "image_scaling_factor": {
             "type": "number",
             "default": 100,
-            "description": "Scale in percent, only without `image_fit`."
+            "description": "Scale in percent, only without `image_fit`. With `image_qrcode_text` of the image only, like `image_crop` and `image_rotation`: the code keeps its size."
           },
           "image_rotation": {
             "type": "integer",
