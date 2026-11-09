@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class BrotherRaster(Driver):
+    vendor = 'Brother'
     models = tuple(MODELS)
     labels = tables.LABELS
     label_names = names.LABEL_NAMES

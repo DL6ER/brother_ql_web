@@ -14,6 +14,7 @@ NEVER_WHY = 'The VC-500W would keep the labels inside until the next print'
 
 
 class VC500W(Driver):
+    vendor = 'Brother'
     models = (tapes.MODEL,)
     labels = tapes.LABELS
     label_names = tapes.NAMES

@@ -120,3 +120,8 @@ def test_job_is_written_to_a_network_printer_at_an_ipv6_address():
                                              ('tcp://2001:db8::1', False)])
 def test_network_printer_at_an_ipv6_address(device, offered):
     assert any(pattern.fullmatch(device) for pattern in drivers.DEVICE_PATTERNS) is offered
+
+
+def test_model_names_are_unique():
+    # Configurations and requests name a model without its maker
+    assert len(drivers.MODELS) == len(set(drivers.MODELS))

@@ -504,7 +504,7 @@ select.mini.lsp { max-width: 4rem; }
     .tabs a.on { background: transparent; }
     .cmd { width: auto; flex: 1; min-width: 0; }
     .cmd .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .cmd .kbd, .chip-printer .tape { display: none; }
+    .cmd .kbd, .chip-printer .tape, .chip-printer .vendor { display: none; }
     .stage { padding: 1.4rem 2.6rem 2.6rem 1rem; }
     /* Nothing in the column may shrink, the chip row least of all */
     .lib { display: flex; flex-direction: column; gap: .9rem; height: auto; padding: 1rem 1rem 2rem; }

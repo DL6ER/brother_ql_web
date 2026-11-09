@@ -83,9 +83,11 @@ const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].m
 // ZINK tape of the VC-500W, which prints in any color
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
 // What the server's driver of a printer model offers, see Driver.capabilities()
-const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false };
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false, vendor: '' };
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
+// The maker and the model of a printer, as the label designer names it
+const printerName = p => [capsOf(p && p.model).vendor, p && p.model].filter(Boolean).join(' ');
 
 function sizeName(id) {
     const s = SIZES[id];
@@ -748,7 +750,7 @@ async function refreshPrinters(look = false) {
         // The chosen one comes back by itself when it is there again
         if (chosen && !kept && S.printer && S.printerGone !== chosen) {
             S.printerGone = chosen;
-            toast(`The printer ${chosen.replace('file://', '')} is not connected, labels print on the ${S.printer.model} (${S.printer.path.replace('file://', '')})`);
+            toast(`The printer ${chosen.replace('file://', '')} is not connected, labels print on the ${printerName(S.printer)} (${S.printer.path.replace('file://', '')})`);
         }
         if (kept) S.printerGone = null;
     } catch (e) {
@@ -823,7 +825,9 @@ function printerState(p) {
 function renderPrinterChip() {
     const chip = $('#printerChip');
     const st = printerState(S.printer);
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${esc(S.printer ? S.printer.model : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    // Phones show the model only
+    const vendor = S.printer && capsOf(S.printer.model).vendor;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? S.printer.model : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
     chip.title = st.text;
 }
 
@@ -924,7 +928,7 @@ function tapeGuard(job) {
         const canAdapt = SIZES[job.design.label_size] && SIZES[S.tape];
         sheet(`<div class="okc warn"><i class="fa-solid fa-ruler-combined"></i></div>
             <h2>This label needs ${esc(need)}</h2>
-            <p>The ${esc(S.printer ? S.printer.model : 'printer')} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
+            <p>The ${esc(S.printer ? printerName(S.printer) : 'printer')} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
             ${canAdapt ? `<button class="btn-print" data-r="adapt"><i class="fa-solid fa-maximize"></i>Print it on ${esc(have)}</button>` : ''}
             <button class="btn" data-r="anyway">Print anyway</button>
             <button class="btn quiet" data-r="cancel">Cancel</button>`, () => resolve('cancel'), () => resolve('cancel'));
@@ -1311,7 +1315,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
     const led = `<span class="led ${st.cls}" title="${esc(st.text)}"></span>`;
-    const model = `<span class="model">${esc(S.printer ? S.printer.model : 'Printer')}</span>`;
+    const model = `<span class="model">${esc(S.printer ? printerName(S.printer) : 'Printer')}</span>`;
     const printer = side
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
@@ -1772,7 +1776,7 @@ async function showDetail(item) {
     box.innerHTML = `
         <div class="row"><h2 class="grow">${esc(item.title)}</h2><button class="btn quiet icon close" type="button" title="Close"><i class="fa-solid fa-xmark"></i></button></div>
         ${stageHTML('libStage')}
-        <div>${fits ? `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in the ${esc(S.printer ? S.printer.model : 'printer')}</span>`
+        <div>${fits ? `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in the ${esc(S.printer ? printerName(S.printer) : 'printer')}</span>`
             : `<span class="badge warn"><i class="fa-solid fa-ruler-combined"></i>Made for ${esc(sizeName(design.label_size))}</span>`}</div>
         <div class="fields" id="libFields"></div>
         <div class="fits" id="libFitsNote"></div>
@@ -2176,7 +2180,7 @@ function sizeOptions(chosen, name) {
 }
 
 function tapeNote(d) {
-    const model = esc(S.printer ? S.printer.model : 'printer');
+    const model = esc(S.printer ? printerName(S.printer) : 'printer');
     if (S.tapeUnknown) return `<span class="tape-note warn">The ${model} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
     // An assumed tape matches nothing in the printer
     if (d.label_size === S.tape) return S.tapeAssumed ? '' : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
@@ -2816,7 +2820,7 @@ function printerPanelHTML() {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
-            <span class="grow"><b>${esc(p.model || 'Printer')}</b><span class="sm">${esc([st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
+            <span class="grow"><b>${esc(printerName(p) || 'Printer')}</b><span class="sm">${esc([st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
                 ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
@@ -2885,7 +2889,7 @@ function settingsCard() {
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}"${oneQuality ? ONE : ''}>Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}"${oneQuality ? ONE : ''}>Quality</button>
             ${!offersHigh ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
-            ${noHigh ? `<span class="muted small">The ${esc(p.model)} cannot print at 600 dpi.</span>` : ''}
+            ${noHigh ? `<span class="muted small">The ${esc(printerName(p))} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
                 ${caps.colors === 'color' ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
                 <p>A label takes about 40 seconds, most of it to prepare and preheat. With "After each label" take every label out of the printer, the next one waits for that. "After the last label" keeps the labels together on a strip.</p>`
