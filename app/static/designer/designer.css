@@ -91,16 +91,19 @@ main { min-height: 0; overflow: auto; }
 
 /* Top bar */
 .top { background: var(--surface); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 1rem; padding: 0 1.1rem; min-width: 0; z-index: 5; }
-.brand { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+.brand { display: flex; flex-direction: column; justify-content: center; flex: none; }
 .brand .build { font-size: .68rem; color: var(--muted); text-decoration: none; margin: -.15rem 0 0 calc(30px + .55rem); white-space: nowrap; }
 .brand .build:hover { color: var(--ink); }
 .logo { display: flex; align-items: center; gap: .55rem; font-weight: 700; font-size: 1.1rem; font-stretch: 88%; text-decoration: none; }
-.logo .mark { width: 30px; height: 30px; border-radius: 8px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; font-size: .8rem; }
+.logo .mark { flex: none; width: 30px; height: 30px; border-radius: 8px; background: var(--ink); color: var(--on-ink); display: grid; place-items: center; }
+.logo .mark svg { width: 17px; height: 17px; }
+.logo .mark .peel { fill: var(--label-red); }
 .tabs { display: flex; gap: .2rem; }
 .tabs a { display: inline-flex; align-items: center; gap: .45rem; padding: .45rem .85rem; border-radius: 8px; color: var(--muted); font-weight: 500; text-decoration: none; }
 .tabs a i { font-size: .85rem; }
 .tabs a.on { background: var(--surface-2); color: var(--ink); font-weight: 650; }
-.cmd { margin-left: auto; display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: .45rem .7rem; color: var(--muted); width: 320px; cursor: text; text-align: left; }
+.cmd { margin-left: auto; display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: .45rem .7rem; color: var(--muted); width: 320px; min-width: 0; cursor: text; text-align: left; }
+.cmd .grow { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kbd { font-size: .72rem; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: .02rem .35rem; color: var(--muted); background: var(--surface); white-space: nowrap; font-weight: 500; }
 .chip-printer { display: flex; align-items: center; gap: .55rem; border: 1px solid var(--line); border-radius: 9px; padding: .3rem .7rem; font-size: .9rem; background: var(--surface); white-space: nowrap; cursor: pointer; }
 .chip-printer:hover { border-color: var(--muted); }
