@@ -3,7 +3,9 @@ modes, the tape left and what it does while it prints."""
 
 import json
 
-from tests.browser.helpers import fits_note, printed, type_line, wait_for_preview
+import pytest
+
+from tests.browser.helpers import fits_note, preview_size, printed, type_line, wait_for_preview
 
 VC = {'errors': [], 'model': 'VC-500W', 'path': 'file:///dev/usb/lp0', 'media_width': 25, 'media_length': 0,
       'media_type': 'Continuous length tape', 'tape_length_mm': 5004, 'tape_remaining_mm': 4596, 'color_support': True}
@@ -179,3 +181,27 @@ def test_large_preview_of_colors_is_smooth(designer):
     designer.click('#edStage .zoom')
     designer.evaluate("() => { Object.defineProperty(window, 'devicePixelRatio', { get: () => 3 }); placeOnStage($('#edStage'), true); }")
     assert designer.get_attribute('#edStage .paper img', 'class') is None
+
+
+@pytest.mark.parametrize('lang, title', [('en', 'Labelburg sticker'), ('de', 'Labelburg-Aufkleber')])
+def test_sticker_of_this_project_for_the_50_mm_tape(designer, lang, title):
+    fake_vc500w(designer, media_width=50)
+    designer.click('[data-tab="wizard"]')
+    designer.select_option('#libLang', lang)
+    designer.click('.lib-nav [data-cat="events"]')
+    sticker = f'#libGrid .thumb:has(.t:text-is("{title}"))'
+    # Among those for the tape in the printer
+    assert 'other' not in designer.get_attribute(sticker, 'class')
+    designer.click(sticker)
+    wait_for_preview(designer, '#libStage')
+    designer.click('#libEdit')
+    designer.wait_for_selector('#edStage')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.label_size, S.edit.design.print_type, S.edit.design.image.name]') == \
+        ['vc50', 'image_qrcode_text', 'labelburg.png']
+    assert 'on' in designer.get_attribute('[data-lay="imagecode"]', 'class')
+    assert designer.input_value('#edCode') == 'https://github.com/DL6ER/labelburg'
+    assert 'Everything fits.' in fits_note(designer)
+    # About 140 mm long at 320 dpi
+    width, height = preview_size(designer)
+    assert height == 617 and 135 < width / 320 * 25.4 < 145

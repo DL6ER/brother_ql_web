@@ -1305,6 +1305,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         label_content = LabelContent.IMAGE_COLORED
     else:
         label_content = LabelContent.IMAGE_BW
+    # An image with a code as well, on the other side of the text
+    with_code = print_type == 'image_qrcode_text'
 
     label_orientation = LabelOrientation.ROTATED if context['label_orientation'] == 'rotated' else LabelOrientation.STANDARD
     label_type = _label_type(context['kind'])
@@ -1351,7 +1353,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
 
     # In "standard" orientation die-cut labels are landscape, so a portrait
     # image (e.g. a shipping label on a 103 x 164 mm label) came out small and
-    # sideways. With auto-fit, an image without text is placed in the
+    # sideways. With auto-fit, an image without text or code is placed in the
     # orientation that makes it largest. Without auto-fit the chosen
     # orientation is kept.
     image_label = label_content in (LabelContent.IMAGE_BW, LabelContent.IMAGE_GRAYSCALE, LabelContent.IMAGE_RED_BLACK, LabelContent.IMAGE_COLORED)
@@ -1394,9 +1396,10 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         blank_fields=context['blank_fields'],
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
+        with_code=with_code,
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
-            and context['image_fit'] and not label.has_lines()):
+            and context['image_fit'] and not label.has_lines() and not with_code):
         margins = (context['margin_left'], context['margin_right'], context['margin_top'], context['margin_bottom'])
         label.turn_to_fit(*_fitting_orientation(
             image, width, height, label_orientation, margins, context['image_crop'], context['image_rotation']))
@@ -1515,7 +1518,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     dpi = label_dpi(d.get('label_size', DEFAULT_LABEL_SIZE), _whole_or(d.get('high_res'), 0) != 0)
     pdf_pages = str(d.get('pdf_pages') or '')
     # Pages only make several labels of an image label
-    first_only = first_only or d.get('print_type', 'text') != 'image'
+    first_only = first_only or d.get('print_type', 'text') not in ('image', 'image_qrcode_text')
 
     # Several uploads are printed one after the other, each as a label of its
     # own (of a PDF the selected pages). The page count is that of the first.
