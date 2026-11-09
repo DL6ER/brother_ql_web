@@ -411,6 +411,9 @@ select.mini.lsp { max-width: 4rem; }
 .ed-note { font-size: .8rem; color: var(--muted); padding: 0 .8rem .6rem; }
 .ed-canvas { display: flex; flex-direction: column; padding: 1.4rem 1.6rem; gap: 1rem; min-width: 0; overflow: auto; }
 .ed-canvas .stage { flex: 1; }
+.file-step { display: flex; align-items: center; justify-content: center; gap: .4rem; min-width: 0; margin-bottom: -.5rem; font-size: .85rem; color: var(--muted); }
+.file-step[hidden] { display: none; }
+.file-step span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-top { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .ed-top .copies { align-self: stretch; }
 .ed-top .break { display: none; flex-basis: 100%; height: 0; }
