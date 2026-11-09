@@ -6,6 +6,7 @@ This is a web service to print labels on Brother QL label printers.
 """
 
 import os
+import re
 import sys
 import logging
 import argparse
@@ -43,18 +44,34 @@ def _port(value: str) -> int:
     return number
 
 
-def _printer_list(value: str) -> list[tuple[str, str]]:
-    """Parse "MODEL=DEVICE,MODEL=DEVICE" into (model, device) pairs."""
+# The name of a printer in PRINTERS: letters and digits, also spaces, dots,
+# hyphens and underscores between them
+PRINTER_NAME = re.compile(r'[^\W_](?:[\w .-]{0,38}[^\W_])?')
+
+
+def _printer_list(value: str) -> list[tuple[str, ...]]:
+    """Parse "[NAME:]MODEL=DEVICE,..." into (model, device) pairs, or
+    (model, device, name) for a printer with a name."""
     from .labeldesigner.label_names import MODELS
     models = list(MODELS)
-    printers = []
+    printers, names = [], set()
     for entry in value.split(','):
         if not entry.strip():
             continue
-        model, sep, device = (part.strip() for part in entry.partition('='))
+        left, sep, device = (part.strip() for part in entry.partition('='))
+        name, colon, model = (part.strip() for part in left.rpartition(':'))
         if not sep or not device or model not in models:
             raise ValueError(entry)
-        printers.append((model, device))
+        if not colon:
+            printers.append((model, device))
+            continue
+        # Requests choose a printer by its name or its device, "simulation"
+        # is the simulator
+        key = name.casefold()
+        if not PRINTER_NAME.fullmatch(name) or key in names or key == 'simulation':
+            raise ValueError(entry)
+        names.add(key)
+        printers.append((model, device, name))
     return printers
 
 
