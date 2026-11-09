@@ -1,0 +1,12 @@
+[Unit]
+Description=Labelhaus
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/labelhaus
+ExecStart=/opt/labelhaus/.venv/bin/python /opt/labelhaus/run.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
