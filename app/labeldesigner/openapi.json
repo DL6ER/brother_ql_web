@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Labelhaus",
+    "title": "Labelburg",
     "version": "1",
     "description": "Everything the label designer does is available through this API. The label designer itself sends the same requests.\n\nRequests that print, save or delete labels are refused when a browser sends them from another website. Scripts and tools like `curl` are not affected. With `TRUSTED_HOSTS` set, requests for other host names are refused.\n\nErrors are returned with status 400 (or 404, 413, 500) and a JSON object with `message`."
   },

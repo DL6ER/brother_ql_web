@@ -29,9 +29,9 @@
     <header class="top">
         <div class="brand">
             <a class="logo" href="#edit"><span class="mark"><i class="fa-solid fa-tag"></i></span><span>Labels</span></a>
-            {% if build.release %}<a class="build" id="buildInfo" href="https://github.com/DL6ER/labelhaus/releases/tag/{{ build.release }}" target="_blank" rel="noopener"
+            {% if build.release %}<a class="build" id="buildInfo" href="https://github.com/DL6ER/labelburg/releases/tag/{{ build.release }}" target="_blank" rel="noopener"
                 title="Release {{ build.release }}{% if build.commit %}, commit {{ build.commit }}{% endif %}{% if build.date %}, built {{ build.date }}{% endif %}">{{ build.release }}{% if build.date %}, {{ build.date }}{% endif %}</a>
-            {%- elif build.commit %}<a class="build" id="buildInfo" href="https://github.com/DL6ER/labelhaus/commit/{{ build.commit }}" target="_blank" rel="noopener"
+            {%- elif build.commit %}<a class="build" id="buildInfo" href="https://github.com/DL6ER/labelburg/commit/{{ build.commit }}" target="_blank" rel="noopener"
                 title="Commit {{ build.commit }}{% if build.date %}, built {{ build.date }}{% endif %}">{{ build.commit[:7] }}{% if build.date %}, {{ build.date }}{% endif %}</a>
             {%- elif build.date %}<span class="build" id="buildInfo" title="Build time">{{ build.date }}</span>{% endif %}
         </div>
@@ -41,7 +41,7 @@
         </nav>
         <button class="cmd" id="openSearch" type="button"><i class="fa-solid fa-magnifying-glass"></i><span class="grow">Search labels or commands</span><span class="kbd">Ctrl K</span></button>
         <button class="chip-printer" id="printerChip" type="button" title="Printer and settings"><span class="dot off"></span><b>Printer</b><span class="tape"></span></button>
-        <a class="btn quiet icon" id="githubLink" href="https://github.com/DL6ER/labelhaus" target="_blank" rel="noopener" title="Source code on GitHub"><i class="fa-brands fa-github"></i></a>
+        <a class="btn quiet icon" id="githubLink" href="https://github.com/DL6ER/labelburg" target="_blank" rel="noopener" title="Source code on GitHub"><i class="fa-brands fa-github"></i></a>
         <button class="btn quiet icon" id="themeToggle" type="button" title="Light or dark"><i class="fa-solid fa-circle-half-stroke"></i></button>
     </header>
 

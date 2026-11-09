@@ -724,7 +724,7 @@ def test_links_to_the_internet_ask_first(designer):
     designer.click('#githubLink', button='middle')
     designer.click('#layer [data-open]')
     assert designer.is_hidden('#layer')
-    assert designer.evaluate('() => window.opened') == [['https://github.com/DL6ER/labelhaus', '_blank', 'noopener']]
+    assert designer.evaluate('() => window.opened') == [['https://github.com/DL6ER/labelburg', '_blank', 'noopener']]
     assert len(designer.context.pages) == pages
     # Links within the label designer do not ask
     designer.click('#tabs [data-tab="wizard"]')
