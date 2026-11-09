@@ -29,7 +29,11 @@ def label_palette(label: Label) -> str:
 
 def label_dpi(label_size: str, high_res: bool) -> int:
     """The resolution labels of a size are made with."""
-    return (drivers.for_label(label_size) or drivers.BROTHER).dpi(high_res)
+    driver = drivers.for_label(label_size) or drivers.BROTHER
+    label = next((label for label in LABELS if label.identifier == label_size), None)
+    if label is None:
+        return driver.dpi(high_res)
+    return driver.label_dpi(label)[1 if high_res else 0]
 
 
 def label_printers(label: Label) -> list:
