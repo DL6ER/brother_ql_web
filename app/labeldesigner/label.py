@@ -68,6 +68,15 @@ class TextTooLong(ValueError):
     it so: a request too large."""
 
 
+def on_white(img: Image.Image) -> Image.Image:
+    """img as it is printed: its transparent parts white like the label,
+    without transparency."""
+    if 'A' not in img.getbands() and 'transparency' not in img.info:
+        return img
+    rgba = img.convert('RGBA')
+    return Image.alpha_composite(Image.new('RGBA', rgba.size, 'white'), rgba).convert('RGB')
+
+
 def check_image_position(value) -> str | None:
     """The side of the text an image or code is on, None where none is
     given (left out or empty), ValueError for another."""
@@ -858,6 +867,8 @@ class SimpleLabel:
         # Rotation with expand=True may add an empty border around content.
         if own_look and self._image_crop:
             img = self._crop_image_to_content(img)
+        # Transparent once it is cropped to its content, white from here
+        img = on_white(img)
 
         # Resize image to fit if image_fit is True
         if self._image_fit:

@@ -459,3 +459,31 @@ def test_pdf_pages_make_several_labels_of_image_labels_only(tmp_path):
                       text=json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'Text', 'size': '40'}]))
     assert client.post('/labeldesigner/api/print', data=data).status_code == 200
     assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 1
+
+
+def _transparent_corners(mode: str) -> Image.Image:
+    """A light gray square in the middle of an image that is transparent
+    around it, black where it is transparent."""
+    image = Image.new('RGBA', (120, 120), (0, 0, 0, 0))
+    image.paste((200, 200, 200, 255), (30, 30, 90, 90))
+    if mode == 'LA':
+        return image.convert('LA')
+    if mode == 'P':
+        palette = Image.new('P', image.size, 0)
+        palette.putpalette([0, 0, 0, 200, 200, 200])
+        palette.paste(1, (30, 30, 90, 90))
+        palette.info['transparency'] = 0
+        return palette
+    return image
+
+
+@pytest.mark.parametrize('image_mode', ['grayscale', 'black_and_white', 'red_and_black', 'colored'])
+@pytest.mark.parametrize('source', ['RGBA', 'LA', 'P'])
+@pytest.mark.parametrize('crop', ['0', '1'])
+def test_transparent_parts_print_white(tmp_path, image_mode, source, crop):
+    response = make_client(tmp_path).post('/labeldesigner/api/preview', data={
+        'label_size': '62', 'print_type': 'image', 'image_mode': image_mode, 'image_fit': '1', 'image_crop': crop,
+        'image': _upload(_transparent_corners(source), 'corners.png')})
+    assert response.status_code == 200
+    label = Image.open(io.BytesIO(response.data)).convert('L')
+    assert label.getextrema()[0] > 100

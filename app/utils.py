@@ -9,26 +9,26 @@ from flask import current_app
 from pdf2image import convert_from_bytes, pdfinfo_from_bytes
 from werkzeug.datastructures import FileStorage
 from app import get_fonts
-from app.labeldesigner.label import check_image_size
+from app.labeldesigner.label import check_image_size, on_white
 
 
 def convert_image_to_bw(image: Image.Image, threshold: int) -> Image.Image:
     def apply_threshold(pixel: int) -> int:
         return 255 if pixel > threshold else 0
     # convert to black and white
-    return image.convert('L').point(apply_threshold, mode='1')
+    return on_white(image).convert('L').point(apply_threshold, mode='1')
 
 
 def convert_image_to_grayscale(image: Image.Image) -> Image.Image:
     # convert to grayscale (ITU-R 601-2 Luma transform)
-    return image.convert('L')
+    return on_white(image).convert('L')
 
 
 def convert_image_to_red_and_black(image: Image.Image,
                                    blackpoint: int = 0,
                                    whitepoint: int = 255,
                                    redpoint: int = 127) -> Image.Image:
-    return colorize(image.convert('L'), black='black', white='white', mid='red',
+    return colorize(on_white(image).convert('L'), black='black', white='white', mid='red',
                     blackpoint=blackpoint, whitepoint=whitepoint, midpoint=redpoint)
 
 
