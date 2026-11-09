@@ -83,7 +83,7 @@ const isPtouch = id => !!SIZES[id] && SIZES[id].models.length > 0 && SIZES[id].m
 // ZINK tape of the VC-500W, which prints in any color
 const isColorTape = id => !!SIZES[id] && SIZES[id].palette === 'color';
 // What the server's driver of a printer model offers, see Driver.capabilities()
-const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false, vendor: '', manual_cutter: false };
+const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cutter: true, half_cut: false, chain: false, feed_waste: false, job_stages: false, colors: 'black', never_cut: '', leaves_turned: false, lead_mm: 0, vendor: '', manual_cutter: false };
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 // The maker and the model of a printer, as the label designer names it
@@ -1319,7 +1319,10 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const w = img.naturalWidth, h = img.naturalHeight, span = size.dots[0] * scale;
     const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
-    const lengthMm = isEndless(size) ? along : size.tape[1];
+    // Some printers leave blank paper before each label, which was between
+    // their printhead and cutter
+    const lead = isEndless(size) ? sizeCaps(design.label_size).lead_mm : 0;
+    const lengthMm = isEndless(size) ? along + lead : size.tape[1];
     // Some printers let labels out the other way round than a QL printer,
     // the top first. Those that leave sideways leave them as a QL printer.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
@@ -1328,6 +1331,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // Kept to fit the label again when the stage changes its size
     el._view = {
         url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
+        lead, leadDots: !side && lead ? lead / 25.4 * dpi : 0,
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
@@ -1366,14 +1370,16 @@ function placeOnStage(el, redraw = false) {
     const box = el.getBoundingClientRect();
     // The printer takes room on top, or on the left for labels that leave it sideways
     const maxW = Math.max(140, box.width - 110 - (side ? 70 : 0)), maxH = Math.max(110, Math.min(440, window.innerHeight * .5) - (side ? 0 : 60));
-    let k = Math.min(0.85, maxW / w, maxH / h);
+    // With the blank paper before it
+    const tall = h + v.leadDots;
+    let k = Math.min(0.85, maxW / w, maxH / tall);
     if (large) {
         // The label fills the stage, next to the printer and with how copies
         // are cut below it, and is never smaller than otherwise
         const cs = getComputedStyle(el);
         const roomW = box.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (side ? 50 : 72);
         const roomH = box.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (side ? 64 : 86);
-        k = Math.max(k, Math.min(LARGE_PX_PER_MM * 25.4 / v.dpi, roomW / w, roomH / h));
+        k = Math.max(k, Math.min(LARGE_PX_PER_MM * 25.4 / v.dpi, roomW / w, roomH / tall));
     }
     const dw = Math.round(w * k), dh = Math.round(h * k);
     // Dots of black and red labels stay sharp where they are shown large
@@ -1394,7 +1400,9 @@ function placeOnStage(el, redraw = false) {
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
-    const paper = v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`;
+    const leadPx = Math.round(v.leadDots * k);
+    const paper = (leadPx ? `<div class="lead" style="height:${leadPx}px" title="Blank paper, ${v.lead} mm"></div>` : '')
+        + (v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`);
     // How copies are cut: in the corner, or below the large label
     const cuts = `<div class="cuts">${v.cuts}</div>`;
     const zoom = 'zoom' in el.dataset ? `<button class="btn quiet icon zoom" type="button" aria-pressed="${large}" title="${large ? 'Smaller preview' : 'Larger preview'}">

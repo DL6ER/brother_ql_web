@@ -428,6 +428,18 @@ def test_labels_of_a_q00_leave_it_turned(designer):
     assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
 
 
+def test_receipt_shows_the_blank_paper_before_it(designer):
+    # A TM-T20II feeds 14 mm to its cutter after a label, blank before the next
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'TM-T20II' }); S.tape = 'escpos80';
+        openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { text: [L('R', 40)] }) }); }""")
+    wait_for_preview(designer)
+    assert 'turned' in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .paper .lead').count() == 1
+    shown = int(designer.text_content('#edStage .dim-y').split()[0])
+    img = designer.evaluate("() => document.querySelector('#edStage .paper img').naturalHeight")
+    assert shown == round(img / 203 * 25.4) + 14
+
+
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     # The labels of a PUQU Q00 are torn off, cutting after each or the last
     # label was offered all the same

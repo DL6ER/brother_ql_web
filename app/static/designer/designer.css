@@ -201,6 +201,7 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .paper { background: #fff; line-height: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 24px rgba(0, 0, 0, .1); }
 .stage .paper img { display: block; width: 100%; height: auto; }
 .stage .paper .blank-paper { width: 100%; background: #fff; }
+.stage .paper .lead { background: #fff; border-bottom: 1px dashed rgba(0, 0, 0, .15); }
 .stage.diecut .paper { border-radius: 6px; overflow: hidden; }
 .stage.round .paper { border-radius: 50%; }
 .stage .cut { position: absolute; left: -18px; right: -18px; bottom: -1px; border-bottom: 2px dashed #9aa3ac; }

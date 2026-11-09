@@ -90,10 +90,11 @@ class Driver:
         job it prints, its colors, why it does not leave labels uncut, if it
         does not, whether labels that leave it top first come out turned
         around from how the label designer shows them leaving a QL printer,
-        and the maker of the model."""
+        the blank paper in mm before each label that is cut, which was between
+        printhead and cutter, and the maker of the model."""
         return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
                 'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': self.colors(model),
-                'never_cut': '', 'leaves_turned': False, 'vendor': self.vendor}
+                'never_cut': '', 'leaves_turned': False, 'lead_mm': 0, 'vendor': self.vendor}
 
     def resolution_problem(self, model: str, high_res: bool) -> str:
         """Why the model cannot print at the resolution, or an empty string."""

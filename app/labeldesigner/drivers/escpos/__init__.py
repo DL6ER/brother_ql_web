@@ -21,6 +21,9 @@ WIDTHS = {80: 576, 58: 420}
 
 LABELS = tuple(Label(f'escpos{width}', (width, 0), FormFactor.ENDLESS, (dots, 0), (dots, 0), 0, models=MODELS)
                for width, dots in WIDTHS.items())
+# Paper fed to the cutter after each label, on a TM-T20II a 17 mm label took
+# 31 mm of paper. It is blank before the next label.
+LEAD_MM = 14
 # Below the cutter, inside the printer
 NEVER_WHY = 'The paper would stay inside the printer until it is cut'
 NAMES = {label.identifier: f'{label.tape_size[0]} mm receipt paper (Epson)' for label in LABELS}
@@ -70,7 +73,7 @@ class Escpos(Driver):
     def capabilities(self, model):
         return dict(super().capabilities(model), qualities=['quality'], half_cut=True, never_cut=NEVER_WHY,
                     # The bottom of the label leaves it first
-                    leaves_turned=True)
+                    leaves_turned=True, lead_mm=LEAD_MM)
 
     def status(self, device, model, unconfirmed=False):
         state = network_status(device, model)
