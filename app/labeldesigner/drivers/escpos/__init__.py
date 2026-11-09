@@ -1,5 +1,5 @@
 """Epson receipt printers on ESC/POS (protocol.py), e.g. the TM-T20II on
-endless 58 or 80 mm paper, which it cuts, between labels also partially. The label is sent as an image."""
+endless 58 or 80 mm paper, which it cuts. The label is sent as an image."""
 
 import logging
 import re
@@ -21,9 +21,10 @@ WIDTHS = {80: 576, 58: 420}
 
 LABELS = tuple(Label(f'escpos{width}', (width, 0), FormFactor.ENDLESS, (dots, 0), (dots, 0), 0, models=MODELS)
                for width, dots in WIDTHS.items())
-# Paper fed to the cutter after each label, on a TM-T20II a 17 mm label took
-# 31 mm of paper. It is blank before the next label.
-LEAD_MM = 14
+# Paper fed to the cutter after each label that is cut, blank before the
+# next one: on a TM-T20II a 15 mm label took 27 mm of paper, two of them
+# not cut between them 42 mm
+LEAD_MM = 12
 # Below the cutter, inside the printer
 NEVER_WHY = 'The paper would stay inside the printer until it is cut'
 NAMES = {label.identifier: f'{label.tape_size[0]} mm receipt paper (Epson)' for label in LABELS}
@@ -71,7 +72,7 @@ class Escpos(Driver):
         return f'The {model} cuts the paper at least after the last label' if cut == 'none' else ''
 
     def capabilities(self, model):
-        return dict(super().capabilities(model), qualities=['quality'], half_cut=True, never_cut=NEVER_WHY,
+        return dict(super().capabilities(model), qualities=['quality'], never_cut=NEVER_WHY,
                     # The bottom of the label leaves it first
                     leaves_turned=True, lead_mm=LEAD_MM)
 
@@ -95,7 +96,7 @@ class Escpos(Driver):
             img, rows, width = label_rows(entry['label'], queue.label_size)
             if keep:
                 keep(img, f'escpos_{i}')
-            job.append(('full' if entry['cut'] else 'half' if queue.half_cut else 'none', rows, width))
+            job.append((entry['cut'], rows, width))
         return job
 
     def send(self, queue, job) -> str:

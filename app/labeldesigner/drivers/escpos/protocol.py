@@ -1,6 +1,6 @@
 """ESC/POS of Epson receipt printers, as in the ESC/POS command reference
-of Epson: the label as a raster image (GS v 0), a cut or a partial cut
-after it (GS V 65, GS V 66), and the status the printer tells at once (DLE EOT)."""
+of Epson: the label as a raster image (GS v 0), a cut after it (GS V 65),
+and the status the printer tells at once (DLE EOT)."""
 
 import os
 import select
@@ -13,8 +13,9 @@ BAND = 256
 ANSWER_WAIT = 2
 
 INIT = b'\x1b@'
-# Feed to the cutter and cut, or cut leaving one point
-CUTS = {'full': b'\x1dVA\x00', 'half': b'\x1dVB\x00'}
+# Feed to the cutter and cut. A TM-T20II leaves one corner uncut, as its
+# memory switches say, whatever the command.
+CUT = b'\x1dVA\x00'
 # Offline cause, and the roll paper sensor
 OFFLINE = b'\x10\x04\x02'
 PAPER = b'\x10\x04\x04'
@@ -34,12 +35,11 @@ def raster(rows: list[bytes], width: int) -> bytes:
     return out
 
 
-def job(labels: list[tuple[str, list[bytes], int]]) -> bytes:
-    """(cut after it: full, half or none, rows, bytes per row) of each label
-    as one job."""
+def job(labels: list[tuple[bool, list[bytes], int]]) -> bytes:
+    """(cut after it, rows, bytes per row) of each label as one job."""
     out = INIT
     for cut, rows, width in labels:
-        out += raster(rows, width) + CUTS.get(cut, b'')
+        out += raster(rows, width) + (CUT if cut else b'')
     return out
 
 

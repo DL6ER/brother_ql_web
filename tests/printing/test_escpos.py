@@ -63,8 +63,7 @@ def test_raster_in_bands():
 
 def test_job_cuts_where_asked():
     rows = [b'\x80']
-    assert protocol.job([('none', rows, 1), ('half', rows, 1), ('full', rows, 1)]) == (
-        b'\x1b@' + protocol.raster(rows, 1) * 2 + b'\x1dVB\x00' + protocol.raster(rows, 1) + b'\x1dVA\x00')
+    assert protocol.job([(False, rows, 1), (True, rows, 1)]) == b'\x1b@' + protocol.raster(rows, 1) * 2 + b'\x1dVA\x00'
 
 
 def test_answer_kept_from_before_is_not_taken_for_the_status(monkeypatch):
@@ -114,16 +113,8 @@ def test_label_is_printed_and_cut(client, fake):
         'label_size': 'escpos58', 'print_type': 'text', 'text': TEXT, 'print_count': '2', 'cut': 'last'})
     assert response.get_json() == {'success': True}
     assert printer.sent.startswith(protocol.OFFLINE + protocol.PAPER + protocol.INIT)
-    # Partially cut between them, unless told not to
-    assert printer.sent.count(b'\x1dv0\x00') == 2 and printer.sent.count(protocol.CUTS['half']) == 1
-    assert printer.sent.endswith(protocol.CUTS['full'])
-
-
-def test_labels_are_not_cut_between_them_without_half_cuts(client, fake):
-    printer = fake()
-    client.post('/labeldesigner/api/print', data={
-        'label_size': 'escpos58', 'print_type': 'text', 'text': TEXT, 'print_count': '2', 'cut': 'last', 'half_cut': '0'})
-    assert protocol.CUTS['half'] not in printer.sent and printer.sent.count(protocol.CUTS['full']) == 1
+    assert printer.sent.count(b'\x1dv0\x00') == 2 and printer.sent.count(protocol.CUT) == 1
+    assert printer.sent.endswith(protocol.CUT)
 
 
 def test_no_paper_does_not_print(client, fake):
