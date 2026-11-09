@@ -841,7 +841,8 @@ function printerState(p) {
     if (p.status_type === 'Asking the printer') return { cls: 'off', text: 'Asking the printer…' };
     if (p.job) return { cls: '', text: jobText(p.job) };
     if (/simulat/i.test(p.status_type || p.phase_type || '')) return { cls: '', text: 'Ready (simulated)' };
-    return { cls: '', text: 'Ready' };
+    // Printers on a battery tell its level, 0 to 4
+    return { cls: '', text: 'Ready' + (p.battery == null ? '' : `, battery ${p.battery}/4`) };
 }
 
 function renderPrinterChip() {

@@ -433,6 +433,10 @@ def test_look_for_printers_looks_also_for_those_that_did_not_answer(designer):
     assert 'look=1' in request.value.url
 
 
+def test_printer_on_a_battery_tells_its_level(designer):
+    assert designer.evaluate("() => printerState({ status_type: 'Reply to status request', errors: [], battery: 3 })") == {'cls': '', 'text': 'Ready, battery 3/4'}
+
+
 def test_printer_still_being_asked_is_not_shown_as_failing(designer):
     # A printer on Bluetooth takes a few seconds to answer, it was red meanwhile
     assert designer.evaluate("() => printerState({ status_type: 'Asking the printer', errors: [] })") == {'cls': 'off', 'text': 'Asking the printer…'}
