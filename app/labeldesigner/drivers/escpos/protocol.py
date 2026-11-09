@@ -4,6 +4,7 @@ of Epson: the label as a raster image (GS v 0), a partial cut after it
 
 import os
 import select
+import time
 
 DPI = 203
 # Rows per raster image, the printer takes them in pieces
@@ -74,11 +75,12 @@ class Connection:
         while select.select([self.dev], [], [], 0)[0] and os.read(self.dev, 64):
             pass
         self.write(request)
-        ready, _, _ = select.select([self.dev], [], [], ANSWER_WAIT)
-        reply = os.read(self.dev, 64) if ready else b''
-        if not reply:
-            raise EscposError('no answer to the status request')
-        return reply[-1]
+        # usblp also tells empty USB packets, read until an answer comes
+        deadline = time.monotonic() + ANSWER_WAIT
+        while (left := deadline - time.monotonic()) > 0:
+            if select.select([self.dev], [], [], left)[0] and (reply := os.read(self.dev, 64)):
+                return reply[-1]
+        raise EscposError('no answer to the status request')
 
 
 def connect(device: str) -> Connection:
