@@ -140,7 +140,9 @@ function baseDesign(size) {
         // Empty: above the text across the tape, left of it along the tape
         image_position: '',
         // Empty: cut as set for the printer, else as saved with the label
-        cut: '', half_cut: '', chain: ''
+        cut: '', half_cut: '', chain: '',
+        // Empty: a Cat.7 cable
+        cable_flag: '0', cable_diameter: ''
     };
 }
 
@@ -171,6 +173,7 @@ function normalize(raw) {
     d.text_fit = given(raw.text_fit) ? String(raw.text_fit) : '';
     // Cutting saved through the API e.g. as half_cut: 0 or chain: true
     for (const k of CUT_KEYS) d[k] = !given(raw[k]) ? '' : raw[k] === true ? '1' : raw[k] === false ? '0' : String(raw[k]);
+    d.cable_flag = !given(raw.cable_flag) ? '0' : raw.cable_flag === true ? '1' : raw.cable_flag === false ? '0' : String(raw.cable_flag);
     if (!given(raw.text_fit) && given(raw.shrink_text)) d.shrink_text = String(raw.shrink_text);
     if (raw.image_data) d.image = { data: raw.image_data, mime: raw.image_mime || 'image/png', name: raw.image_name || 'image.png' };
     if (raw.fields && typeof raw.fields === 'object') d.fields = raw.fields;
@@ -724,12 +727,24 @@ function setRunsAlong(d, along) {
     d.orientation = along === longAlongTape(d.label_size) ? 'standard' : 'rotated';
     return d;
 }
+// Whether a label is a cable flag, read as the server reads it
+function flagOn(d) {
+    const v = String(d.cable_flag).trim().toLowerCase();
+    return v === 'true' || (/^[+-]?\d+$/.test(v) && parseInt(v, 10) > 0);
+}
 // Another label size: die-cut labels start wide, on endless tape the text
 // keeps its direction
 function setSize(d, id) {
     const along = runsAlong(d);
     d.label_size = id;
+    if (isDieCut(id)) d.cable_flag = '0';
     return isDieCut(id) ? setWide(d, true) : setRunsAlong(d, along);
+}
+// The same in the editor, which says when it turned a cable flag off
+function changeSize(d, id) {
+    const flag = flagOn(d);
+    setSize(d, id);
+    if (flag && !flagOn(d)) toast('Cable flag turned off, it needs continuous tape', { label: 'Undo', run: () => stepHistory(-1) });
 }
 
 function fitsTape(sizeId) {
@@ -928,10 +943,12 @@ function tapeGuard(job) {
     return new Promise(resolve => {
         const need = sizeName(job.design.label_size);
         const have = sizeName(S.tape);
-        const canAdapt = SIZES[job.design.label_size] && SIZES[S.tape];
+        const flagged = flagOn(job.design) && isDieCut(S.tape);
+        const canAdapt = SIZES[job.design.label_size] && SIZES[S.tape] && !flagged;
         sheet(`<div class="okc warn"><i class="fa-solid fa-ruler-combined"></i></div>
             <h2>This label needs ${esc(need)}</h2>
             <p>The ${esc(S.printer ? printerName(S.printer) : 'printer')} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
+            ${flagged ? '<p>Cable flags need continuous tape.</p>' : ''}
             ${canAdapt ? `<button class="btn-print" data-r="adapt"><i class="fa-solid fa-maximize"></i>Print it on ${esc(have)}</button>` : ''}
             <button class="btn" data-r="anyway">Print anyway</button>
             <button class="btn quiet" data-r="cancel">Cancel</button>`, () => resolve('cancel'), () => resolve('cancel'));
@@ -2187,6 +2204,7 @@ function renderEditor() {
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
+                    ${flagRow(d)}
                     <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
                     <div class="group">
@@ -2235,6 +2253,15 @@ function sizeOptions(chosen, name) {
         const sizes = C.label_sizes.filter(s => inGroup(s) && offered(s));
         return sizes.length ? `<optgroup label="${group}">${sizes.map(s => `<option value="${esc(s.id)}"${s.id === chosen ? ' selected' : ''}>${name(s)}</option>`).join('')}</optgroup>` : '';
     }).join('');
+}
+
+// A cable flag prints the label twice, with the wrap around the cable between
+function flagRow(d) {
+    const on = flagOn(d), locked = isDieCut(d.label_size) && !on;
+    return `<div class="row" id="edFlagRow"${locked ? ' title="Cable flags need continuous tape"' : ''}>
+            <label class="check"><input type="checkbox" id="edFlag"${on ? ' checked' : ''}${locked ? ' disabled' : ''}><span${locked ? ' class="off"' : ''}>Cable flag</span></label>
+            ${on ? `<input class="field rot" type="number" min="1" max="50" step="0.5" id="edCable" value="${esc(d.cable_diameter)}" placeholder="6.5" aria-label="Diameter of the cable in mm"><span>mm cable</span>` : ''}
+        </div>${on ? '<span class="muted small" id="edFlagHint">Place the cable on the triangles, fold both ends together and press them firmly.</span>' : ''}`;
 }
 
 function tapeNote(d) {
@@ -2689,8 +2716,15 @@ function bindEditor() {
             renderEditor();
         });
     });
-    if ($('#edUseTape')) $('#edUseTape').onclick = () => { setSize(d, S.tape); renderEditor(); };
-    $('#edSize').onchange = e => { setSize(d, e.target.value); renderEditor(); };
+    if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(d, S.tape); renderEditor(); };
+    $('#edSize').onchange = e => { changeSize(d, e.target.value); renderEditor(); };
+    $('#edFlag').onchange = e => { d.cable_flag = e.target.checked ? '1' : '0'; renderEditor(); };
+    // A diameter the server refuses shows why, one being typed waits
+    if ($('#edCable')) $('#edCable').addEventListener('input', e => {
+        if (e.target.validity.badInput) return;
+        d.cable_diameter = e.target.value.trim();
+        redrawEditor();
+    });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });

@@ -286,6 +286,14 @@ def test_flags_of_a_saved_label_are_loaded_as_they_are_printed(tmp_path):
         assert tuple(loaded.get(key) for key in ('image_fit', 'image_crop', 'text_fit', 'shrink_text')) == expected, name
 
 
+def test_cable_flag_is_saved_and_loaded(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    resp = client.post(SAVE_URL, json={'name': 'Patch.json', 'label_size': '12', 'text': TEXT, 'cable_flag': True, 'cable_diameter': '8'})
+    assert resp.status_code == 200
+    loaded = client.get('/labeldesigner/api/repository/load', query_string={'name': 'Patch.json'}).get_json()
+    assert (loaded['cable_flag'], loaded['cable_diameter']) == (True, '8')
+
+
 def test_a_label_whose_image_cannot_be_read_is_not_loaded_without_it(tmp_path):
     # Loaded without its image, the label saved again in the label designer
     # removed the image for good
@@ -383,6 +391,9 @@ def test_label_with_invalid_blanks_or_their_settings_is_not_saved(tmp_path, valu
     ({'image_mode': 'sepia'}, 'image_mode must be grayscale, black_and_white, red_and_black or colored'),
     ({'label_size': '63'}, 'Unknown label_size'),
     ({'label_size': None}, 'Unknown label_size'),
+    ({'cable_flag': True, 'label_size': '62x29'}, 'Cable flags need continuous tape'),
+    ({'cable_flag': '1', 'cable_diameter': '0'}, 'The cable diameter must be a number from 1 to 50 mm'),
+    ({'cable_flag': False, 'cable_diameter': '0'}, None),
 ])
 def test_label_with_settings_its_printing_refuses_is_not_saved(tmp_path, values, message):
     # Saved, it could not be printed or previewed afterwards

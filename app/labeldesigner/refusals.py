@@ -15,6 +15,7 @@ from pdf2image.exceptions import PDFInfoNotInstalledError, PDFPageCountError, PD
 from PIL import Image
 from qrcode.exceptions import DataOverflowError
 
+from .cable_flag import CABLE_DIAMETER_REFUSED, CABLE_FLAG_REFUSED
 from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
 from .label_names import cut_problems, label_size_problems
 from .drivers import DRIVERS, MODELS, resolution_problem
@@ -40,6 +41,8 @@ MESSAGES = (
     'cut must be each, last or none',
     'image_text_gap must be a whole number of dots or empty',
     'image_text_gap must not be negative',
+    CABLE_FLAG_REFUSED,
+    CABLE_DIAMETER_REFUSED,
     BLANKS_MESSAGE,
     FIELDS_MESSAGE,
     'image_position must be above, below, left or right',

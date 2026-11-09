@@ -1847,6 +1847,20 @@
             "default": 0,
             "description": "Corner radius of the border in dots."
           },
+          "cable_flag": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Print a cable flag: the label twice, with room between them to wrap around the cable, so that both ends stick together back to back. With the text across the tape the second label is upside down. Continuous tape only."
+          },
+          "cable_diameter": {
+            "type": "string",
+            "default": "",
+            "description": "Diameter of the cable in mm for `cable_flag`, from 1 to 50, e.g. `6.5`. Empty for 6.5 mm, a Cat.7 patch cable."
+          },
           "border_distance_x": {
             "type": "integer",
             "default": 0

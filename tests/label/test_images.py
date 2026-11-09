@@ -325,6 +325,21 @@ def test_pdf_upload_uses_high_res_dpi(tmp_path):
     assert widths[1] >= 1.9 * widths[0]
 
 
+@pytest.mark.parametrize('model, label_size, high_res, dpi', [
+    ('QL-800', '62', '0', 300), ('QL-800', '62', '1', 600), ('PT-E550W', 'pt12', '0', 180), ('PT-P900W', 'pt36', '0', 360)])
+def test_pdf_pages_are_rendered_at_the_dpi_of_the_tape(tmp_path, model, label_size, high_res, dpi):
+    client = make_client(tmp_path, model=model)
+    data = EXAMPLE_FORMDATA.copy()
+    # A black page of one inch, along the tape
+    data.update({'label_size': label_size, 'orientation': 'standard', 'print_type': 'image', 'image_mode': 'grayscale',
+                 'image_fit': '0', 'border_thickness': '0', 'high_res': high_res,
+                 'image': FileStorage(stream=io.BytesIO(_pdf((100, 100))), filename='inch.pdf')})
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 200
+    bbox = ImageOps.invert(Image.open(io.BytesIO(response.data)).convert('L')).getbbox()
+    assert abs((bbox[3] - bbox[1]) - dpi) <= 2
+
+
 def test_uploaded_image_is_decoded_once_per_job(tmp_path, monkeypatch):
     from app.labeldesigner import routes
     calls = []

@@ -192,6 +192,22 @@ def test_ptouch_tape_is_shown_at_180_dpi(designer):
     assert designer.inner_text('#edStage .dim-y') == f'{round(height / 180 * 25.4)} mm'
 
 
+def test_wide_ptouch_tape_is_shown_at_360_dpi(designer):
+    designer.evaluate("""() => {
+        S.printer = { path: 'a', model: 'PT-P900W', media_width: 36, media_length: 0 };
+        detectTape();
+        S.edit.design.label_size = S.tape;
+        renderEditor();
+    }""")
+    assert designer.input_value('#edSize') == 'pt36'
+    # 35 dots at 360 dpi
+    assert designer.input_value('[data-margin="left"]') == '2.5'
+    type_line(designer, 0, 'Hello')
+    _, height = preview_size(designer)
+    assert designer.inner_text('#edStage .dim-x') == '36 mm'
+    assert designer.inner_text('#edStage .dim-y') == f'{round(height / 360 * 25.4)} mm'
+
+
 def test_switch_shows_how_the_text_runs_on_the_tape(designer):
     def runs():
         wait_for_preview(designer)
