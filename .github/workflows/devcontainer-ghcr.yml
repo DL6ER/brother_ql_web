@@ -23,9 +23,8 @@ jobs:
       contents: read
       packages: write
     env:
-      # The earlier names of the images, brother-ql-web until v3.0.0 and labelhaus,
-      # keep getting every tag
-      IMAGES: ghcr.io/dl6er/labelburg ghcr.io/dl6er/labelhaus ghcr.io/dl6er/brother-ql-web
+      # The images were called brother-ql-web until v3.0.0, they keep getting every tag
+      IMAGES: ghcr.io/dl6er/labelburg ghcr.io/dl6er/brother-ql-web
       RELEASE: ${{ github.event.release.tag_name || inputs.release }}
     steps:
       # Without a release the image becomes :dev. A release vX.Y.Z becomes
