@@ -85,7 +85,7 @@ To detect printers automatically, also ones plugged in later and network printer
 | `1.0.1` | exactly this release | never |
 | `dev` | the current state of `master` | with every change and every night |
 
-`latest` is the right choice for most installations. `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Pre-releases (e.g. `1.1.0-rc.1`) only get their exact tag. To update, run `docker compose pull && docker compose up -d`. All releases are listed on the [releases page](https://github.com/DL6ER/labelburg/releases). Every tag is also pushed under the earlier names of the images, `ghcr.io/dl6er/brother-ql-web` and `ghcr.io/dl6er/labelhaus`, so existing installations keep getting updates.
+`latest` is the right choice for most installations. `dev` gets new features and fixes first, e.g. to test a fix from an issue before it is released, but it may also break things. Pre-releases (e.g. `1.1.0-rc.1`) only get their exact tag. To update, run `docker compose pull && docker compose up -d`. All releases are listed on the [releases page](https://github.com/DL6ER/labelburg/releases). Every tag is also pushed as `ghcr.io/dl6er/brother-ql-web`, the name of the images until v3.0.0, so existing installations keep getting updates.
 
 The navbar shows the version and build time of the running image, please add them when you report an issue.
 
