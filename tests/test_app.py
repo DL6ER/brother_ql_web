@@ -78,7 +78,7 @@ def test_navbar_shows_commit_and_build_time(monkeypatch):
     monkeypatch.setenv('GIT_COMMIT', '1c0ea1aba5f663c8534b3d44cad4e0ed2af47397')
     monkeypatch.setenv('BUILD_DATE', '2026-10-29T02:37:05Z')
     html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
-    assert 'href="https://github.com/DL6ER/labelhaus/commit/1c0ea1aba5f663c8534b3d44cad4e0ed2af47397"' in html
+    assert 'href="https://github.com/DL6ER/labelburg/commit/1c0ea1aba5f663c8534b3d44cad4e0ed2af47397"' in html
     assert '>1c0ea1a, 2026-10-29 02:37 UTC</a>' in html
 
 
@@ -96,7 +96,7 @@ def test_navbar_shows_the_release_instead_of_the_commit(monkeypatch):
     monkeypatch.setenv('GIT_COMMIT', '55e8900424aa9314eb99aa8343cbd35de78b7ca2')
     monkeypatch.setenv('BUILD_DATE', '2026-10-30T15:40:32Z')
     html = create_app().test_client().get('/labeldesigner/').get_data(as_text=True)
-    assert 'href="https://github.com/DL6ER/labelhaus/releases/tag/v1.0"' in html
+    assert 'href="https://github.com/DL6ER/labelburg/releases/tag/v1.0"' in html
     assert 'title="Release v1.0, commit 55e8900424aa9314eb99aa8343cbd35de78b7ca2, built 2026-10-30 15:40 UTC"' in html
     assert '>v1.0, 2026-10-30 15:40 UTC</a>' in html
     assert '/commit/' not in html

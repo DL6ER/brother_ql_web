@@ -32,5 +32,5 @@ body:
     id: log
     attributes:
       label: Log
-      description: The output of `docker logs labelhaus` around the problem, if you can with `LOG_LEVEL=DEBUG`.
+      description: The output of `docker logs labelburg` around the problem, if you can with `LOG_LEVEL=DEBUG`.
       render: text
