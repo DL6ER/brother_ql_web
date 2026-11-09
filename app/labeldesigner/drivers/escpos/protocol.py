@@ -70,12 +70,15 @@ class Connection:
 
     def ask(self, request: bytes) -> int:
         """The status byte the printer answers a DLE EOT request with."""
+        # A TM-T20II kept an answer from before, which was taken for this one
+        while select.select([self.dev], [], [], 0)[0] and os.read(self.dev, 64):
+            pass
         self.write(request)
         ready, _, _ = select.select([self.dev], [], [], ANSWER_WAIT)
-        reply = os.read(self.dev, 1) if ready else b''
+        reply = os.read(self.dev, 64) if ready else b''
         if not reply:
             raise EscposError('no answer to the status request')
-        return reply[0]
+        return reply[-1]
 
 
 def connect(device: str) -> Connection:

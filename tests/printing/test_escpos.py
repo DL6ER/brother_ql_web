@@ -67,6 +67,24 @@ def test_job_cuts_where_asked():
         b'\x1b@' + protocol.raster(rows, 1) + protocol.raster(rows, 1) + b'\x1dVB\x00')
 
 
+def test_answer_kept_from_before_is_not_taken_for_the_status(monkeypatch):
+    import socket
+    import threading
+    ours, printer = socket.socketpair()
+    c = protocol.Connection.__new__(protocol.Connection)
+    c.dev = ours.fileno()
+    printer.sendall(bytes([QUIET | 0x20]))
+
+    def answer():
+        assert printer.recv(3) == protocol.PAPER
+        printer.sendall(bytes([QUIET]))
+    thread = threading.Thread(target=answer)
+    thread.start()
+    assert c.ask(protocol.PAPER) == QUIET
+    thread.join()
+    ours.close(), printer.close()
+
+
 def test_status_bytes():
     assert protocol.errors(QUIET, QUIET) == []
     assert protocol.errors(QUIET | 0x04, QUIET | 0x60) == ['The cover of the printer is open', 'The printer has no paper']
