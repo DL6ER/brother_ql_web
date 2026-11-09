@@ -7,9 +7,10 @@ from PIL import Image
 from app.labeldesigner import drivers
 from app.labeldesigner.drivers.brother.commands import Raster
 from app.labeldesigner.drivers.brother.labels import LABELS as BROTHER_LABELS, PTOUCH_LABELS
+from app.labeldesigner.drivers.brother.models import MODELS as BROTHER_MODELS
 from app.labeldesigner.drivers.brother.raster import convert
 from app.labeldesigner.drivers.vc500w import NEVER_WHY
-from app.labeldesigner.label_names import LABELS, check_label_size, label_printers
+from app.labeldesigner.label_names import LABELS, check_label_size, label_fits, label_printers
 from tests.helpers import make_client
 
 
@@ -71,11 +72,17 @@ def test_label_designer_shows_brother_codes_and_printers(tmp_path):
     assert sizes['pt36']['models'] == ['PT-P900W', 'PT-P950NW']
 
 
+def test_printers_of_a_brother_label_size_share_one_dpi():
+    for label in BROTHER_LABELS:
+        assert len({BROTHER_MODELS[model].dpi for model in BROTHER_MODELS if label_fits(label, model)}) <= 1, label.identifier
+
+
 def test_label_designer_gets_what_each_printer_offers(tmp_path):
     html = make_client(tmp_path).get('/labeldesigner/').get_data(as_text=True)
     config = json.loads(re.search(r'const DESIGNER_CONFIG = (.*);</script>', html).group(1))
     sizes = {size['id']: size for size in config['label_sizes']}
     assert (sizes['62']['dpi'], sizes['pt12']['dpi'], sizes['vc25']['dpi']) == ([300, 600], [180, 360], [320, 320])
+    assert (sizes['pt36']['dpi'], sizes['18']['dpi']) == ([360, 720], [360, 720])
     models = config['models']
     assert set(models) == set(drivers.MODELS)
     assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'cutter': True, 'manual_cutter': False,
