@@ -1320,8 +1320,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const side = Math.abs(w - span) > 4 * scale && Math.abs(h - span) <= 4 * scale;
     const along = Math.round((side ? w : h) / dpi * 25.4);
     const lengthMm = isEndless(size) ? along : size.tape[1];
-    // Some printers let labels out the other way round than a QL printer,
-    // the top first. Those that leave sideways leave them as a QL printer.
+    // Labels that leave the printer top first are shown leaving it upwards,
+    // the printer below them. Those that leave sideways have it to their left.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
