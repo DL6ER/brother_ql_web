@@ -170,3 +170,12 @@ def test_stage_with_how_far_the_label_is(designer):
     assert designer.evaluate("() => jobText({ stage: 'Take the printed label out of the printer', label: 2, labels: 2 })") == \
         'Take the printed label out of the printer, label 2 of 2'
     assert designer.evaluate("() => jobText({ stage: 'Preheating' })") == 'Preheating'
+
+
+def test_large_preview_of_colors_is_smooth(designer):
+    fake_vc500w(designer)
+    use_tape(designer)
+    type_line(designer, 0, 'A')
+    designer.click('#edStage .zoom')
+    designer.evaluate("() => { Object.defineProperty(window, 'devicePixelRatio', { get: () => 3 }); placeOnStage($('#edStage'), true); }")
+    assert designer.get_attribute('#edStage .paper img', 'class') is None
