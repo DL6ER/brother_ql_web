@@ -91,6 +91,13 @@ def test_images_and_their_sources():
                           sources, re.M)) == files
 
 
+@pytest.mark.parametrize('demo, title', [('office/003-cable-12.json', 'Cable flag'), ('office/003-cable-12-de.json', 'Kabelfahne'),
+                                         ('office/004-cable-29.json', 'Cable flag'), ('office/004-cable-29-de.json', 'Kabelfahne')])
+def test_cable_demos_are_flags(client, demo, title):
+    data = client.get('/labeldesigner/api/demos/load', query_string={'id': demo}).get_json()
+    assert (data['title'], data['cable_flag']) == (title, True)
+
+
 def test_load(client):
     data = client.get('/labeldesigner/api/demos/load', query_string={'id': 'signs/001-fire-extinguisher-62.json'}).get_json()
     assert data['title'] == 'Fire extinguisher'

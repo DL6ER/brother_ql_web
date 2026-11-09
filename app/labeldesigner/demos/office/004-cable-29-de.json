@@ -25,7 +25,9 @@
   "print_type": "text",
   "pdf_pages": "",
   "shrink_text": true,
-  "title": "Kabel",
+  "cable_flag": true,
+  "cable_diameter": "",
+  "title": "Kabelfahne",
   "language": "de",
   "text": [
     {

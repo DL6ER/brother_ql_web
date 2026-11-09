@@ -25,7 +25,9 @@
   "print_type": "text",
   "pdf_pages": "",
   "shrink_text": true,
-  "title": "Cable",
+  "cable_flag": true,
+  "cable_diameter": "",
+  "title": "Cable flag",
   "language": "en",
   "text": [
     {
