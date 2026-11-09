@@ -2,6 +2,8 @@
 
 The pictograms of the demo labels, drawn after ISO 7010 (safety signs), the GHS of the United Nations (hazardous substances) and the symbol signs of the US Department of Transportation and AIGA (toilets), and the silhouette in the frame of the photo on name badges. They come from Wikimedia Commons, where all of them are in the public domain or under CC0. They were reduced to black, red and white, so that they print in black on black labels and in black and red on black/red labels.
 
+The sticker of this project shows its own icon, under the GPLv3 like the rest of the project.
+
 | Image | Original | Author | License |
 |---|---|---|---|
 | `assembly-point.png` | [ISO 7010 E007.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_E007.svg) | MaxxL | Public domain |
@@ -28,6 +30,7 @@ The pictograms of the demo labels, drawn after ISO 7010 (safety signs), the GHS 
 | `gloves.png` | [ISO 7010 M009.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_M009.svg) | ISO | Public domain |
 | `hearing-protection.png` | [ISO 7010 M003.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_M003.svg) | ISO | Public domain |
 | `hot-surface.png` | [ISO 7010 W017.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_W017.svg) | MaxxL | Public domain |
+| `labelburg.png` | [Labelburg](https://github.com/DL6ER/labelburg), the icon of this project | Labelburg | GPLv3 |
 | `laser.png` | [ISO 7010 W004.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_W004.svg) | Maxxl2 | Public domain |
 | `no-eating-drinking.png` | [ISO 7010 P022.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_P022.svg) | ISO | Public domain |
 | `no-mobile-phones.png` | [ISO 7010 P013.svg](https://commons.wikimedia.org/wiki/File:ISO_7010_P013.svg) | ISO | Public domain |
