@@ -748,3 +748,62 @@ def test_date_and_time_codes_are_explained_offline(designer):
     designer.click('#tabs [data-tab="wizard"]')
     designer.click('#wzVarsBox [data-dtcodes]')
     assert designer.inner_text('#layer h2') == 'Date and time codes'
+
+
+def test_image_code_and_text_have_the_settings_of_both(designer):
+    type_line(designer, 0, 'Pantry')
+    designer.click('[data-lay="imagecode"]')
+    wait_for_preview(designer)
+    assert designer.locator('.layouts .lay').count() == 5
+    assert designer.locator('#edCode').count() == 1 and designer.locator('#edFile').count() == 1
+    # The server tells what is missing
+    assert designer.inner_text('#edStage .err').strip() == 'The label has no image'
+    assert 'Fix the label to print it.' in fits_note(designer)
+    designer.set_input_files('#edFile', files=[{'name': 'black.png', 'mimeType': 'image/png', 'buffer': png()}])
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.print_type') == 'image_qrcode_text'
+    assert designer.locator('#edStage .err').count() == 0
+    assert 'Everything fits.' in fits_note(designer)
+    assert designer.evaluate("() => { const form = formFor(S.edit.design); return [form.get('print_type'), form.get('image') instanceof Blob]; }") == \
+        ['image_qrcode_text', True]
+    # The image left of the text, the code right of it, along the tape
+    assert designer.evaluate("() => document.querySelector('[data-side].on').dataset.side") == 'left'
+    width, height = preview_size(designer)
+    assert width > 2 * height
+    designer.click('[data-side="right"]')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.image_position') == 'right'
+    # One size for both, under Image: a QR code has the size of a dot when
+    # the image is scaled
+    assert designer.locator('[data-fit="1"]').count() == 1 and designer.locator('#edCodeScale').count() == 0
+    assert designer.is_disabled('#edQrSize')
+    designer.click('[data-fit="0"]')
+    designer.fill('#edScale', '50')
+    wait_for_preview(designer)
+    assert designer.is_enabled('#edQrSize')
+    # The scale is the image's, another kind of code leaves it
+    designer.select_option('#edBarcode', 'CODE128')
+    designer.select_option('#edBarcode', 'QR')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.image_scaling_factor') == '50'
+    assert 'Everything fits.' in fits_note(designer)
+
+
+def test_image_code_and_text_keep_the_settings_of_the_image(designer):
+    # The rotation is the image's: kept from the image layout, not from a code
+    designer.click('[data-lay="image"]')
+    designer.click('[data-rot="90"]')
+    designer.click('[data-lay="imagecode"]')
+    assert designer.evaluate('() => S.edit.design.image_rotation') == '90'
+    designer.click('[data-lay="codetext"]')
+    designer.click('[data-lay="imagecode"]')
+    assert designer.evaluate('() => S.edit.design.image_rotation') == '0'
+    # An image chosen keeps the code
+    designer.set_input_files('#edFile', files=[{'name': 'black.png', 'mimeType': 'image/png', 'buffer': png()}])
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.print_type') == 'image_qrcode_text'
+    # Without text the image keeps its place and distance to the code
+    type_line(designer, 0, '')
+    designer.evaluate('() => renderEditor()')
+    wait_for_preview(designer)
+    assert designer.is_enabled('[data-side="right"]') and designer.is_enabled('#edGap')

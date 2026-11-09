@@ -144,6 +144,9 @@ function baseDesign(size) {
     };
 }
 
+// Layouts with an image: alone or with text, or with a code as well
+const withImage = d => d.print_type === 'image' || d.print_type === 'image_qrcode_text';
+
 // How the text is sized: as set, shrunk where it does not fit, or as large as
 // fits. Labels kept from before have shrink_text only.
 const TEXT_FITS = [['none', 'As set'], ['shrink', 'Shrink to fit'], ['fill', 'Fill the label']];
@@ -406,7 +409,7 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
         text: l.text, size: String(l.size), font: l.font, align: l.align, inverted: !!l.inverted,
         checkbox: !!l.checkbox, color: red ? l.color || 'black' : 'black', line_spacing: String(l.line_spacing || '100')
     }))));
-    if (design.image && design.print_type === 'image') {
+    if (design.image && withImage(design)) {
         // The preview shows the first image, all of them are printed
         for (const im of [design.image].concat(forPrint ? design.more_images || [] : [])) fd.append('image', b64ToBlob(im.data, im.mime), im.name);
     }
@@ -1391,7 +1394,7 @@ function layoutProblem(d) {
     const colored = c => (c || 'black') !== 'black';
     const textColors = d.print_type !== 'qrcode' ? d.text.map(l => l.color) : [];
     const parts = textColors.concat(frameOf(d) !== 'none' ? [d.border_color] : [], d.print_type !== 'text' ? [d.print_color] : []).filter(colored);
-    const redParts = parts.length || (d.print_type === 'image' && ['red_and_black', 'colored'].includes(d.image_mode));
+    const redParts = parts.length || (withImage(d) && ['red_and_black', 'colored'].includes(d.image_mode));
     if (redParts && !redTape(d)) return 'This tape has no red, the red parts print black.';
     if (parts.some(c => c !== 'red')) return 'This tape prints black and red only, other colors print in one of them.';
     return '';
@@ -1905,8 +1908,8 @@ function renderFields(box, item, work, refresh, onEnter) {
         html = blanks.map((name, i) => fieldHTML(item, name, work.values[name], i)).join('');
     } else {
         html = work.design.text.map((l, i) => `<div><label class="label-s" for="ln${i}">Line ${i + 1}</label><input class="field" id="ln${i}" data-line="${i}" value="${esc(toDisplay(l.text))}"></div>`).join('');
-        if (work.design.print_type === 'qrcode_text' || work.design.print_type === 'qrcode') {
-            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"${work.design.print_type === 'qrcode_text' ? ' placeholder="Empty: the text of the label"' : ''}></div>`;
+        if (['qrcode_text', 'qrcode', 'image_qrcode_text'].includes(work.design.print_type)) {
+            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"${work.design.print_type !== 'qrcode' ? ' placeholder="Empty: the text of the label"' : ''}></div>`;
         }
         if (!work.design.text.length && work.design.print_type === 'image') html += '<p class="muted small">An image label without text. Change the design to replace the image.</p>';
     }
@@ -2103,6 +2106,7 @@ function layoutOf(d) {
     if (d.print_type === 'qrcode_text') return 'codetext';
     if (d.print_type === 'qrcode') return 'code';
     if (d.print_type === 'image') return 'image';
+    if (d.print_type === 'image_qrcode_text') return 'imagecode';
     return 'text';
 }
 
@@ -2141,7 +2145,7 @@ function renderEditor() {
     S.editShown = S.edit;
     const E = S.edit, d = E.design;
     const lay = layoutOf(d);
-    const hasCode = lay === 'code' || lay === 'codetext';
+    const hasCode = lay === 'code' || lay === 'codetext' || lay === 'imagecode';
     const hasText = lay !== 'code';
     const families = Object.keys(FONTS).sort((a, b) => a.localeCompare(b));
     // The font list in the header sets all lines, each line can have its own
@@ -2153,20 +2157,21 @@ function renderEditor() {
                 <button class="btn sm" type="button" id="edNew" title="Start a new, empty label"><i class="fa-solid fa-plus"></i>New</button>
                 <a class="btn sm" href="#templates" title="Start from a template"><i class="fa-solid fa-swatchbook"></i>Templates</a></div>
             <div><h3 style="margin-bottom:.55rem">Layout</h3><div class="layouts">
-                ${[['text', 'Text', '<i class="t"></i>'], ['codetext', 'Code, text', '<i class="q"></i><i class="t"></i>'], ['image', 'Image, text', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['code', 'Code', '<i class="q" style="margin:0 auto"></i>']]
+                ${[['text', 'Text', '<i class="t"></i>'], ['codetext', 'Code, text', '<i class="q"></i><i class="t"></i>'], ['image', 'Image, text', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['imagecode', 'Image, code, text', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>'], ['code', 'Code', '<i class="q" style="margin:0 auto"></i>']]
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
-                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'codetext' ? 'Link or text, empty for the text of the label' : 'Link or text in the code'}" aria-label="Content of the code">
-                <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>
+                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'code' ? 'Link or text in the code' : 'Link or text, empty for the text of the label'}" aria-label="Content of the code">
+                ${lay === 'imagecode' ? '<span class="muted small">Fitted to the label when the image is, see Size under Image.</span>'
+                    : `<div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>`}
                 ${((qr, fixed) => `<div class="pair">
                     ${qr ? `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${fixed ? '' : ' disabled'}></label>`
-                        : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
+                        : lay === 'imagecode' ? '' : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
                     <label${qr ? '' : ' title="Only for QR codes"'}><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
                 </div>${qr ? '' : '<span class="muted small">Error correction exists for QR codes only.</span>'}`)(d.barcode_type === 'QR', !fitted(d))}
                 ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
-            ${lay === 'image' ? imageBlock(d) : ''}
+            ${lay === 'image' || lay === 'imagecode' ? imageBlock(d) : ''}
             ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
                 <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d), isColorTape(d.label_size))).join('')}</div>
                 <div class="addl">
@@ -2272,6 +2277,9 @@ function imageBlock(d) {
 // Distance between the code or image and the text. Left empty, the server
 // chooses it from the size of the text, the field then shows its choice.
 const hasTextLines = d => d.text.some(l => String(l.text || '').trim());
+// Whether the code or image has something next to it: text, or the code of
+// an image label with a code as well
+const paired = d => hasTextLines(d) || d.print_type === 'image_qrcode_text';
 const GAP_TITLE = 'Leave it empty for a distance that suits the size of the text';
 // Buttons for the cutting c, with data-<attr> naming the setting. Half cuts
 // and chain printing only for P-touch printers.
@@ -2298,7 +2306,7 @@ function cutField(d) {
 }
 
 function gapField(d) {
-    const on = hasTextLines(d);
+    const on = paired(d);
     return `<label title="${on ? GAP_TITLE : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Distance to the text, mm</span>
         <input class="field" type="number" min="0" max="50" step="0.5" id="edGap" value="${d.image_text_gap === '' ? '' : dotsToMm(d.image_text_gap, dpiOf(d.label_size))}" placeholder="${on ? 'Automatic' : 'Only with text'}" style="width:10rem"${on ? '' : ' disabled'}></label>`;
 }
@@ -2317,8 +2325,9 @@ const fitButton = d => `<button type="button" data-fit="1" class="${fitted(d) ? 
 const SIDES = [['above', 'Above'], ['below', 'Below'], ['left', 'Left'], ['right', 'Right']];
 const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
 function sideField(d, what) {
-    const on = hasTextLines(d);
-    return `<div title="${on ? `Where the ${what} is next to the text` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+    const on = paired(d);
+    const other = d.print_type === 'image_qrcode_text' ? ', the code is on the other side' : '';
+    return `<div title="${on ? `Where the ${what} is next to the text${other}` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
         `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
@@ -2553,7 +2562,7 @@ function drawEditor() {
     $('#edSave').disabled = empty;
     const gap = $('#edGap');
     if (gap) {
-        const on = hasTextLines(E.design);
+        const on = paired(E.design);
         gap.disabled = !on;
         gap.previousElementSibling.classList.toggle('off', !on);
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
@@ -2577,7 +2586,7 @@ const drawStage = latest(async () => {
             $$('[data-side]').forEach(b => b.classList.toggle('on', b.dataset.side === side));
         }
         if (p && p.auto && !empty) setTimeout(() => $('#edFits') && $('#edFits').insertAdjacentHTML('beforeend', ' <span class="muted">Turned automatically to fit the label best.</span>'));
-        if (gap && p && hasTextLines(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
+        if (gap && p && paired(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
         editorFailed = !!refused;
@@ -2609,18 +2618,18 @@ function bindEditor() {
         // Rotation, cropping and scale belong to the image or the code they
         // were set for, also after the text layout between: they would act on
         // the other one, a code does not show them
-        const kindOf = t => (t === 'qrcode' || t === 'qrcode_text') ? 'code' : t === 'image' ? 'image' : null;
+        const kindOf = t => (t === 'qrcode' || t === 'qrcode_text') ? 'code' : t === 'image' || t === 'image_qrcode_text' ? 'image' : null;
         if (E.lookOf === undefined) E.lookOf = kindOf(d.print_type);
-        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', code: 'qrcode' }[lay];
+        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', imagecode: 'image_qrcode_text', code: 'qrcode' }[lay];
         const kind = kindOf(next);
         if (kind && kind !== E.lookOf && (E.lookOf || kind === 'code')) resetLook(d);
         if (kind) E.lookOf = kind;
         d.print_type = next;
         // Next to text, a code without content of its own holds the text
         if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
-        if (lay === 'codetext' && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
-        if (lay === 'codetext' || lay === 'image') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
-        if (lay === 'codetext' && d.qrcode_size === '10') d.qrcode_size = '14';
+        if ((lay === 'codetext' || lay === 'imagecode') && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
+        if (lay !== 'text' && lay !== 'code') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
+        if ((lay === 'codetext' || lay === 'imagecode') && d.qrcode_size === '10') d.qrcode_size = '14';
         if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
     });
@@ -2628,7 +2637,7 @@ function bindEditor() {
     if ($('#edBarcode')) $('#edBarcode').onchange = e => {
         d.barcode_type = e.target.value;
         // A QR code has the size of a dot instead of a scale
-        if (d.barcode_type === 'QR') d.image_scaling_factor = '100';
+        if (d.barcode_type === 'QR' && d.print_type !== 'image_qrcode_text') d.image_scaling_factor = '100';
         renderEditor();
     };
     if ($('#edCodeScale')) $('#edCodeScale').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.image_scaling_factor = String(v); redrawEditor(); } });
@@ -2823,7 +2832,7 @@ function readImages(files) {
         const d = S.edit.design;
         d.image = first;
         if (more.length) d.more_images = more; else delete d.more_images;
-        d.print_type = 'image';
+        if (!withImage(d)) d.print_type = 'image';
         renderEditor();
     }).catch(() => toast('The file could not be read'));
 }
