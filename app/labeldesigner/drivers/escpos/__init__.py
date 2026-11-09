@@ -1,5 +1,5 @@
 """Epson receipt printers on ESC/POS (protocol.py), e.g. the TM-T20II on
-endless 58 or 80 mm paper, which it cuts. The label is sent as an image."""
+endless 58 or 80 mm paper, which it cuts, between labels also partially. The label is sent as an image."""
 
 import logging
 import re
@@ -15,8 +15,9 @@ from . import protocol
 logger = logging.getLogger(__name__)
 
 MODELS = ('TM-T20II',)
-# Paper width in mm and the dots across it the TM-T20II prints
-WIDTHS = {58: 420, 80: 576}
+# Paper width in mm and the dots across it the TM-T20II prints, the first
+# one assumed, as the printer does not tell
+WIDTHS = {80: 576, 58: 420}
 
 LABELS = tuple(Label(f'escpos{width}', (width, 0), FormFactor.ENDLESS, (dots, 0), (dots, 0), 0, models=MODELS)
                for width, dots in WIDTHS.items())
@@ -67,7 +68,9 @@ class Escpos(Driver):
         return f'The {model} cuts the paper at least after the last label' if cut == 'none' else ''
 
     def capabilities(self, model):
-        return dict(super().capabilities(model), qualities=['quality'], never_cut=NEVER_WHY)
+        return dict(super().capabilities(model), qualities=['quality'], half_cut=True, never_cut=NEVER_WHY,
+                    # The bottom of the label leaves it first
+                    leaves_turned=True)
 
     def status(self, device, model, unconfirmed=False):
         state = network_status(device, model)
@@ -89,7 +92,7 @@ class Escpos(Driver):
             img, rows, width = label_rows(entry['label'], queue.label_size)
             if keep:
                 keep(img, f'escpos_{i}')
-            job.append((entry['cut'], rows, width))
+            job.append(('full' if entry['cut'] else 'half' if queue.half_cut else 'none', rows, width))
         return job
 
     def send(self, queue, job) -> str:
