@@ -871,3 +871,16 @@ def test_image_code_and_text_keep_the_settings_of_the_image(designer):
     designer.evaluate('() => renderEditor()')
     wait_for_preview(designer)
     assert designer.is_enabled('[data-side="right"]') and designer.is_enabled('#edGap')
+
+
+def test_counters_with_a_start_and_step_are_typed_and_shown(designer):
+    # [counter:001] is a counter, no blank of that name
+    type_line(designer, 0, 'Box [counter:001:5], shelf [Counter : A]')
+    assert designer.evaluate('() => S.edit.design.text[0].text') == 'Box {{counter:001:5}}, shelf {{counter:A}}'
+    assert 'Everything fits.' in fits_note(designer)
+    designer.evaluate('() => renderEditor()')
+    assert designer.input_value('[data-row="0"] .tx') == 'Box [counter:001:5], shelf [counter:A]'
+    assert designer.evaluate("() => ['counter', 'counter:7', 'Counter:a:2', 'counter:', 'counters', 'today', 'id'].map(isVariable)") == [True, True, True, False, False, True, True]
+    # One that cannot count shows why
+    type_line(designer, 0, 'Box [counter:A1]')
+    designer.wait_for_function("() => document.querySelector('#edStage').innerText.includes('A counter starts at a number or at letters, e.g., 001 or A')")

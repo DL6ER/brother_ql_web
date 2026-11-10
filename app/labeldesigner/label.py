@@ -233,6 +233,42 @@ def datetime_codes() -> dict:
             'codes': [[code, meaning, when.strftime(code)] for code, meaning in DATETIME_CODES]}
 
 
+# The start of a counter is at most this long, its step at most this large
+MAX_COUNTER_START_LENGTH = 12
+MAX_COUNTER_STEP = 1000000
+
+
+def counter_value(start: str, step: int, index: int) -> str:
+    """The counter on copy index (0 is the first): start, written as the values
+    should look, plus step per copy. Digits keep their count (001, 002, ...),
+    letters count A ... Z, AA, AB, ... in their case."""
+    if start.isdigit():
+        return str(int(start) + step * index).zfill(len(start))
+    # Letters as a number: A is 1, Z 26, AA 27
+    number = 0
+    for letter in start.upper():
+        number = number * 26 + ord(letter) - ord('A') + 1
+    number += step * index
+    letters = ''
+    while number:
+        number, rest = divmod(number - 1, 26)
+        letters = chr(ord('A') + rest) + letters
+    return letters if start.isupper() else letters.lower()
+
+
+def check_counter(start: str, step: str) -> int:
+    """The step of a counter that starts at start, ValueError for a start
+    that is neither digits nor letters of one case, or one too long, and a
+    step that is no whole number from 1 to MAX_COUNTER_STEP."""
+    if not re.fullmatch(r"[0-9]+|[A-Z]+|[a-z]+", start):
+        raise ValueError(f"A counter starts at a number or at letters, e.g., 001 or A, not {start}")
+    if len(start) > MAX_COUNTER_START_LENGTH:
+        raise ValueError(f"A counter starts at {MAX_COUNTER_START_LENGTH} digits or letters at most")
+    if not step.isdigit() or not 1 <= int(step) <= MAX_COUNTER_STEP:
+        raise ValueError(f"The step of a counter is a whole number from 1 to {MAX_COUNTER_STEP}, not {step}")
+    return int(step)
+
+
 def _iso_date(value: str) -> datetime.date | None:
     """value as a date if it is one like 2026-11-03."""
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value, re.ASCII):
@@ -547,12 +583,13 @@ class SimpleLabel:
         def substitute(pattern, replacement):
             pieces[:] = [re.sub(pattern, replacement, piece) for piece in pieces]
 
-        # Replace {{counter[:<start>]}} with current label counter (<start> is
-        # an optional offset defaulting to 1)
+        # Replace {{counter[:<start>[:<step>]]}} with the counter of the copy:
+        # it starts at <start> and adds <step> per copy, both 1 by default
+        # (see counter_value)
         def counter_replacer(match):
-            offset = int(match.group(1)) if match.group(1) else 1
-            return str(self._counter + offset)
-        substitute(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer)
+            start, step = match.group(1) or '1', match.group(2) or '1'
+            return counter_value(start, check_counter(start, step), self._counter)
+        substitute(r"\{\{counter(?::([0-9A-Za-z]+)(?::(-?\d+))?)?\}\}", counter_replacer)
 
         # Replace {{datetime:<format>}} with current datetime formatted as <format>
         def datetime_replacer(match):
