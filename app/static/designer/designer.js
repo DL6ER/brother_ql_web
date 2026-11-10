@@ -148,6 +148,10 @@ function baseDesign(size) {
 
 // Layouts with an image: alone or with text, or with a code as well
 const withImage = d => d.print_type === 'image' || d.print_type === 'image_qrcode_text';
+// The files of a label, each prints as a label of its own. The editor
+// previews one of them at a time.
+const labelFiles = d => withImage(d) && d.image ? [d.image, ...(d.more_images || [])] : [];
+const fileShown = E => Math.min(E.fileShown || 0, Math.max(0, labelFiles(E.design).length - 1));
 
 // How the text is sized: as set, shrunk where it does not fit, or as large as
 // fits. Labels kept from before have shrink_text only.
@@ -2238,6 +2242,11 @@ function renderEditor() {
                 </div>
             </div>
             <div class="fill-in" id="edFields"></div>
+            <div class="file-step" id="edFileStep" hidden>
+                <button class="btn quiet icon" type="button" data-file="-1" title="Previous file" aria-label="Previous file"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="edFileOf" aria-live="polite"></span>
+                <button class="btn quiet icon" type="button" data-file="1" title="Next file" aria-label="Next file"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
             ${stageHTML('edStage', true)}
         </section>
     </div>`;
@@ -2289,7 +2298,7 @@ function imageBlock(d) {
     return `<div class="block"><div class="block-h"><i class="fa-regular fa-image"></i>Image</div>
         <div class="block-b">
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
-            ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own. The preview shows the first, saving the label keeps only the first.</span>` : ''}
+            ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own with these settings. Step through them above the preview, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
             ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
             ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
@@ -2600,6 +2609,9 @@ function drawEditor() {
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
     }
+    const files = labelFiles(E.design);
+    $('#edFileStep').hidden = files.length < 2;
+    if (files.length > 1) $('#edFileOf').textContent = `File ${fileShown(E) + 1} of ${files.length}: ${files[fileShown(E)].name}`;
     drawStage();
 }
 // A stage drawn anew, e.g. for another layout, does not wait for the preview
@@ -2608,7 +2620,9 @@ const drawStage = latest(async () => {
     const E = S.edit, stage = $('#edStage');
     if (!E || !stage) return;
     const empty = isEmptyDesign(E.design);
-    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) }) : E.design;
+    const file = fileShown(E);
+    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) })
+        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file] }) : E.design;
     const gap = $('#edGap');
     await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
         // Where the server put the code or image, its setting shows that
@@ -2636,6 +2650,18 @@ function bindEditor() {
         store(own('designer_settings'), S.settings);
         placeOnStage(e.currentTarget, true);
         $('#edStage .zoom').focus();
+    };
+    // From the last file on to the first, the buttons keep the focus
+    const stepFile = by => {
+        const n = labelFiles(E.design).length;
+        E.fileShown = (fileShown(E) + by + n) % n;
+        redrawEditor();
+    };
+    $$('#edFileStep [data-file]').forEach(b => b.onclick = () => stepFile(+b.dataset.file));
+    $('#edFileStep').onkeydown = e => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        stepFile(e.key === 'ArrowLeft' ? -1 : 1);
     };
     $('#edNew').onclick = () => {
         const before = S.edit;
@@ -2872,6 +2898,7 @@ function readImages(files) {
         d.image = first;
         if (more.length) d.more_images = more; else delete d.more_images;
         if (!withImage(d)) d.print_type = 'image';
+        S.edit.fileShown = 0;
         renderEditor();
     }).catch(() => toast('The file could not be read'));
 }
