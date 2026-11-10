@@ -41,6 +41,14 @@ def test_an_endless_label_across_the_tape_has_no_room_to_place_the_content_in(de
     designer.click('[data-along="1"]')
     wait_for_preview(designer)
     assert designer.is_enabled('[data-valign="top"]')
+    # Across the tape with a length it is as long as that
+    designer.click('[data-along="0"]')
+    wait_for_preview(designer)
+    assert designer.is_disabled('[data-valign="top"]')
+    designer.fill('#edLength', '60')
+    designer.dispatch_event('#edLength', 'change')
+    wait_for_preview(designer)
+    assert designer.is_enabled('[data-valign="top"]')
 
 
 def test_the_vertical_position_is_a_step_to_undo_and_kept_with_the_label(designer):

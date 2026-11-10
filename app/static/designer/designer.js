@@ -143,6 +143,9 @@ function baseDesign(size) {
         cut: '', half_cut: '', chain: '',
         // Empty: a Cat.7 cable
         cable_flag: '0', cable_diameter: '',
+        // Empty: an endless label is as long as its content, else its
+        // length in millimeters as cut
+        label_length: '',
         // Where the content is on a label with room to spare
         vertical_align: 'center'
     };
@@ -165,11 +168,12 @@ function setTextFit(d, fit) {
 }
 
 // Where the content is between the top and bottom margins, as the text
-// reads. An endless label across the tape is as long as its content.
+// reads. An endless label across the tape is as long as its content, unless
+// it has a length.
 const VERTICAL_ALIGNS = [['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']];
 const verticalAlign = d => d.vertical_align || 'center';
 const NO_ROOM = 'Endless labels end where the content ends, there is no room to place it in';
-const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d));
+const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d) && !hasFixedLength(d));
 
 // Labels as the API stores them (text as JSON, booleans as true/false)
 function normalize(raw) {
@@ -1341,7 +1345,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // Some printers leave blank paper before each label, which was between
     // their printhead and cutter
     const lead = isEndless(size) ? sizeCaps(design.label_size).lead_mm : 0;
-    const lengthMm = isEndless(size) ? along + lead : size.tape[1];
+    // An endless label of a given length is as long as that when cut
+    const lengthMm = !isEndless(size) ? size.tape[1] : hasLength(design) && +design.label_length > 0 ? +design.label_length : along + lead;
     // Labels that leave the printer top first are shown leaving it upwards,
     // the printer below them. Those that leave sideways have it to their left.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
@@ -2249,7 +2254,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
+                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
@@ -2324,6 +2329,21 @@ function tapeNote(d) {
     if (fitsTape(d.label_size)) return '';
     const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
     return `<span class="tape-note warn">${who} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
+}
+
+// The length of an endless label as cut, next to the tape, where the server
+// offers one for the tape. Die-cut labels have their own, it shows as the hint.
+const LENGTH_TITLE = 'The label as cut, with the margin the printer leaves before and after the print. Empty: as long as its content.';
+const hasLength = d => !!SIZES[d.label_size] && !!SIZES[d.label_size].length && !flagOn(d);
+// An endless label of a length typed is laid out as a die-cut one
+const hasFixedLength = d => hasLength(d) && +d.label_length > 0;
+const lengthWhy = d => hasLength(d) ? LENGTH_TITLE : isDieCut(d.label_size) ? 'Die-cut labels have their own length'
+    : flagOn(d) ? 'Cable flags are as long as their content' : 'Labels on this tape are as long as their content';
+const lengthLabel = d => `<label class="label-s${hasLength(d) ? '' : ' off'}" for="edLength" title="${lengthWhy(d)}">Length, mm</label>`;
+function lengthInput(d) {
+    const on = hasLength(d), s = SIZES[d.label_size];
+    return `<input class="field" type="number"${on ? ` min="${s.length[0]}" max="${s.length[1]}"` : ''} step="0.5" id="edLength" value="${on ? esc(d.label_length) : ''}" placeholder="${on || !isDieCut(d.label_size) ? 'Automatic' : esc(s.tape[1])}"
+        title="${lengthWhy(d)}"${on ? '' : ' disabled'}>`;
 }
 
 function imageBlock(d) {
@@ -2798,6 +2818,15 @@ function bindEditor() {
         if (e.target.validity.badInput) return;
         d.cable_diameter = e.target.value.trim();
         redrawEditor();
+    });
+    // Taken once typed, a length on the way to another may be too short
+    $('#edLength').addEventListener('change', e => {
+        const v = e.target.value.trim();
+        // Drawn anew the field is replaced, which tells the length again
+        if (v === d.label_length || v !== '' && !(+v > 0)) return;
+        d.label_length = v;
+        // Of a length the content has room to be placed in
+        renderEditor();
     });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
