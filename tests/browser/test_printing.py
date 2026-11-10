@@ -480,6 +480,11 @@ def test_labels_can_leave_the_printer_bottom_first(designer):
     designer.evaluate("() => openPrinterPanel()")
     designer.click('.pp [data-lf="bottom"]')
     assert designer.locator('.pp [data-lf="bottom"].on').count() == 1
+    # The test label names its ends, printed as set
+    with designer.expect_request('**/api/print') as request:
+        designer.click('.pp #setLfTest')
+    body = request.value.post_data_buffer
+    assert b'leaves_first=bottom' in body and b'TOP' in body and b'BOTTOM' in body
     designer.keyboard.press('Escape')
     wait_for_preview(designer)
     # The printer stands above the label, which leaves it downwards

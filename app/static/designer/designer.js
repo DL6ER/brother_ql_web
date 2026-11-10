@@ -368,6 +368,9 @@ const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each'
 // The end of the labels that leaves the printer first, set for each printer:
 // the top, as the drivers print them, or the bottom, turned by 180 degrees
 const leavesFirst = () => (S.settings.leaves || {})[printerKey()] || 'top';
+// A label on the tape in the printer with its ends named, to see which one
+// comes out first
+const endsTest = () => Object.assign(baseDesign(S.tape), { text: [L('TOP', 40, true), L('Which end came out first?', 20), L('BOTTOM', 40, true)] });
 // P-touch printers cut after the last label unless chain printing, so not
 // cutting at all is chain printing, as the server decides it too
 const chainOf = (c, k) => k.chain && (c.chain === '1' || c.cut === 'none');
@@ -3109,6 +3112,7 @@ function bindPrinterPanel() {
         $('#qInfoBtn', box).setAttribute('aria-expanded', String(S.qualityInfo));
     };
     $$('[data-q]', box).forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; saveSettings(); });
+    $('#setLfTest', box).onclick = () => printJob({ title: 'Which end first', design: endsTest(), values: {}, copies: 1, source: { kind: 'test' } });
     $$('[data-lf]', box).forEach(b => b.onclick = () => {
         S.settings.leaves = Object.assign({}, S.settings.leaves, { [printerKey()]: b.dataset.lf });
         saveSettings();
@@ -3160,7 +3164,9 @@ function settingsCard() {
             <div class="seg">
             <button type="button" data-lf="top" class="${leavesFirst() === 'top' ? 'on' : ''}">Top</button>
             <button type="button" data-lf="bottom" class="${leavesFirst() === 'bottom' ? 'on' : ''}">Bottom</button></div>
-            <span class="muted small">Bottom turns the labels, e.g. to stick them on as they come out.</span></div>
+            <div class="muted small">Bottom turns the labels, e.g. to stick them on as they come out.</div>
+            <div class="row" style="gap:.5rem;margin-top:.3rem"><button type="button" class="btn quiet" id="setLfTest"${S.printer ? '' : ' disabled'}><i class="fa-solid fa-print"></i>Print a test label</button>
+            <span class="muted small">TOP and BOTTOM at its ends</span></div></div>
         <div class="cutting">${cutSettings('c', c, caps)}
             <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))}${noCutter(caps) ? '' : ' Labels saved with their own cutting keep it.'}</span></div></div>
     </div>`;
