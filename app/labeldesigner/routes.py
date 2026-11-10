@@ -10,6 +10,7 @@ import secrets
 import barcode
 import threading
 import contextlib
+import datetime
 from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
@@ -27,7 +28,7 @@ from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color, shift_date
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_length_problem, label_name, label_palette, label_printers, label_size_problem, length_limits
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -1579,8 +1580,15 @@ def _blank_setting(field) -> bool:
 
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
-    "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    "date", "format": "%d.%m.%Y"}}. A date may start at a day moved from
+    today, e.g., {"Best before": {"type": "date", "default": "+5d"}}."""
+    fields = _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    # A date moved from today must be one it can be moved by
+    for field in fields.values():
+        default = field.get('default')
+        if field.get('type') == 'date' and isinstance(default, str) and default.strip()[:1] in ('+', '-'):
+            shift_date(datetime.date.today(), default.strip())
+    return fields
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:
