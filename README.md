@@ -18,6 +18,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Brother | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
 | Epson | TM-T20II (USB, ESC/POS) | 80 and 58 mm receipt paper, cut |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
+| Zebra | ZPL printers (USB or network), tested on a Datamax-O'Neil E-4204B with its ZPL emulation only, not on a Zebra | 105 x 148, 102 x 152, 100 x 150, 102 x 76, 102 x 51, 57 x 32 and 51 x 25 mm die-cut labels, torn off |
 
 USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
 
@@ -95,7 +96,7 @@ The navbar shows the version and build time of the running image, please add the
 
 | Environment variable | Meaning | Default |
 |---|---|---|
-| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` (an IPv6 address in brackets), a VC-500W on the network as `vc500w://<host>`, a PUQU Q00 or Reekon P1 Tagger as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 if left out; in a container only with `network_mode: host`), or `?` to detect printers automatically | `?` |
+| `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>`, `tcp://<host>` (an IPv6 address in brackets), a VC-500W on the network as `vc500w://<host>`, a PUQU Q00 or Reekon P1 Tagger as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 if left out; in a container only with `network_mode: host`), a ZPL printer on the network as `tcp://<host>`, or `?` to detect printers automatically | `?` |
 | `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer. Models of other makers than Brother are named with their maker, e.g. `PUQU/Q00` or `Epson/TM-T20II`, Brother ones with or without it (`Brother/QL-800`). | `QL-800` |
 | `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g., `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1,PUQU/Q00=bt://<MAC>`, the models as for `PRINTER_MODEL`. A name in front, e.g., `Kitchen:QL-700=usb://0x04f9:0x2042`, is shown in the label designer, and requests may choose the printer by it (`printer=Kitchen`). There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g., `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with, e.g. `62` or `103x164` | `62` |
