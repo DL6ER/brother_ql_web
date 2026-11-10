@@ -16,7 +16,7 @@ from . import protocol
 
 logger = logging.getLogger(__name__)
 
-MODELS = ('D110_M',)
+MODELS = ('Niimbot/D110_M',)
 DOTS_PER_MM = 8
 
 # Width x length in mm of the rolls sold for the D11 and D110 printers,

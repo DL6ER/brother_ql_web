@@ -65,7 +65,7 @@ def fake(monkeypatch):
 def client(tmp_path):
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
-    client.application.config['PRINTER_MODEL'] = 'D110_M'
+    client.application.config['PRINTER_MODEL'] = 'Niimbot/D110_M'
     return client
 
 
@@ -105,7 +105,7 @@ def test_rows_are_as_wide_as_the_label_across_the_printhead():
 
 def test_status_through_the_label_designer(client, fake):
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
-    assert (printer_['model'], printer_['path'], printer_['errors']) == ('D110_M', DEVICE, [])
+    assert (printer_['model'], printer_['path'], printer_['errors']) == ('Niimbot/D110_M', DEVICE, [])
     assert fake.commands == [0xdc, 0x1a]
     # A roll without RFID tag has no size
     assert printer_['media_width'] is None
