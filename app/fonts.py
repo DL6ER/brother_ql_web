@@ -1,11 +1,51 @@
 import os
 import logging
-from fontTools.ttLib import TTFont
+import struct
 from collections import defaultdict
+
+# Name records in these (platform, encoding) pairs can be read: Unicode,
+# Windows Unicode and Macintosh Roman
+NAME_ENCODINGS = {**{(0, encoding): 'utf_16_be' for encoding in range(7)},
+                  (3, 0): 'utf_16_be', (3, 1): 'utf_16_be', (3, 10): 'utf_16_be', (1, 0): 'mac_roman'}
 
 
 class FontNotFound(LookupError):
     """A font given as "<family>,<style>" that is not installed."""
+
+
+def font_names(path) -> tuple[str | None, str | None]:
+    """Family and style of a TrueType or OpenType font: the first readable,
+    non-empty records with name IDs 1 and 2 in its name table. A broken file
+    raises ValueError or struct.error."""
+    with open(path, 'rb') as fh:
+        def read(offset: int, length: int) -> bytes:
+            fh.seek(offset)
+            data = fh.read(length)
+            if len(data) < length:
+                raise ValueError(f'Font file too short: {path}')
+            return data
+
+        tables = struct.unpack('>H', read(4, 2))[0]
+        directory = read(12, 16 * tables)
+        for i in range(tables):
+            tag, _, offset, length = struct.unpack_from('>4sIII', directory, 16 * i)
+            if tag == b'name':
+                break
+        else:
+            return None, None
+        table = read(offset, length)
+    _, count, strings = struct.unpack_from('>HHH', table)
+    names = {}
+    for i in range(count):
+        platform, encoding, _, name_id, size, start = struct.unpack_from('>6H', table, 6 + 12 * i)
+        codec = NAME_ENCODINGS.get((platform, encoding))
+        if name_id in (1, 2) and name_id not in names and codec:
+            raw = table[strings + start:strings + start + size]
+            if len(raw) < size:
+                raise ValueError(f'Font name table too short: {path}')
+            if text := raw.decode(codec):
+                names[name_id] = text
+    return names.get(1), names.get(2)
 
 
 class Fonts:
@@ -20,7 +60,7 @@ class Fonts:
         self.default_style = default_style
         self.additional_path = additional_path
 
-        # Scan for TTF/OTF fonts using pure Python (fontTools).
+        # Scan for TTF/OTF fonts, see font_names().
         # :param additional_path: Directory (or list of directories) to search
         #     in addition to common system font paths.
         # :param system_fonts: Whether to search the system font paths at all.
@@ -43,17 +83,7 @@ class Fonts:
                     if file.lower().endswith(font_exts):
                         font_path = os.path.join(root, file)
                         try:
-                            font = TTFont(font_path)
-                            # Get family and style from name table
-                            family = None
-                            style = None
-                            for record in font['name'].names:
-                                if record.nameID == 1 and not family:
-                                    family = record.toStr()
-                                if record.nameID == 2 and not style:
-                                    style = record.toStr()
-                                if family and style:
-                                    break
+                            family, style = font_names(font_path)
                             if family and style:
                                 self.fonts[family][style] = font_path
                         except Exception:

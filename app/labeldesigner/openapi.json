@@ -1731,6 +1731,16 @@
             ],
             "description": "Where the image or code is next to the text, for labels with both. Left out or empty: above it across the tape, left of it along the tape (`orientation` `rotated`). With `image_qrcode_text` the image is there, left of the text if left out, and the code on the other side. An endless label grows along the tape to hold both. Fitted to the label (`image_fit`), it takes at most half of the label along the side of the text, the text the rest, where the label does not grow with the text, with `image_qrcode_text` the image and the code a third each. Where it is follows the lines of text as written, also those of blanks left empty."
           },
+          "vertical_align": {
+            "type": "string",
+            "enum": [
+              "top",
+              "center",
+              "bottom"
+            ],
+            "default": "center",
+            "description": "Where the content (text, code or image) is between the top and bottom margins of a label that has room to spare: die-cut labels, and endless tape with `orientation` `rotated`, across the tape. Top and bottom are as the text reads. An endless label across the tape grows with its content and has its content in the middle. Left out or empty: `center`."
+          },
           "print_type": {
             "type": "string",
             "enum": [

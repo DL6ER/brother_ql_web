@@ -48,6 +48,7 @@ MESSAGES = (
     'image_position must be above, below, left or right',
     'label_length must be a length in millimeters or empty',
     *label_length_problems(),
+    'vertical_align must be top, center or bottom',
     'Width and height must be non-negative.',
     'Border thickness must be non-negative.',
     'QR size must be positive.',

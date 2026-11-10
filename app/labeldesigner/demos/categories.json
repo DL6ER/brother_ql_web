@@ -68,6 +68,10 @@
     "name": "School and kids"
   },
   {
+    "id": "kids",
+    "name": "Pictures for kids"
+  },
+  {
     "id": "letters",
     "name": "Large letters and numbers"
   }

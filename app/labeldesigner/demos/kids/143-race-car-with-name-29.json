@@ -1,0 +1,51 @@
+{
+  "label_size": "29",
+  "orientation": "rotated",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "10",
+  "qrcode_correction": "M",
+  "code_text": "",
+  "image_mode": "grayscale",
+  "image_fit": true,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "16",
+  "margin_bottom": "16",
+  "margin_left": "16",
+  "margin_right": "30",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "image",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "image_position": "left",
+  "title": "Race car with name",
+  "language": "en",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "140",
+      "inverted": false,
+      "checkbox": false,
+      "align": "left",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:Name}}"
+    }
+  ],
+  "label_text": "{{blank:Name}}",
+  "image": "race-car-black.jpg",
+  "fields": {
+    "Name": {
+      "type": "text",
+      "default": "Alex"
+    }
+  }
+}
