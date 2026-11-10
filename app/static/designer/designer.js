@@ -795,18 +795,27 @@ async function refreshPrinters(look = false) {
     }
     detectTape();
     renderPrinterChip();
-    // An open printer panel lists the new status, its settings stay as they are
-    const list = $('.pp .plist');
-    if (list) { list.innerHTML = printerListHTML(); bindPrinterPanel(); }
-    // The note of the editor on the tape follows the tape the printer reports
+    // An open printer panel shows the new status, drawn again only when it
+    // changed so that what is focused in it stays focused
+    const box = $('.pp');
+    if (box) {
+        const fresh = document.createElement('div');
+        fresh.innerHTML = printerPanelHTML();
+        if (fresh.innerHTML !== box.innerHTML) { box.replaceChildren(...fresh.childNodes); bindPrinterPanel(); }
+    }
+    // The note of the editor on the tape and the tape list follow the tape the
+    // printer reports
     const size = $('#edSize');
     if (size && S.edit) {
         const note = document.createElement('div');
         note.innerHTML = tapeNote(S.edit.design);
         const old = size.parentElement.querySelector('.tape-note');
-        if (old) old.replaceWith(...note.children);
-        else size.before(...note.children);
-        if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(S.edit.design, S.tape); renderEditor(); };
+        if ((old ? old.outerHTML : '') !== note.innerHTML) {
+            if (old) old.replaceWith(...note.children);
+            else size.before(...note.children);
+            if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(S.edit.design, S.tape); renderEditor(); };
+        }
+        $$('option', size).forEach(o => { o.textContent = tapeName(o.value); });
     }
 }
 
@@ -2270,7 +2279,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
+                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => esc(tapeName(s.id)))}</select>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
@@ -2336,6 +2345,9 @@ function flagRow(d) {
             ${on ? `<input class="field rot" type="number" min="1" max="50" step="0.5" id="edCable" value="${esc(d.cable_diameter)}" placeholder="6.5" aria-label="Diameter of the cable in mm"><span>mm cable</span>` : ''}
         </div>${on ? '<span class="muted small" id="edFlagHint">Place the cable on the triangles, fold both ends together and press them firmly.</span>' : ''}`;
 }
+
+// A tape as the tape list names it
+const tapeName = id => sizeName(id) + (id === S.tape && !S.tapeAssumed ? ' (in the printer)' : '');
 
 function tapeNote(d) {
     const who = esc(thePrinter(S.printer, true));
@@ -3039,8 +3051,8 @@ function openPrinterPanel() {
     bindPrinterPanel();
 }
 
-function printerListHTML() {
-    return S.printers.map(p => {
+function printerPanelHTML() {
+    const list = S.printers.map(p => {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
@@ -3048,11 +3060,8 @@ function printerListHTML() {
                 ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
-}
-
-function printerPanelHTML() {
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
-        <div class="plist">${printerListHTML()}</div>
+        <div class="plist">${list}</div>
         <button class="btn sm" type="button" id="ppRefresh" style="align-self:flex-start"><i class="fa-solid fa-magnifying-glass"></i>Look for printers</button>
         ${settingsCard()}
         <a class="link" href="#wizard/printed"><i class="fa-solid fa-clock-rotate-left"></i> Printed labels</a>`;
