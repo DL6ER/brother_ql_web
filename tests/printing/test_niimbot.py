@@ -11,10 +11,12 @@ from tests.helpers import make_client
 
 DEVICE = 'bt://00:F4:BA:17:12:06'
 TEXT = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'OK', 'size': '30'}])
+# The RFID tag of a 12 x 40 mm roll
+TAG = bytes(8) + b'\x0801222281' + b'\x10PZ1G910304007921' + struct.pack('>HHB', 192, 87, 1)
 # The replies of a D110_M as the script this driver came from got them
 REPLIES = {0x21: (0x31, b'\x01'), 0x23: (0x33, b'\x01'), 0x01: (0x02, b'\x01'), 0x13: (0x14, b'\x01'),
            0xe3: (0xe4, b'\x01'), 0xa3: (0xb3, struct.pack('>H', 1)), 0xf3: (0xf4, b'\x01'),
-           0x1a: (0x1b, b'\x00'), 0xdc: (0xdd, bytes.fromhex('101f0069006932460104'))}
+           0x1a: (0x1b, TAG), 0xdc: (0xdd, bytes.fromhex('101f0069006932460104'))}
 
 
 class FakePrinter:
@@ -107,7 +109,13 @@ def test_status_through_the_label_designer(client, fake):
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
     assert (printer_['model'], printer_['path'], printer_['errors']) == ('Niimbot/D110_M', DEVICE, [])
     assert fake.commands == [0xdc, 0x1a]
-    # A roll without RFID tag has no size
+
+
+def test_roll_without_its_rfid_tag_is_an_error(client, fake, monkeypatch):
+    # As a D110_M answered with the tag peeled off the roll, or no roll
+    monkeypatch.setitem(REPLIES, 0x1a, (0x1b, b'\x00'))
+    printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert printer_['errors'] == ['No Niimbot roll with its RFID tag is in the printer']
     assert printer_['media_width'] is None
 
 
@@ -167,7 +175,9 @@ def test_lid_closed_again_is_told_at_the_next_status_query(client, fake, monkeyp
 def test_no_roll_is_not_an_open_lid(client, fake, monkeypatch):
     # As a D110_M answered with the lid closed and no roll inside
     monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('10200097009732460104')))
-    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+    monkeypatch.setitem(REPLIES, 0x1a, (0x1b, b'\x00'))
+    errors = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors']
+    assert errors == ['No Niimbot roll with its RFID tag is in the printer']
 
 
 def test_printer_that_stops_answering(client, fake, monkeypatch):
@@ -189,7 +199,15 @@ def test_printer_that_does_not_tell_it_printed(client, fake, monkeypatch):
     assert response.get_json()['message'] == 'The printer did not tell that it printed the label'
 
 
-def test_tag_laid_out_otherwise_is_no_tag(client, fake, monkeypatch):
+def test_roll_without_its_rfid_tag_is_refused(client, fake, monkeypatch):
+    # As a D110_M answered with the tag peeled off the roll
+    monkeypatch.setitem(REPLIES, 0x01, (protocol.ERROR, b'\x14'))
+    response = client.post('/labeldesigner/api/print', data={
+        'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    assert response.get_json()['message'] == 'The printer prints only on Niimbot rolls with their RFID tag'
+
+
+def test_tag_laid_out_otherwise_is_an_unknown_roll(client, fake, monkeypatch):
     monkeypatch.setitem(REPLIES, 0x1a, (0x1b, bytes(8) + b'\x0801'))
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
     assert (printer_['errors'], printer_['media_width']) == ([], None)
