@@ -133,7 +133,7 @@ function baseDesign(size) {
         code_text: '', barcode_type: 'QR', qrcode_size: String(def.qrcode_size), qrcode_correction: 'M',
         margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
-        image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0',
+        image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0', image_contrast: '0',
         image_scaling_factor: '100', image_rotation: '0', text_fit: 'shrink', print_color: 'black', high_res: '0', pdf_pages: '',
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
@@ -178,6 +178,7 @@ function normalize(raw) {
     // Cutting saved through the API e.g. as half_cut: 0 or chain: true
     for (const k of CUT_KEYS) d[k] = !given(raw[k]) ? '' : raw[k] === true ? '1' : raw[k] === false ? '0' : String(raw[k]);
     d.cable_flag = !given(raw.cable_flag) ? '0' : raw.cable_flag === true ? '1' : raw.cable_flag === false ? '0' : String(raw.cable_flag);
+    d.image_contrast = !given(raw.image_contrast) ? '0' : [true, 'true'].includes(raw.image_contrast) ? '1' : [false, 'false'].includes(raw.image_contrast) ? '0' : String(raw.image_contrast);
     if (!given(raw.text_fit) && given(raw.shrink_text)) d.shrink_text = String(raw.shrink_text);
     if (raw.image_data) d.image = { data: raw.image_data, mime: raw.image_mime || 'image/png', name: raw.image_name || 'image.png' };
     if (raw.fields && typeof raw.fields === 'object') d.fields = raw.fields;
@@ -597,7 +598,7 @@ function preview(design, values, stale, first = false) {
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
-            side: r.headers.get('X-Label-Image-Position') || ''
+            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1'
         };
     }, stale, first);
     previewCache.set(key, p);
@@ -2327,7 +2328,9 @@ function imageBlock(d) {
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
             ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own with these settings. Step through them above the preview, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
-            ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
+            ${color ? `<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>
+            <div class="row"><label class="check"><input type="checkbox" id="edContrast"${d.image_contrast === '1' ? ' checked' : ''}><span>Stronger contrast, for light drawings</span></label></div>
+            <span class="muted small" id="edContrastHint" hidden>This image looks light and may print faint. <button type="button" class="link" id="edContrastOn">Use stronger contrast</button></span>` : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
             ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
             <div class="row" style="flex-wrap:wrap;align-items:flex-end">
                 <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
@@ -2660,6 +2663,8 @@ const drawStage = latest(async () => {
         }
         if (p && p.auto && !empty) setTimeout(() => $('#edFits') && $('#edFits').insertAdjacentHTML('beforeend', ' <span class="muted">Turned automatically to fit the label best.</span>'));
         if (gap && p && paired(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
+        // The server finds the image light, stronger contrast would help it
+        if ($('#edContrastHint')) $('#edContrastHint').hidden = !(p && p.faint && !empty);
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
         editorFailed = !!refused;
@@ -2776,6 +2781,8 @@ function bindEditor() {
     if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(d, S.tape); renderEditor(); };
     $('#edSize').onchange = e => { changeSize(d, e.target.value); renderEditor(); };
     $('#edFlag').onchange = e => { d.cable_flag = e.target.checked ? '1' : '0'; renderEditor(); };
+    if ($('#edContrast')) $('#edContrast').onchange = e => { d.image_contrast = e.target.checked ? '1' : '0'; renderEditor(); };
+    if ($('#edContrastOn')) $('#edContrastOn').onclick = () => { d.image_contrast = '1'; renderEditor(); };
     // A diameter the server refuses shows why, one being typed waits
     if ($('#edCable')) $('#edCable').addEventListener('input', e => {
         if (e.target.validity.badInput) return;

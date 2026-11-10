@@ -78,7 +78,8 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     # and the text size as it shows them
     file = fill_first_line_fields(file["text"], file)
     file.update({'image_fit': '1' if _whole_or(file.get('image_fit'), 1) > 0 else '0',
-                 'image_crop': '1' if _whole_or(file.get('image_crop'), 0) > 0 else '0', 'text_fit': _text_fit(file)})
+                 'image_crop': '1' if _whole_or(file.get('image_crop'), 0) > 0 else '0',
+                 'image_contrast': '1' if _whole_or(file.get('image_contrast'), 0) > 0 else '0', 'text_fit': _text_fit(file)})
     assert loaded == file
 
     # Delete the file
