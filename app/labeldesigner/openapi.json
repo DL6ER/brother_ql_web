@@ -109,6 +109,13 @@
                   "type": "integer"
                 }
               },
+              "X-Image-Faint": {
+                "description": "`1` when the image of a label on a tape of the VC-500W is light all over, like a drawing in light washes, and would print better with `image_contrast`. Not set with `image_contrast` on.",
+                "schema": {
+                  "type": "string",
+                  "enum": ["1"]
+                }
+              },
               "X-Label-Orientation": {
                 "description": "`auto` when the orientation was chosen to show an image largest, which `image_fit` does for an image without text on a die-cut label. `orientation` has no effect then.",
                 "schema": {
@@ -1804,6 +1811,15 @@
             "default": 0,
             "description": "Crop the image to its content."
           },
+          "image_contrast": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "1 prints the image with stronger contrast and colors on the tapes of the VC-500W, for drawings in light washes, which print faint otherwise. White and black stay. Photos look better without it. Other tapes ignore it. The preview shows it."
+          },
           "image_scaling_factor": {
             "type": "number",
             "default": 100,
@@ -2116,6 +2132,14 @@
               0,
               1
             ]
+          },
+          "image_contrast": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "description": "Stronger contrast for the images on the tapes of the VC-500W, see the label field of the same name."
           },
           "printer": {
             "type": "string",

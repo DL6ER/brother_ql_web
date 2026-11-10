@@ -34,7 +34,8 @@ from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
-    pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
+    pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError,
+    looks_faint, stronger_contrast
 )
 
 # The label size of a request or a saved label that names none, the same for
@@ -689,7 +690,7 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
-    for key, default in (('image_fit', 1), ('image_crop', 0)):
+    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0)):
         try:
             data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
         except (TypeError, ValueError):
@@ -1072,6 +1073,10 @@ def preview_from_image():
     # The label designer offers to choose pages of a PDF with several
     if page_count:
         response.headers.set('X-PDF-Pages', str(page_count))
+    # It suggests stronger contrast for a light image on the tapes of the VC-500W
+    if (images[0] is not None and _palette(values.get('label_size', DEFAULT_LABEL_SIZE)) == 'color'
+            and not _image_contrast(values) and looks_faint(images[0])):
+        response.headers.set('X-Image-Faint', '1')
     return response
 
 
@@ -1278,6 +1283,12 @@ def _image_mode(d: dict) -> str:
     """Images stay in color on the tapes of the VC-500W."""
     mode = check_image_mode(d.get('image_mode'))
     return 'colored' if _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color' else mode
+
+
+def _image_contrast(d: dict) -> bool:
+    """Whether the image gets stronger contrast, only on the tapes of the
+    VC-500W, where light drawings print faint."""
+    return _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color' and _whole_or(d.get('image_contrast'), 0) != 0
 
 
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
@@ -1554,6 +1565,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     it was read with the label."""
     image_mode = _image_mode(d)
     bw_threshold = int(d.get('image_bw_threshold', 70))
+    contrast = _image_contrast(d)
     # PDFs are rendered at the resolution the label is printed with
     dpi = label_dpi(d.get('label_size', DEFAULT_LABEL_SIZE), _whole_or(d.get('high_res'), 0) != 0)
     pdf_pages = str(d.get('pdf_pages') or '')
@@ -1577,7 +1589,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
         images, page_count = [], None
         for i, upload in enumerate(uploads):
             opened, count = open_images(upload, upload.filename, dpi, pdf_pages, first_only, copies)
-            images += [_convert_image(image, image_mode, bw_threshold) for image in opened]
+            images += [_convert_image(image, image_mode, bw_threshold, contrast) for image in opened]
             if i == 0:
                 page_count = count
         return images, page_count
@@ -1592,7 +1604,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
             if image_bytes is not None or os.path.exists(image_path):
                 with (io.BytesIO(image_bytes) if image_bytes is not None else open(image_path, 'rb')) as fh:
                     images, page_count = open_images(fh, image_path, dpi, pdf_pages, first_only, copies)
-                    return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
+                    return [_convert_image(image, image_mode, bw_threshold, contrast) for image in images], page_count
         except PageSelectionError:
             raise
         except Exception:
@@ -1643,13 +1655,13 @@ def _get_label_dimensions(label_size: str, high_res: bool = False):
     return dimensions
 
 
-def _convert_image(img: Image.Image, image_mode: str, bw_threshold: int = 70) -> Image.Image:
+def _convert_image(img: Image.Image, image_mode: str, bw_threshold: int = 70, contrast: bool = False) -> Image.Image:
     if image_mode == 'grayscale':
         return convert_image_to_grayscale(img)
     elif image_mode == 'red_and_black':
         return convert_image_to_red_and_black(img)
     elif image_mode == 'colored':
-        return img
+        return stronger_contrast(img) if contrast else img
     else:
         return convert_image_to_bw(img, bw_threshold)
 
@@ -1720,6 +1732,7 @@ def webhook_print():
         - bw_threshold: black/white threshold 0-255 (default: from config)
         - high_res: 0 or 1 for 600 DPI (default: 0)
         - fast_printing: 0 or 1, 1 prints faster and a little less sharp (default: 0)
+        - image_contrast: 0 or 1, 1 prints the images with stronger contrast on the tapes of the VC-500W (default: 0)
         - printer: printer device specifier (default: from config)
         - model: printer model (default: from config)
 
@@ -1764,6 +1777,7 @@ def webhook_print():
         bw_threshold = int(_param('bw_threshold', current_app.config['IMAGE_DEFAULT_BW_THRESHOLD']))
         high_res = _whole_or(_requested('high_res'), 0) != 0
         fast = _whole_or(_requested('fast_printing'), 0) != 0
+        contrast = _image_contrast({'label_size': label_size, 'image_contrast': _requested('image_contrast')})
         device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size
@@ -1819,7 +1833,7 @@ def webhook_print():
         # Convert and scale right away, so only label sized images are kept.
         # Images on die-cut labels are turned like with auto-fit in the label
         # designer.
-        img = _convert_image(img, image_mode, bw_threshold)
+        img = _convert_image(img, image_mode, bw_threshold, contrast)
         image_width, image_height, image_orientation = width, height, label_orientation
         if label_type == LabelType.DIE_CUT_LABEL:
             image_width, image_height, image_orientation = _fitting_orientation(img, width, height, label_orientation)
