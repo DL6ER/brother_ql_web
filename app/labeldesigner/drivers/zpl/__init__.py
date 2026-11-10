@@ -86,8 +86,8 @@ class Zpl(Driver):
         return f'The {shown(model)} printer cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
 
     def capabilities(self, model):
-        # The labels are torn off, their top leaves it first
-        return dict(super().capabilities(model), qualities=['quality'], cutter=False, leaves_turned=True)
+        # The labels are torn off, their bottom leaves it first
+        return dict(super().capabilities(model), qualities=['quality'], cutter=False)
 
     def status(self, device, model, unconfirmed=False):
         # Not asked: only a printer on USB that is not there is told
