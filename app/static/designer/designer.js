@@ -1925,6 +1925,13 @@ async function showDetail(item) {
     };
 }
 
+// The content of a code, which may have several lines, e.g. a vCard: they
+// are not wrapped, the field grows with them. The line break after the tag
+// keeps one the code starts with.
+const codeRows = text => Math.min(8, Math.max(1, String(text).split('\n').length));
+const codeField = (id, code, attrs) =>
+    `<textarea class="field code" id="${id}" rows="${codeRows(toDisplay(code))}" wrap="off" spellcheck="false"${attrs}>\n${esc(toDisplay(code))}</textarea>`;
+
 // Labels with blanks get a field per blank. Labels without get a field
 // per line, which changes the line itself.
 function renderFields(box, item, work, refresh, onEnter) {
@@ -1935,7 +1942,7 @@ function renderFields(box, item, work, refresh, onEnter) {
     } else {
         html = work.design.text.map((l, i) => `<div><label class="label-s" for="ln${i}">Line ${i + 1}</label><input class="field" id="ln${i}" data-line="${i}" value="${esc(toDisplay(l.text))}"></div>`).join('');
         if (['qrcode_text', 'qrcode', 'image_qrcode_text'].includes(work.design.print_type)) {
-            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"${work.design.print_type !== 'qrcode' ? ' placeholder="Empty: the text of the label"' : ''}></div>`;
+            html += `<div><label class="label-s" for="lnCode">Code content</label>${codeField('lnCode', work.design.code_text, work.design.print_type !== 'qrcode' ? ' placeholder="Empty: the text of the label"' : '')}</div>`;
         }
         if (!work.design.text.length && work.design.print_type === 'image') html += '<p class="muted small">An image label without text. Change the design to replace the image.</p>';
     }
@@ -1946,7 +1953,11 @@ function renderFields(box, item, work, refresh, onEnter) {
         l.text = fromDisplay(inp.value, l.text, inp.selectionStart);
         refresh();
     }));
-    if ($('#lnCode', box)) $('#lnCode', box).addEventListener('input', e => { work.design.code_text = fromDisplay(e.target.value, work.design.code_text, e.target.selectionStart); refresh(); });
+    if ($('#lnCode', box)) {
+        $('#lnCode', box).addEventListener('input', e => { e.target.rows = codeRows(e.target.value); work.design.code_text = fromDisplay(e.target.value, work.design.code_text, e.target.selectionStart); refresh(); });
+        // Enter starts a new line of the code
+        $('#lnCode', box).addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onEnter(); } });
+    }
     $$('[data-stepf]', box).forEach(b => b.onclick = () => {
         const inp = $('#' + b.dataset.for, box);
         inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + +b.dataset.stepf);
@@ -2194,7 +2205,7 @@ function renderEditor() {
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
-                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="Link or text, empty for the text of the label" aria-label="Content of the code">
+                <div class="block-b">${codeField('edCode', d.code_text, ' placeholder="Link or text, empty for the text of the label" aria-label="Content of the code"')}
                 ${lay === 'imagecode' ? '<span class="muted small">Fitted to the label when the image is, see Size under Image.</span>'
                     : `<div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>`}
                 ${((qr, fixed) => `<div class="pair">
@@ -2697,7 +2708,7 @@ function bindEditor() {
         if (!d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
     });
-    if ($('#edCode')) $('#edCode').oninput = e => { d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
+    if ($('#edCode')) $('#edCode').oninput = e => { e.target.rows = codeRows(e.target.value); d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
     if ($('#edBarcode')) $('#edBarcode').onchange = e => {
         d.barcode_type = e.target.value;
         // A QR code has the size of a dot instead of a scale

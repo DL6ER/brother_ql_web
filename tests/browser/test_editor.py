@@ -577,11 +577,43 @@ def test_a_saved_code_alone_is_edited_as_a_code_with_its_text_left_empty(designe
     try:
         designer.reload()
         wait_for_preview(designer)
-        edit_saved_label(designer, 'Contact')
+        designer.click('[data-tab="wizard"]')
+        designer.click('.lib-nav [data-cat="saved"]')
+        designer.click('#libGrid .thumb:has(.t:text-is("Contact"))')
+        wait_for_preview(designer, '#libStage')
+        assert designer.input_value('#lnCode') == 'BEGIN:VCARD\nEND:VCARD'
+        designer.click('#libEdit')
+        designer.wait_for_selector('#edStage')
+        wait_for_preview(designer)
         assert 'on' in designer.get_attribute('[data-lay="codetext"]', 'class')
         assert designer.evaluate('() => [S.edit.design.code_text, S.edit.design.text.map(l => [l.text, l.font])]') == ['BEGIN:VCARD\nEND:VCARD', [['', 'DejaVu Sans,Bold']]]
+        # Changed, the code keeps its lines
+        assert designer.input_value('#edCode') == 'BEGIN:VCARD\nEND:VCARD'
+        designer.focus('#edCode')
+        designer.keyboard.press('Control+Home')
+        designer.keyboard.press('End')
+        designer.keyboard.type('\nFN:Jane Doe')
+        wait_for_preview(designer)
+        assert designer.evaluate('() => S.edit.design.code_text') == 'BEGIN:VCARD\nFN:Jane Doe\nEND:VCARD'
     finally:
         os.remove(path)
+
+
+def test_a_code_of_several_lines(designer):
+    # E.g. a vCard: Enter starts a new line, the field grows with them
+    designer.click('[data-lay="codetext"]')
+    designer.fill('#edCode', 'BEGIN:VCARD\nFN:Jane Doe')
+    designer.focus('#edCode')
+    designer.keyboard.press('Control+End')
+    designer.keyboard.press('Enter')
+    designer.keyboard.type('END:VCARD')
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.code_text') == 'BEGIN:VCARD\nFN:Jane Doe\nEND:VCARD'
+    assert designer.get_attribute('#edCode', 'rows') == '3'
+    # Drawn anew, also with a line break first
+    designer.evaluate("() => { S.edit.design.code_text = '\\nBEGIN:VCARD\\nEND:VCARD'; renderEditor(); }")
+    assert designer.input_value('#edCode') == '\nBEGIN:VCARD\nEND:VCARD'
+    assert designer.get_attribute('#edCode', 'rows') == '3'
 
 
 def test_distance_between_code_and_text(designer):
