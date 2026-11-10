@@ -176,3 +176,23 @@ def test_copies_of_several_files_as_sets_or_grouped(designer):
     designer.wait_for_selector('#edFileStep', state='hidden')
     wait_for_preview(designer)
     assert designer.evaluate(letters) == 'AAA'
+
+
+def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[{'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))}])
+    designer.wait_for_selector('#edPages:enabled')
+    designer.fill('#edPages', '1-3')
+    wait_for_preview(designer)
+    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    # Its pages print like files, the first on the right
+    assert designer.evaluate(letters) == 'CBA'
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="0"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'BAA'
+    # Copies of one page stay all A
+    designer.fill('#edPages', '2')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'AAA'

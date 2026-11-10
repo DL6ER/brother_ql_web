@@ -109,6 +109,12 @@
                   "type": "integer"
                 }
               },
+              "X-PDF-Selected-Pages": {
+                "description": "Number of the pages of an uploaded PDF `pdf_pages` selects, each printed as a label of its own.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
               "X-Image-Faint": {
                 "description": "`1` when the image of a label on a tape of the VC-500W is light all over, like a drawing in light washes, and would print better with `image_contrast`. Not set with `image_contrast` on.",
                 "schema": {

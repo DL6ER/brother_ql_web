@@ -961,6 +961,9 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         check_cut(printer.cut, printer.model)
         high_res = _whole(_option('high_res', data, 0)) != 0
         fast = _whole(_option('fast_printing', data, 0)) != 0
+        # Saved with the label, the request overrides it
+        collate = _requested('collate')
+        collate = _whole_or(collate if collate is not None else data.get('collate'), 1) != 0
         # The label and its image have to be generated with the resolution
         # it is printed with
         data['high_res'] = high_res
@@ -972,8 +975,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     try:
         # Of a PDF each selected page is a label of its own
         images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
-        collate = _requested('collate')
-        labels = _copies(images, print_count, _whole_or(collate if collate is not None else data.get('collate'), 1) != 0)
+        labels = _copies(images, print_count, collate)
         _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
@@ -1085,6 +1087,8 @@ def preview_from_image():
     # The label designer offers to choose pages of a PDF with several
     if page_count:
         response.headers.set('X-PDF-Pages', str(page_count))
+        # and shows how the selected ones print
+        response.headers.set('X-PDF-Selected-Pages', str(len(selected_pdf_pages(str(values.get('pdf_pages') or ''), page_count))))
     # It suggests stronger contrast for a light image on the tapes of the VC-500W
     if (images[0] is not None and _palette(values.get('label_size', DEFAULT_LABEL_SIZE)) == 'color'
             and not _image_contrast(values) and looks_faint(images[0])):
@@ -1164,6 +1168,7 @@ def print_label():
         check_cut(printer.cut, printer.model)
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
+        collate = _whole_or(request.values.get('collate'), 1) != 0
     except HTTPException:
         raise
     except Exception as e:
@@ -1179,7 +1184,7 @@ def print_label():
         # Decode the image once, all labels of the job share it. Of a PDF
         # each selected page is a label of its own.
         images, _ = load_label_images(values, files, copies=print_count)
-        labels = _copies(images, print_count, _whole_or(values.get('collate'), 1) != 0)
+        labels = _copies(images, print_count, collate)
         _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:

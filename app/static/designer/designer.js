@@ -624,7 +624,8 @@ function preview(design, values, stale, first = false) {
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
-            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1'
+            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1',
+            pages: +(r.headers.get('X-PDF-Selected-Pages') || 1)
         };
     }, stale, first);
     previewCache.set(key, p);
@@ -1397,7 +1398,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
-        cuts: `${cutStrip(cutNow, caps, Math.max(1, labelFiles(design).length))}<span>${esc(cutShort(cutNow, caps))}</span>`,
+        // The selected pages of a PDF print like files
+        cuts: `${cutStrip(cutNow, caps, Math.max(1, labelFiles(design).length) - 1 + (p.pages || 1))}<span>${esc(cutShort(cutNow, caps))}</span>`,
     };
     if ('zoom' in el.dataset && !el._watched) { el._watched = true; stageSizes.observe(el); }
     placeOnStage(el, true);
