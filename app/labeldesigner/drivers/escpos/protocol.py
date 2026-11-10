@@ -50,7 +50,7 @@ def errors(offline: int, paper: int) -> list[str]:
     if offline & 0x20 or paper & 0x60:
         found.append('The printer has no paper')
     if offline & 0x40:
-        found.append('The printer reports an error, e.g. of its cutter')
+        found.append('The printer reports an error, remove paper stuck at its cutter or switch it off and on')
     return found
 
 

@@ -438,6 +438,18 @@ def test_receipt_shows_the_blank_paper_before_it(designer):
     shown = int(designer.text_content('#edStage .dim-y').split()[0])
     img = designer.evaluate("() => document.querySelector('#edStage .paper img').naturalHeight")
     assert shown == round(img / 203 * 25.4) + 12
+    # Also at the right end of a label that leaves sideways, which leaves first
+    designer.evaluate("""() => openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { orientation: 'rotated', text: [L('Receipt', 40)] }) })""")
+    wait_for_preview(designer)
+    assert 'side' in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .paper img + .lead').count() == 1
+    shown = int(designer.text_content('#edStage .dim-x').split()[0])
+    img = designer.evaluate("() => document.querySelector('#edStage .paper img').naturalWidth")
+    assert shown == round(img / 203 * 25.4) + 12
+    # Drawn 12 mm long, at the scale of the label
+    drawn = designer.evaluate("""() => { const r = s => document.querySelector('#edStage .paper ' + s).getBoundingClientRect().width;
+        return r('.lead') / r('img') * document.querySelector('#edStage .paper img').naturalWidth; }""")
+    assert abs(drawn - 12 / 25.4 * 203) < 3
 
 
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):

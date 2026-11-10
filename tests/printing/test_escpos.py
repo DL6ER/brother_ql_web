@@ -89,6 +89,7 @@ def test_status_bytes():
     assert protocol.errors(QUIET | 0x04, QUIET | 0x60) == ['The cover of the printer is open', 'The printer has no paper']
     # Paper near its end still prints
     assert protocol.errors(QUIET, QUIET | 0x0c) == []
+    assert protocol.errors(QUIET | 0x40, QUIET) == ['The printer reports an error, remove paper stuck at its cutter or switch it off and on']
 
 
 def test_rows_are_packed_black_printed():

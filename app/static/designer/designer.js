@@ -1331,7 +1331,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // Kept to fit the label again when the stage changes its size
     el._view = {
         url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
-        lead, leadDots: !side && lead ? lead / 25.4 * dpi : 0,
+        lead, leadDots: lead / 25.4 * dpi,
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
@@ -1370,16 +1370,16 @@ function placeOnStage(el, redraw = false) {
     const box = el.getBoundingClientRect();
     // The printer takes room on top, or on the left for labels that leave it sideways
     const maxW = Math.max(140, box.width - 110 - (side ? 70 : 0)), maxH = Math.max(110, Math.min(440, window.innerHeight * .5) - (side ? 0 : 60));
-    // With the blank paper before it
-    const tall = h + v.leadDots;
-    let k = Math.min(0.85, maxW / w, maxH / tall);
+    // With the blank paper before it, at the end that leaves first
+    const wide = w + (side ? v.leadDots : 0), tall = h + (side ? 0 : v.leadDots);
+    let k = Math.min(0.85, maxW / wide, maxH / tall);
     if (large) {
         // The label fills the stage, next to the printer and with how copies
         // are cut below it, and is never smaller than otherwise
         const cs = getComputedStyle(el);
         const roomW = box.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (side ? 50 : 72);
         const roomH = box.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - (side ? 64 : 86);
-        k = Math.max(k, Math.min(LARGE_PX_PER_MM * 25.4 / v.dpi, roomW / w, roomH / tall));
+        k = Math.max(k, Math.min(LARGE_PX_PER_MM * 25.4 / v.dpi, roomW / wide, roomH / tall));
     }
     const dw = Math.round(w * k), dh = Math.round(h * k);
     // Dots of black and red labels stay sharp where they are shown large
@@ -1401,13 +1401,14 @@ function placeOnStage(el, redraw = false) {
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
     const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
     const leadPx = Math.round(v.leadDots * k);
-    const paper = (leadPx ? `<div class="lead" style="height:${leadPx}px" title="Blank paper, ${v.lead} mm"></div>` : '')
-        + (v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`);
+    const lead = leadPx ? `<div class="lead" style="${side ? 'width' : 'height'}:${leadPx}px" title="Blank paper, ${v.lead} mm"></div>` : '';
+    const label = v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`;
+    const paper = side ? label + lead : lead + label;
     // How copies are cut: in the corner, or below the large label
     const cuts = `<div class="cuts">${v.cuts}</div>`;
     const zoom = 'zoom' in el.dataset ? `<button class="btn quiet icon zoom" type="button" aria-pressed="${large}" title="${large ? 'Smaller preview' : 'Larger preview'}">
         <i class="fa-solid fa-${large ? 'compress' : 'expand'}"></i><span class="sr-only">Large preview</span></button>` : '';
-    el.innerHTML = `${SPIN}${zoom}${printer}<div class="feed" style="width:${dw}px"><div class="paper">${paper}</div>${flow}
+    el.innerHTML = `${SPIN}${zoom}${printer}<div class="feed" style="width:${dw + (side ? leadPx : 0)}px"><div class="paper">${paper}</div>${flow}
         <div class="cut"${v.cutEnd === 'full' ? '' : ' hidden'}><i class="fa-solid fa-scissors"></i></div>
         <div class="dim-x">${v.dims[0]} mm</div><div class="dim-y">${v.dims[1]} mm</div>${large ? cuts : ''}</div>
         ${large ? '' : cuts}`;

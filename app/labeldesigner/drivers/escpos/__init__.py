@@ -73,7 +73,7 @@ class Escpos(Driver):
 
     def capabilities(self, model):
         return dict(super().capabilities(model), qualities=['quality'], never_cut=NEVER_WHY,
-                    # The bottom of the label leaves it first
+                    # The top of the label leaves it first
                     leaves_turned=True, lead_mm=LEAD_MM)
 
     def status(self, device, model, unconfirmed=False):
