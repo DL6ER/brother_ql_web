@@ -119,3 +119,6 @@ venv.bak/
 
 # Simulated label output
 simulated_labels/
+
+# The project website, built by website/build.py
+_site/
