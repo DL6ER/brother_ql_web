@@ -359,7 +359,7 @@
         "operationId": "barcodes",
         "responses": {
           "200": {
-            "description": "The code types for `barcode_type`.",
+            "description": "The code types for `barcode_type`: the 2D codes first (QR, DATAMATRIX, MICROQR, RMQR, AZTEC, PDF417), then the barcodes.",
             "content": {
               "application/json": {
                 "schema": {
@@ -373,8 +373,71 @@
                       "examples": [
                         [
                           "QR",
+                          "DATAMATRIX",
+                          "MICROQR",
+                          "RMQR",
+                          "AZTEC",
+                          "PDF417",
                           "CODE128",
                           "EAN13"
+                        ]
+                      ]
+                    },
+                    "codes": {
+                      "type": "array",
+                      "description": "The same code types with their names, whether they are 2D codes and the levels of error correction (`qrcode_correction`) they can have. Codes without levels choose it themselves or have none.",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "description": "The value for `barcode_type`."
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "two_d": {
+                            "type": "boolean"
+                          },
+                          "corrections": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "L",
+                                "M",
+                                "Q",
+                                "H"
+                              ]
+                            }
+                          }
+                        }
+                      },
+                      "examples": [
+                        [
+                          {
+                            "type": "QR",
+                            "name": "QR",
+                            "two_d": true,
+                            "corrections": [
+                              "L",
+                              "M",
+                              "Q",
+                              "H"
+                            ]
+                          },
+                          {
+                            "type": "DATAMATRIX",
+                            "name": "DataMatrix",
+                            "two_d": true,
+                            "corrections": []
+                          },
+                          {
+                            "type": "EAN13",
+                            "name": "EAN13",
+                            "two_d": false,
+                            "corrections": []
+                          }
                         ]
                       ]
                     }
@@ -1719,7 +1782,7 @@
           "image_text_gap": {
             "type": "integer",
             "minimum": 0,
-            "description": "Distance between the image or code and the text in dots, for labels with both, with `image_qrcode_text` on both sides of the text (between image and code without text). Empty or left out chooses two fifths of the largest text size, for a QR code at least two of its modules."
+            "description": "Distance between the image or code and the text in dots, for labels with both, with `image_qrcode_text` on both sides of the text (between image and code without text). Empty or left out chooses two fifths of the largest text size, for a 2D code at least two of its modules."
           },
           "image_position": {
             "type": "string",
@@ -1769,12 +1832,12 @@
           "barcode_type": {
             "type": "string",
             "default": "QR",
-            "description": "One of `/labeldesigner/api/barcodes`. Of a code with a check digit, e.g. EAN13, ISBN10 or UPCA, give the digits without it, which calculates it, or with the right one. A wrong one is refused."
+            "description": "One of `/labeldesigner/api/barcodes`. The 2D codes DATAMATRIX, MICROQR, RMQR, AZTEC and PDF417 are made like QR codes: of dots of the size `qrcode_size`, of the text of all lines where `code_text` is left out. DataMatrix codes hold ASCII characters only. Of a code with a check digit, e.g., EAN13, ISBN10 or UPCA, give the digits without it, which calculates it, or with the right one. A wrong one is refused."
           },
           "qrcode_size": {
             "type": "integer",
             "default": 10,
-            "description": "Size of a QR code module in dots."
+            "description": "Size of a dot of a 2D code in dots of the label. The rows of a PDF417 code are three times as high."
           },
           "qrcode_correction": {
             "type": "string",
@@ -1784,7 +1847,7 @@
               "Q",
               "H"
             ],
-            "default": "L"
+            "description": "Error correction of QR (L, M, Q or H), Micro QR (L, M or Q) and rMQR codes (M or H). Left out or empty: the lowest the code has. Another level is refused, other codes ignore it."
           },
           "image": {
             "type": "string",
