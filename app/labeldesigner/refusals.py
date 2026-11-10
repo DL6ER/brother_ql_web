@@ -46,6 +46,7 @@ MESSAGES = (
     BLANKS_MESSAGE,
     FIELDS_MESSAGE,
     'image_position must be above, below, left or right',
+    'vertical_align must be top, center or bottom',
     'Width and height must be non-negative.',
     'Border thickness must be non-negative.',
     'QR size must be positive.',

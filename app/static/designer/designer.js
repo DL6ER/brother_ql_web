@@ -142,7 +142,9 @@ function baseDesign(size) {
         // Empty: cut as set for the printer, else as saved with the label
         cut: '', half_cut: '', chain: '',
         // Empty: a Cat.7 cable
-        cable_flag: '0', cable_diameter: ''
+        cable_flag: '0', cable_diameter: '',
+        // Where the content is on a label with room to spare
+        vertical_align: 'center'
     };
 }
 
@@ -161,6 +163,13 @@ function setTextFit(d, fit) {
     d.text_fit = fit;
     delete d.shrink_text;
 }
+
+// Where the content is between the top and bottom margins, as the text
+// reads. An endless label across the tape is as long as its content.
+const VERTICAL_ALIGNS = [['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']];
+const verticalAlign = d => d.vertical_align || 'center';
+const NO_ROOM = 'Endless labels end where the content ends, there is no room to place it in';
+const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d));
 
 // Labels as the API stores them (text as JSON, booleans as true/false)
 function normalize(raw) {
@@ -2244,6 +2253,7 @@ function renderEditor() {
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
+                    ${(room => `<div title="${room ? 'Where the content is on the label, as the text reads' : NO_ROOM}"><span class="label-s${room ? '' : ' off'}">Vertical position</span><div class="seg">${VERTICAL_ALIGNS.map(([v, n]) => `<button type="button" data-valign="${v}" class="${verticalAlign(d) === v ? 'on' : ''}"${room ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`)(hasRoom(d))}
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -2798,6 +2808,7 @@ function bindEditor() {
         renderEditor();
     };
     $$('[data-lcut]').forEach(b => b.onclick = () => { d[b.dataset.lcut] = b.dataset.v; renderEditor(); });
+    $$('[data-valign]').forEach(b => b.onclick = () => { d.vertical_align = b.dataset.valign; renderEditor(); });
     // Code
     if ($('#edQrSize')) $('#edQrSize').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.qrcode_size = String(v); redrawEditor(); } });
     if ($('#edQrCorr')) $('#edQrCorr').onchange = e => { d.qrcode_correction = e.target.value; redrawEditor(); };
