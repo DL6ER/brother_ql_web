@@ -422,8 +422,8 @@ def test_labels_of_a_q00_leave_it_turned(designer):
     wait_for_preview(designer)
     classes = designer.get_attribute('#edStage', 'class').split()
     assert 'side' in classes and 'turned' not in classes
-    # As those of a QL or P-touch printer, their top first
-    for model, tape, turned in (('QL-700', '62', True), ('PT-P700', 'pt12', True)):
+    # As those of a QL or P-touch printer, their top first, unlike the VC-500W
+    for model, tape, turned in (('QL-700', '62', True), ('PT-P700', 'pt12', True), ('VC-500W', 'vc25', False)):
         designer.evaluate(f"() => {{ S.printer = Object.assign({{}}, S.printer, {{ model: '{model}' }}); S.tape = '{tape}'; openEditor({{ title: 'Q', design: Object.assign(baseDesign('{tape}'), {{ text: [L('Q', 40)] }}) }}); }}")
         wait_for_preview(designer)
         assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
