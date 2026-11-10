@@ -1,10 +1,11 @@
 {
     "name": "Python 3 Alpine DevContainer",
     "build": {
-        "dockerfile": "../Dockerfile"
+        "dockerfile": "../Dockerfile",
+        "target": "dev"
     },
     "forwardPorts": [8013],
-    "postCreateCommand": "python3 -m ensurepip --default-pip && pip install -r requirements-dev.txt",
+    "postCreateCommand": "pip install -r requirements-dev.txt",
     //"remoteUser": "vscode",
     "customizations": {
         "vscode": {

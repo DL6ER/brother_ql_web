@@ -13,7 +13,6 @@ jobs:
         uses: devcontainers/ci@v0.3
         with:
           runCmd: |
-            python3 -m ensurepip --default-pip
             pip install -r requirements-dev.txt
             pytest
 
