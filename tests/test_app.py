@@ -266,3 +266,11 @@ def test_request_names_a_model_with_its_maker(tmp_path):
         'image': (image, 'long.png')}, content_type='multipart/form-data')
     # Taken for the QL-800, which refuses labels that long
     assert response.get_json()['message'] == 'Labels on the QL-800 can be at most 1000 mm long'
+
+
+@pytest.mark.parametrize('model', ['TM-T20II', 'Epson TM-T20II'])
+def test_unknown_printer_model_is_refused_at_the_start(monkeypatch, model):
+    # The status poll took it for a Brother printer and sent an Epson ESC i, a cut
+    monkeypatch.setenv('PRINTER_MODEL', model)
+    with pytest.raises(ValueError, match='PRINTER_MODEL'):
+        create_app()

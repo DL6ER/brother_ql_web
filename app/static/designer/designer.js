@@ -922,7 +922,7 @@ function announce(entry) {
     if (entry.state === 'printed') {
         if (window.matchMedia('(max-width: 760px)').matches) {
             sheet(`<div class="okc"><i class="fa-solid fa-check"></i></div><h2>${what} printed</h2>
-                <p>${esc(entryName(entry))} on ${esc(entry.printerName || 'the ' + (entry.printer || 'printer'))}</p>
+                <p>${esc(entryName(entry))} on ${esc(entry.printerName || thePrinter({ model: entry.printer }))}</p>
                 <button class="btn-print" data-close><i class="fa-solid fa-check"></i>Done</button>`);
         } else {
             toast(`Printed ${what}: ${entryName(entry)}`, { label: 'Print again', run: () => again(entry) });

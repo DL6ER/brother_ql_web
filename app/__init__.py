@@ -82,6 +82,14 @@ def _canonical(model: str) -> str:
     return canonical(model)
 
 
+def _model(value: str) -> str:
+    from .labeldesigner.drivers import MODELS
+    model = _canonical(value)
+    if model not in MODELS:
+        raise ValueError(value)
+    return model
+
+
 def _bool(value: str) -> bool:
     word = value.strip().lower()
     if word in ('1', 'true', 'yes', 'on'):
@@ -104,7 +112,7 @@ def _log_level(value: str) -> str:
 # them.
 ENV_OVERRIDES = {
     'SERVER_PORT': _port,
-    'PRINTER_MODEL': _canonical,
+    'PRINTER_MODEL': _model,
     'PRINTER_PRINTER': str,
     'PRINTERS': _printer_list,
     'LABEL_DEFAULT_SIZE': str,

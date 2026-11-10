@@ -186,3 +186,9 @@ def test_sticker_of_this_project(client, label_id, tagline):
     # The address in red, the tagline in gray
     colors = {color for _, color in preview.getcolors(1 << 20)}
     assert {(0xc8, 0x10, 0x2e), (0x3d, 0x44, 0x4b)} <= colors
+
+
+def test_a_model_that_is_no_text_is_refused(client):
+    # It ended in a TypeError and "The label could not be printed"
+    response = client.post('/labeldesigner/api/demos/print', json={'id': DEMO_IDS[0], 'model': ['QL-800']})
+    assert response.status_code == 400 and response.get_json()['message'].startswith('Unknown printer model')

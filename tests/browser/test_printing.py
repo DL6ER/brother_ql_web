@@ -594,3 +594,10 @@ def test_cutting_does_not_render_the_preview_again(designer):
     designer.select_option('#edCut', 'none')
     wait_for_preview(designer)
     assert asked == []
+
+
+def test_sheet_after_printing_on_a_phone_names_the_printer_with_its_maker(designer):
+    # It showed "on the PUQU/Q00"
+    designer.set_viewport_size({'width': 700, 'height': 900})
+    designer.evaluate("() => announce({ state: 'printed', copies: 1, title: 'Q', values: {}, design: baseDesign('puqu50x30'), printer: 'PUQU/Q00' })")
+    assert 'Q on the PUQU Q00' in designer.inner_text('body')
