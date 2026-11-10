@@ -11,6 +11,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Vendor | Printers | Labels |
 |---|---|---|
 | Brother | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
+| Brother | PT-P900W, PT-P950NW | TZe tapes 18 and 36 mm wide |
 | Brother | QL-500, QL-550, QL-560, QL-570, QL-580N, QL-600, QL-650TD, QL-700, QL-710W, QL-720NW | up to 62 mm wide |
 | Brother | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
 | Brother | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
@@ -27,9 +28,9 @@ USB printers are detected automatically, also one on another computer through [U
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 500 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges and price tags
-- **Printers:** several printers at once, and a simulator to try everything without a printer
+- **Printers:** several printers at once, each with a name if you like, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label, only after the last one or none, on P-touch printers half cuts and chain printing, set for each printer or saved with a label, borders, round labels, cable flags that fold around a cable, 600 dpi printing, fast printing (a little less sharp)
-- **Interface:** an editor with the preview of the label leaving the printer, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
+- **Interface:** an editor with the preview of the label leaving the printer, also shown large, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
 ## Screenshots
