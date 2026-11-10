@@ -78,7 +78,8 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     # and the text size as it shows them
     file = fill_first_line_fields(file["text"], file)
     file.update({'image_fit': '1' if _whole_or(file.get('image_fit'), 1) > 0 else '0',
-                 'image_crop': '1' if _whole_or(file.get('image_crop'), 0) > 0 else '0', 'text_fit': _text_fit(file)})
+                 'image_crop': '1' if _whole_or(file.get('image_crop'), 0) > 0 else '0',
+                 'image_contrast': '1' if _whole_or(file.get('image_contrast'), 0) > 0 else '0', 'text_fit': _text_fit(file)})
     assert loaded == file
 
     # Delete the file
@@ -449,3 +450,27 @@ def test_a_label_saved_without_a_size_prints_on_the_size_its_preview_shows(tmp_p
     assert preview.data == on_62.data
     assert client.post('/labeldesigner/api/repository/print', json={'name': 'Shelf.json'}).get_json() == {'success': True}
     assert sizes == ['62']
+
+
+@pytest.mark.parametrize('barcode_type, code_text, lines, code', [
+    ('QR', 'https://example.com/shelf', ['Hidden', 'Not printed'], 'https://example.com/shelf'),
+    ('QR', '', ['BEGIN:VCARD', 'FN:Jane Doe\r\nEND:VCARD'], 'BEGIN:VCARD\nFN:Jane Doe\nEND:VCARD'),
+    ('code128', '', ['4006381333931\nShelf', 'Not printed'], '4006381333931'),
+    ('QR', 'https://example.com/shelf', [], 'https://example.com/shelf'),
+])
+def test_a_code_alone_loads_as_a_code_with_its_text_left_empty(tmp_path, barcode_type, code_text, lines, code):
+    # The label designer has no layout of a code alone. Its lines were not
+    # printed, a code without content of its own took them.
+    client = make_client(tmp_path, empty_repo=True)
+    repo = client.application.config['LABEL_REPOSITORY_DIR']
+    text = [{'font': 'DejaVu Sans,Bold', 'size': '50', 'text': line} for line in lines]
+    with open(os.path.join(repo, 'Shelf.json'), 'w', encoding='utf-8') as f:
+        json.dump({'title': 'Shelf', 'label_size': '62', 'print_type': 'qrcode', 'barcode_type': barcode_type, 'code_text': code_text, 'text': text}, f)
+    loaded = client.get('/labeldesigner/api/repository/load', query_string={'name': 'Shelf.json'}).get_json()
+    assert (loaded['print_type'], loaded['code_text']) == ('qrcode_text', code)
+    assert json.loads(loaded['text']) == ([{'font': 'DejaVu Sans,Bold', 'size': '50', 'text': ''}] if lines else [])
+    # Printed as it was saved
+    stored = client.get('/labeldesigner/api/repository/preview', query_string={'name': 'Shelf.json'})
+    form = {key: loaded[key] for key in ('label_size', 'print_type', 'barcode_type', 'code_text', 'text')}
+    made = client.post('/labeldesigner/api/preview', data=form, content_type='multipart/form-data')
+    assert stored.status_code == made.status_code == 200 and stored.data == made.data

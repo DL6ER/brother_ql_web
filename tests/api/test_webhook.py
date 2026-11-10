@@ -75,7 +75,7 @@ def test_webhook_takes_a_threshold_of_0(tmp_path, monkeypatch):
     from app.labeldesigner import routes
     thresholds = []
     convert = routes._convert_image
-    monkeypatch.setattr(routes, '_convert_image', lambda img, mode, threshold=70: thresholds.append(threshold) or convert(img, mode, threshold))
+    monkeypatch.setattr(routes, '_convert_image', lambda img, mode, threshold=70, contrast=False: thresholds.append(threshold) or convert(img, mode, threshold, contrast))
     monkeypatch.setattr(routes.PrinterQueue, 'add_label_to_queue', lambda self, label, **kwargs: None)
     monkeypatch.setattr(routes.PrinterQueue, 'process_queue', lambda self: '')
     client = make_client(tmp_path)

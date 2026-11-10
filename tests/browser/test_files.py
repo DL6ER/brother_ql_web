@@ -132,8 +132,9 @@ def test_shared_image_becomes_the_label(designer, server):
 
 def test_shared_link_becomes_a_qr_code(designer, server):
     share(designer, server, text='https://example.com/shelf/12')
-    assert 'on' in designer.get_attribute('[data-lay="code"]', 'class')
+    assert 'on' in designer.get_attribute('[data-lay="codetext"]', 'class')
     assert designer.input_value('#edCode') == 'https://example.com/shelf/12'
+    assert designer.evaluate('() => [S.edit.design.print_type, S.edit.design.text.map(l => l.text)]') == ['qrcode_text', ['']]
 
 
 def test_shared_text_becomes_the_label(designer, server):

@@ -57,8 +57,8 @@ def test_every_demo_label_fits(client, label_id):
     assert response.status_code == 200
     assert response.headers.get('X-Label-Warning') is None
     preview = Image.open(io.BytesIO(response.data))
-    # Not empty
-    assert preview.convert('L').getextrema()[0] == 0
+    # Not empty, a color picture need not have pure black
+    assert preview.convert('L').getextrema()[0] < 64
 
 
 @pytest.mark.parametrize('old, new', sorted(demos.REPLACED.items()))
@@ -92,7 +92,25 @@ def test_images_and_their_sources():
     # The icon of this project, under its license
     own = set(re.findall(r'^\| `([^`]+)` \| \[Labelburg\]\(https://github\.com/DL6ER/labelburg\), the icon of this project \| Labelburg \| GPLv3 \|$',
                          sources, re.M))
-    assert own == {'labelburg.png'} and commons | own == files
+    # The pictures for kids, each in color and for black tape
+    made = set(re.findall(r'^\| `([^`]+)` \| Made for this project \| Labelburg \| GPLv3 \|$', sources, re.M))
+    kids = {demos.load(label_id)['image'] for label_id in DEMO_IDS if label_id.startswith('kids/')}
+    assert own == {'labelburg.png'} and made == kids and commons | own | made == files
+    assert {name.removesuffix('-black.jpg') for name in made if name.endswith('-black.jpg')} == \
+        {name.removesuffix('.jpg') for name in made if not name.endswith('-black.jpg')}
+
+
+@pytest.mark.parametrize('label_id', [label_id for label_id in DEMO_IDS if label_id.startswith('kids/')])
+def test_pictures_for_kids(label_id):
+    """In color on the VC-500W, on black tape the gray version, and the
+    name, where there is one, a blank to fill in"""
+    data = demos.load(label_id)
+    color = data['label_size'].startswith('vc')
+    assert (data['image_mode'], data['image'].endswith('-black.jpg')) == (('colored', False) if color else ('grayscale', True))
+    if 'with-name' in label_id:
+        assert [line['text'] for line in data['text']] == ['{{blank:Name}}'] and data['fields'] == {'Name': {'type': 'text', 'default': 'Alex'}}
+    else:
+        assert data['text'] == [] and 'fields' not in data
 
 
 @pytest.mark.parametrize('demo, title', [('office/003-cable-12.json', 'Cable flag'), ('office/003-cable-12-de.json', 'Kabelfahne'),

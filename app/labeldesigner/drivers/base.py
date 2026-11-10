@@ -81,6 +81,12 @@ class Driver:
         600 dpi. The label designer converts millimeters with them."""
         return self.dpi(False), self.dpi(True)
 
+    def length_rules(self, label) -> tuple[float, float, float] | None:
+        """For an endless label of the size of a fixed length, in mm: the
+        paper fed before and after its print, each, and the shortest and the
+        longest print. None where labels are as long as their content."""
+        return None
+
     def capabilities(self, model: str) -> dict:
         """What the label designer offers for the model: the qualities it
         shows (fast, quality, high for 600 dpi), whether the model prints at
@@ -89,11 +95,12 @@ class Driver:
         whether it feeds tape before the first label, reports the stage of a
         job it prints, its colors, why it does not leave labels uncut, if it
         does not, whether labels leave it top first, the label designer then
-        shows the printer below them,
-        and the maker of the model."""
+        shows the printer below them, the blank paper in mm before each label
+        that is cut, which was between printhead and cutter, and the maker of
+        the model."""
         return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
                 'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': self.colors(model),
-                'never_cut': '', 'leaves_turned': False, 'vendor': self.vendor}
+                'never_cut': '', 'leaves_turned': False, 'lead_mm': 0, 'vendor': self.vendor}
 
     def resolution_problem(self, model: str, high_res: bool) -> str:
         """Why the model cannot print at the resolution, or an empty string."""

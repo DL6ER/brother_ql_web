@@ -1,7 +1,8 @@
 {
     "name": "Python 3 Alpine DevContainer",
     "build": {
-        "dockerfile": "../Dockerfile"
+        "dockerfile": "../Dockerfile",
+        "target": "dev"
     },
     "forwardPorts": [8013],
     "postCreateCommand": "pip install -r requirements-dev.txt",

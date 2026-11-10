@@ -4,9 +4,10 @@ from .base import Driver
 from .brother import DRIVER as BROTHER
 from .vc500w import DRIVER as VC500W
 from .puqu import DRIVER as PUQU
+from .escpos import DRIVER as ESCPOS
 
 # In the order the label designer lists their models and label sizes
-DRIVERS: tuple[Driver, ...] = (BROTHER, VC500W, PUQU)
+DRIVERS: tuple[Driver, ...] = (BROTHER, VC500W, PUQU, ESCPOS)
 
 MODELS = tuple(model for driver in DRIVERS for model in driver.models)
 LABELS = tuple(label for driver in DRIVERS for label in driver.labels)
