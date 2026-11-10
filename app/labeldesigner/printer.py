@@ -241,7 +241,8 @@ def get_ptr_status(config: Config):
         'status_type': 'Simulator',
         'tape_color': '',
         'text_color': '',
-        'red_support': _red_support(default_model)
+        'red_support': _red_support(default_model),
+        'red_roll': None,
     }
 
     status = {
@@ -260,7 +261,8 @@ def get_ptr_status(config: Config):
         "status_type": "Unknown",
         "tape_color": "",
         "text_color": "",
-        "red_support": False
+        "red_support": False,
+        "red_roll": None
     }
     try:
         if config.get('PRINTERS'):

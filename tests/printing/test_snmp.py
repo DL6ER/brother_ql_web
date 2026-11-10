@@ -164,6 +164,14 @@ def test_endless_roll(agent):
     assert state['errors'] == []
 
 
+def test_color_of_the_roll(agent):
+    # Recorded with a black roll (byte 25 is 0x01), the QL-800 series sets
+    # bit 7 for a black and red one
+    assert query(agent, READY_29x90)['red_roll'] is False
+    assert query(agent, ENDLESS_62[:25] + b'\x81' + ENDLESS_62[26:])['red_roll'] is True
+    assert query(agent, ENDLESS_62[:25] + b'\x00' + ENDLESS_62[26:])['red_roll'] is None
+
+
 def test_no_roll(agent):
     state = query(agent, NO_ROLL)
     assert state['errors'] == ['There are no labels in the printer'] and state['status_type'] == 'Error occurred'

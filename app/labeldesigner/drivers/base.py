@@ -25,6 +25,7 @@ def network_status(device: str, model: str, red_support: bool = False) -> dict:
         'tape_color': '',
         'text_color': '',
         'red_support': red_support,
+        'red_roll': None,
     }
 
 

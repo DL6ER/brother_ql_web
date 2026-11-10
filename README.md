@@ -19,7 +19,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Epson | TM-T20II (USB, ESC/POS) | 80 and 58 mm receipt paper, cut |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 
-USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
+USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded, on the QL-800 series also whether it is a black and red roll.
 
 ## Features
 

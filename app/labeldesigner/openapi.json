@@ -2074,6 +2074,13 @@
                 "description": "The labels of the job."
               }
             }
+          },
+          "red_roll": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether the loaded roll is a black and red one, as the QL-800 series reports it. `null` where the printer does not tell."
           }
         }
       },
