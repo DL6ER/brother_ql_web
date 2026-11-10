@@ -579,3 +579,13 @@ def test_printer_on_the_stage_follows_its_status(designer):
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { errors: [] }); renderPrinterChip(); }""")
     assert designer.get_attribute('#edStage .printer .led', 'class') == 'led '
     assert designer.get_attribute('#edStage .printer .led', 'title') == 'Ready'
+
+
+def test_open_printer_panel_follows_the_status(designer):
+    # It showed the status of when it was opened until "Look for printers"
+    designer.evaluate("() => openPrinterPanel()")
+    designer.route('**/api/printer_status*', lambda route: route.fulfill(json={'printers': [
+        {'path': 'simulation', 'model': 'QL-800', 'status_type': 'Reply to status request', 'errors': ['The cover of the printer is open']}]}))
+    designer.evaluate("() => refreshPrinters()")
+    assert 'The cover of the printer is open' in designer.inner_text('.pp .plist')
+    assert designer.locator('.pp .plist .dot.bad').count() == 1
