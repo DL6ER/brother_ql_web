@@ -74,8 +74,9 @@ def test_rows_end_of_a_lying_label_first():
             return img
     _, rows, width = zpl.label_rows(_Label(), 'zpl102x152')
     assert (len(rows), width) == (1216, 102)
-    # Its end leaves the printer first, as on the other printers
-    assert not any(rows[0]) and all(byte == 0xff for byte in rows[-1])
+    # Its end leaves the printer first, as on the other printers, the last
+    # row of a ZPL label does
+    assert all(byte == 0xff for byte in rows[0]) and not any(rows[-1])
 
 
 def test_label_over_the_network(client, monkeypatch):

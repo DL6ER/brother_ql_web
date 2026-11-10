@@ -43,13 +43,14 @@ NAMES = {label.identifier: f'{label.tape_size[0]} x {label.tape_size[1]} mm die-
 
 def label_rows(label, label_size: str) -> tuple[Image.Image, list[bytes], int]:
     """A label as the printer prints it: rows of packed dots across the
-    printhead, the first one comes out first, and the bytes of each row."""
+    printhead, the last one comes out first, and the bytes of each row."""
     img = label.generate()
     # Labels longer than wide, which the label designer draws lying, are
-    # turned as by the other drivers, their end leaves the printer first
+    # turned as by the other drivers, their end leaves the printer first. The
+    # bottom of a ZPL label leaves first, measured on a Datamax-O'Neil E-4204B.
     across = next(size.dots_printable[0] for size in LABELS if size.identifier == label_size)
     if img.width != across:
-        img = img.rotate(90, expand=True)
+        img = img.rotate(-90, expand=True)
     dither = label.label_content != LabelContent.IMAGE_BW
     img = img.convert('L').convert('1', dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
     # 1 bit images of PIL are packed MSB first with white 1, ZPL prints 1
