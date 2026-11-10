@@ -369,8 +369,8 @@ def test_list_has_the_title_the_label_was_saved_under(tmp_path):
 
 
 @pytest.mark.parametrize('values, message', [
-    ({'fields': {'Box': 'number'}}, 'fields must be a JSON object with the settings of each blank: a type of text, number or date, '
-                                    'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}'),
+    ({'fields': {'Box': 'number'}}, 'fields must be a JSON object with the settings of each blank: a type of text, number, date or choice, '
+                                    'a format as text, a default as text or number and choices as a list, e.g., {"Frozen on": {"type": "date"}}'),
     ({'blanks': {'Room': True}}, 'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}'),
 ])
 def test_label_with_invalid_blanks_or_their_settings_is_not_saved(tmp_path, values, message):
