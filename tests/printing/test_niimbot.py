@@ -175,7 +175,9 @@ def test_lid_closed_again_is_told_at_the_next_status_query(client, fake, monkeyp
 def test_no_roll_is_not_an_open_lid(client, fake, monkeypatch):
     # As a D110_M answered with the lid closed and no roll inside
     monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('10200097009732460104')))
-    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+    monkeypatch.setitem(REPLIES, 0x1a, (0x1b, b'\x00'))
+    errors = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors']
+    assert errors == ['No Niimbot roll with its RFID tag is in the printer']
 
 
 def test_printer_that_stops_answering(client, fake, monkeypatch):
@@ -205,7 +207,7 @@ def test_roll_without_its_rfid_tag_is_refused(client, fake, monkeypatch):
     assert response.get_json()['message'] == 'The printer prints only on Niimbot rolls with their RFID tag'
 
 
-def test_tag_laid_out_otherwise_is_no_tag(client, fake, monkeypatch):
+def test_tag_laid_out_otherwise_is_an_unknown_roll(client, fake, monkeypatch):
     monkeypatch.setitem(REPLIES, 0x1a, (0x1b, bytes(8) + b'\x0801'))
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
     assert (printer_['errors'], printer_['media_width']) == ([], None)
