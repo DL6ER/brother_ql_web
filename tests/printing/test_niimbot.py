@@ -152,11 +152,33 @@ def test_open_lid_is_an_error(client, fake, monkeypatch):
     assert 0x21 not in fake.commands
 
 
+def test_lid_closed_again_is_told_at_the_next_status_query(client, fake, monkeypatch):
+    monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('10220054005432460004')))
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == ['The cover of the printer is open']
+    # Closed, without "Look for printers"
+    monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('101f0069006932460104')))
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+    # Then the kept state is told, the printer beeps at each connection
+    sent = len(fake.commands)
+    client.get('/labeldesigner/api/printer_status')
+    assert fake.commands[sent:] == []
+
+
+def test_no_roll_is_not_an_open_lid(client, fake, monkeypatch):
+    # As a D110_M answered with the lid closed and no roll inside
+    monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('10200097009732460104')))
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+
+
 def test_printer_that_stops_answering(client, fake, monkeypatch):
     monkeypatch.delitem(REPLIES, 0xe3)
     response = client.post('/labeldesigner/api/print', data={
         'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
     assert response.get_json()['message'] == 'The printer does not answer'
+    # Asked again at the next status query
+    sent = len(fake.commands)
+    client.get('/labeldesigner/api/printer_status')
+    assert fake.commands[sent:sent + 1] == [0xdc]
 
 
 def test_printer_that_does_not_tell_it_printed(client, fake, monkeypatch):

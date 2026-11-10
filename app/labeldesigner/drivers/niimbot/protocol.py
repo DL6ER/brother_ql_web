@@ -27,8 +27,10 @@ DENSITY = 3
 WITH_GAPS = 1
 
 ERROR = 0xdb
-# The lid in the heartbeat of a D110_M, 1 when closed. It tells no paper: the
-# bytes that change without a roll change with an open lid too.
+# Byte 8 of the heartbeat of a D110_M: 1 with the lid closed, with a roll
+# inside and without one (10 1f 00 69 00 69 32 46 01 04 and 10 20 00 97 00 97
+# 32 46 01 04), 0 with the lid open (10 22 00 54 00 54 32 46 00 04). It tells
+# no paper: the bytes that change without a roll change with an open lid too.
 LID_OPEN = 0
 
 

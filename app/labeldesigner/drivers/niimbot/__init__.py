@@ -85,7 +85,9 @@ class Niimbot(Driver):
         if error:
             raise error.with_traceback(None)
         cached = devices.status_cache.get(devices.lock_key(device))
-        if cached and _asked.get(device, -1) >= devices.looked:
+        # Also asked while it cannot print, so that the error goes once the
+        # lid is closed; it beeps every status query only then
+        if cached and not cached.get('errors') and _asked.get(device, -1) >= devices.looked:
             return dict(cached)
         try:
             state = self._status(device, model)
