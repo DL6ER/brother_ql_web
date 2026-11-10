@@ -260,6 +260,19 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage.turned .flow { top: auto; bottom: 14px; }
 .stage.turned .cut { bottom: auto; top: -1px; border-bottom: 0; border-top: 2px dashed #9aa3ac; }
 .stage.turned .dim-x { bottom: auto; top: -1.9rem; }
+/* Labels that leave sideways with the other end first have the printer on
+   their right */
+.stage.side.back { flex-direction: row-reverse; }
+.stage.back .printer.side { border-radius: 6px 14px 14px 6px; background: linear-gradient(270deg, var(--printer-top), var(--printer-bottom)); }
+.stage.back .printer.side .mouth { right: auto; left: 4px; }
+.stage.side.back .feed { margin-left: 0; margin-right: -7.5px; }
+.stage.side.back .flow { left: auto; right: 14px; }
+.stage.short.side.back .flow { right: 0; }
+.stage.side.back .paper > :first-child { flex: none; }
+.stage.side.back .paper > :last-child { flex: 1; min-width: 0; }
+.stage.side.back .paper .lead { border-left: 0; border-right: 1px dashed rgba(0, 0, 0, .15); }
+.stage.side.back .cut { right: auto; left: -1px; border-right: 0; border-left: 2px dashed #9aa3ac; }
+.stage.side.back .dim-y { right: auto; left: -2.7rem; }
 .stage .wait { position: absolute; inset: auto 0 .6rem 0; text-align: center; font-size: .8rem; color: var(--muted); }
 .stage .err { font-size: .9rem; padding: 1rem; text-align: center; max-width: 40ch; }
 /* Spinner in the corner of the stage while a new preview is made */

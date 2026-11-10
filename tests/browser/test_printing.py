@@ -468,6 +468,34 @@ def test_labels_of_a_q00_leave_it_turned(designer):
         assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
 
 
+def test_labels_can_leave_the_printer_bottom_first(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    q00 = """tape => { S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00' }); S.tape = tape;
+        openEditor({ title: 'Q', design: Object.assign(baseDesign(tape), { text: [L('Q', 40)] }) }); }"""
+    designer.evaluate(q00, 'puqu50x30')
+    wait_for_preview(designer)
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'leaves_first=top' in request.value.post_data_buffer
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-lf="bottom"]')
+    assert designer.locator('.pp [data-lf="bottom"].on').count() == 1
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    # The printer stands above the label, which leaves it downwards
+    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .flow .fa-arrow-down-long').count() == 1
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'leaves_first=bottom' in request.value.post_data_buffer
+    # Labels that leave it sideways have the printer to their right
+    designer.evaluate(q00, 'puqu50x80')
+    wait_for_preview(designer)
+    assert {'side', 'back'} <= set(designer.get_attribute('#edStage', 'class').split())
+    assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'row-reverse'
+    assert designer.locator('#edStage .flow .fa-arrow-left-long').count() == 1
+
+
 def test_receipt_shows_the_blank_paper_before_it(designer):
     # A TM-T20II feeds 12 mm to its cutter after a label, blank before the next
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Epson/TM-T20II' }); S.tape = 'escpos80';

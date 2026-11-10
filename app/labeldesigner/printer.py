@@ -87,12 +87,17 @@ class PrinterQueue:
         self.cut = 'each'
         self.half_cut = True
         self.chain = False
+        # The end of the labels that leaves the printer first: the top, as
+        # the drivers print them, or turned by 180 degrees the bottom
+        self.leaves_first = 'top'
         self._print_queue = []
 
     def add_label_to_queue(self, label, high_res: bool = False, fast: bool = False):
         problem = self.driver.resolution_problem(self.model, high_res)
         if problem:
             raise ValueError(problem)
+        # Turned once for all drivers, the preview stays upright
+        label.turned = self.leaves_first == 'bottom'
         self._print_queue.append({
             'label': label,
             'high_res': high_res,

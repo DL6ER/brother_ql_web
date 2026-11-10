@@ -705,14 +705,16 @@ class SimpleLabel:
         except ValueError:
             return date.isoformat()
 
+    # Printed with its bottom leaving the printer first, set by the queue
+    turned = False
+
     def generate(self):
         img = self._generate_label()
-        if not self._flag_wrap:
-            return img
-        # Both halves from one render, so random texts and counters match
-        strip = flag_strip(img, self._flag_wrap, self._flag_dpi, self._label_orientation == LabelOrientation.ROTATED)
-        check_image_size(*strip.size)
-        return strip
+        if self._flag_wrap:
+            # Both halves from one render, so random texts and counters match
+            img = flag_strip(img, self._flag_wrap, self._flag_dpi, self._label_orientation == LabelOrientation.ROTATED)
+            check_image_size(*img.size)
+        return img.rotate(180) if self.turned else img
 
     def _generate_label(self):
         # Process possible templates in the text and the code

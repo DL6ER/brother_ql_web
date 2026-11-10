@@ -365,6 +365,9 @@ const usableCut = (c, k) => noCutter(k) ? Object.assign(c, { cut: 'none' })
     : neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
 const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCaps());
+// The end of the labels that leaves the printer first, set for each printer:
+// the top, as the drivers print them, or the bottom, turned by 180 degrees
+const leavesFirst = () => (S.settings.leaves || {})[printerKey()] || 'top';
 // P-touch printers cut after the last label unless chain printing, so not
 // cutting at all is chain printing, as the server decides it too
 const chainOf = (c, k) => k.chain && (c.chain === '1' || c.cut === 'none');
@@ -451,6 +454,7 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
         fd.set('cut', c.cut);
         fd.set('half_cut', c.half_cut);
         fd.set('chain', c.chain);
+        fd.set('leaves_first', leavesFirst());
     }
     if (S.printer && S.printer.path) fd.append('printer', S.printer.path);
     if (S.printer && S.printer.model) fd.append('model', S.printer.model);
@@ -1375,13 +1379,15 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // An endless label of a given length is as long as that when cut
     const lengthMm = !isEndless(size) ? size.tape[1] : hasLength(design) && +design.label_length > 0 ? +design.label_length : along + lead;
     // Labels that leave the printer top first are shown leaving it upwards,
-    // the printer below them. Those that leave sideways have it to their left.
-    const turned = !side && sizeCaps(design.label_size).leaves_turned;
+    // the printer below them. Those that leave sideways have it to their
+    // left, with the other end first to their right.
+    const back = leavesFirst() === 'bottom';
+    const turned = !side && sizeCaps(design.label_size).leaves_turned !== back;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
     // Kept to fit the label again when the stage changes its size
     el._view = {
-        url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
+        url: p.url, w, h, side, turned, back: side && back, dpi, blank, color: isColorTape(design.label_size),
         lead, leadDots: lead / 25.4 * dpi,
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
@@ -1441,7 +1447,7 @@ function placeOnStage(el, redraw = false) {
     // Short labels keep the arrow clear of the scissors at the cut
     const short = side ? dw : dh;
     const busy = el.classList.contains('busy');
-    el.className = 'stage' + (side ? ' side' : '') + v.form + (turned ? ' turned' : '') + (large ? ' large' : '')
+    el.className = 'stage' + (side ? ' side' : '') + (v.back ? ' back' : '') + v.form + (turned ? ' turned' : '') + (large ? ' large' : '')
         + (short < 30 ? ' tiny' : short < 50 ? ' short' : '') + (busy ? ' busy' : '');
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
@@ -1450,11 +1456,11 @@ function placeOnStage(el, redraw = false) {
     const printer = side
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
-    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? 'arrow-right-long' : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
+    const flow = `<div class="flow" title="Printing direction"><i class="fa-solid fa-${side ? (v.back ? 'arrow-left-long' : 'arrow-right-long') : turned ? 'arrow-up-long' : 'arrow-down-long'}"></i></div>`;
     const leadPx = Math.round(v.leadDots * k);
     const lead = leadPx ? `<div class="lead" style="${side ? 'width' : 'height'}:${leadPx}px" title="Blank paper, ${v.lead} mm"></div>` : '';
     const label = v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`;
-    const paper = side ? label + lead : lead + label;
+    const paper = side && !v.back ? label + lead : lead + label;
     // How copies are cut: in the corner, or below the large label
     const cuts = `<div class="cuts">${v.cuts}</div>`;
     const zoom = 'zoom' in el.dataset ? `<button class="btn quiet icon zoom" type="button" aria-pressed="${large}" title="${large ? 'Smaller preview' : 'Larger preview'}">
@@ -3103,6 +3109,10 @@ function bindPrinterPanel() {
         $('#qInfoBtn', box).setAttribute('aria-expanded', String(S.qualityInfo));
     };
     $$('[data-q]', box).forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; saveSettings(); });
+    $$('[data-lf]', box).forEach(b => b.onclick = () => {
+        S.settings.leaves = Object.assign({}, S.settings.leaves, { [printerKey()]: b.dataset.lf });
+        saveSettings();
+    });
     $$('[data-c]', box).forEach(b => b.onclick = () => {
         S.settings.cuts = Object.assign({}, S.settings.cuts, { [printerKey()]: Object.assign(printerCut(), { [b.dataset.c]: b.dataset.v }) });
         saveSettings();
@@ -3146,6 +3156,11 @@ function settingsCard() {
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
+        <div><span class="label-s">Leaves the printer first</span>
+            <div class="seg">
+            <button type="button" data-lf="top" class="${leavesFirst() === 'top' ? 'on' : ''}">Top</button>
+            <button type="button" data-lf="bottom" class="${leavesFirst() === 'bottom' ? 'on' : ''}">Bottom</button></div>
+            <span class="muted small">Bottom turns the labels, e.g. to stick them on as they come out.</span></div>
         <div class="cutting">${cutSettings('c', c, caps)}
             <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))}${noCutter(caps) ? '' : ' Labels saved with their own cutting keep it.'}</span></div></div>
     </div>`;

@@ -827,6 +827,15 @@ def _given(value, default):
     return default if value is None or value == '' else value
 
 
+def _leaves_first(value) -> str:
+    """Which end of the labels leaves the printer first, top where it is
+    left out or empty."""
+    value = _given(value, 'top')
+    if value not in ('top', 'bottom'):
+        raise ValueError('leaves_first must be top or bottom')
+    return value
+
+
 def _whole_or(value, default) -> int:
     """value as a whole number like _whole(), default where it is left out
     or empty."""
@@ -961,6 +970,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         check_cut(printer.cut, printer.model)
         high_res = _whole(_option('high_res', data, 0)) != 0
         fast = _whole(_option('fast_printing', data, 0)) != 0
+        printer.leaves_first = _leaves_first(_option('leaves_first', data, 'top'))
         # The label and its image have to be generated with the resolution
         # it is printed with
         data['high_res'] = high_res
@@ -1155,6 +1165,7 @@ def print_label():
         check_cut(printer.cut, printer.model)
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
+        printer.leaves_first = _leaves_first(request.values.get('leaves_first'))
     except HTTPException:
         raise
     except Exception as e:

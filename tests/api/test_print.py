@@ -281,6 +281,51 @@ def test_cutting_on_ql_printers(tmp_path, monkeypatch, cut, cuts):
     assert queued == cuts
 
 
+@pytest.mark.parametrize('route', ['print', 'repository'])
+def test_labels_leave_the_printer_bottom_first_turned(tmp_path, route):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    for leaves_first in ('top', 'bottom'):
+        if route == 'print':
+            # Black on its left, white on its right
+            image = Image.new('L', (400, 100), 'white')
+            image.paste(0, (0, 0, 100, 100))
+            data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'image_fit': '1', 'text': '[]', 'printer': 'simulation', 'leaves_first': leaves_first,
+                    'image': (io.BytesIO(_upload(image, 'left.png').stream.read()), 'left.png', 'image/png')}
+            response = client.post('/labeldesigner/api/print', data=data)
+        else:
+            response = client.post('/labeldesigner/api/repository/print', data={'name': 'QR-Example.json', 'printer': 'simulation', 'print_count': '1', 'leaves_first': leaves_first})
+        assert response.get_json() == {'success': True}
+    top, bottom = (Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)) for name in sorted(os.listdir(printer.SIMULATED_LABELS_DIR)))
+    assert top.tobytes() != bottom.tobytes()
+    assert top.rotate(180).tobytes() == bottom.tobytes()
+
+
+def test_saved_label_leaves_the_printer_as_saved_unless_requested(tmp_path):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path, empty_repo=True)
+    with open(os.path.join(os.path.dirname(__file__), '../../labels/QR-Example.json'), encoding='utf-8') as f:
+        label = json.load(f)
+    for name, leaves_first in (('Plain.json', None), ('Turned.json', 'bottom')):
+        saved = dict(label, name=name)
+        if leaves_first:
+            saved['leaves_first'] = leaves_first
+        assert client.post('/labeldesigner/api/repository/save', json=saved).status_code == 200
+    for body in ({'name': 'Plain.json'}, {'name': 'Turned.json'}, {'name': 'Turned.json', 'leaves_first': 'top'}):
+        response = client.post('/labeldesigner/api/repository/print', data={'printer': 'simulation', 'print_count': '1', **body})
+        assert response.get_json() == {'success': True}
+    top, turned, requested = (Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).tobytes()
+                              for name in sorted(os.listdir(printer.SIMULATED_LABELS_DIR)))
+    assert turned != top and requested == top
+
+
+def test_unknown_leaves_first_is_refused(tmp_path):
+    client = make_client(tmp_path)
+    response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, leaves_first='side'))
+    assert response.status_code == 400
+    assert response.get_json()['message'] == 'leaves_first must be top or bottom'
+
+
 def test_unknown_cut_is_refused(tmp_path):
     client = make_client(tmp_path)
     response = client.post('/labeldesigner/api/print', data=dict(EXAMPLE_FORMDATA, cut='twice'))
