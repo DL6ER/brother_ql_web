@@ -27,7 +27,7 @@ from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -543,6 +543,7 @@ def repo_save():
         _text_fit(data)
         cut = _cutting(data.get)[0]
         check_image_position(data.get('image_position'))
+        check_vertical_align(data.get('vertical_align'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
             data['label_size'] = stored_label_size(data['label_size'])
@@ -1332,6 +1333,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
+        # Left out or empty: in the middle of a label with room to spare
+        'vertical_align': check_vertical_align(d.get('vertical_align')),
         'blanks': _blank_values(d.get('blanks')),
         # The settings of the blanks, saved with a label or sent with it
         'blank_fields': _blank_fields(d.get('fields')),
@@ -1447,6 +1450,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
         with_code=with_code,
+        vertical_align=context['vertical_align'],
         **_flag_wrap(label_size, diameter, context['high_res']),
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
