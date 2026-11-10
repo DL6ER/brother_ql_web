@@ -6,6 +6,8 @@ compressed. State replies are 8 bytes, 3a .. .. .. .. .. .. 0a."""
 import socket
 import time
 
+from .. import devices
+
 # 8 dots per mm, the printhead is 48 mm wide
 DPI = 203
 HEAD = 384
@@ -105,7 +107,8 @@ def connect(device: str) -> socket.socket:
     s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
     s.settimeout(CONNECT_WAIT)
     try:
-        s.connect(address(device))
+        with devices.bluetooth_turn:
+            s.connect(address(device))
     except OSError:
         s.close()
         raise

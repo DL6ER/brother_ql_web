@@ -87,7 +87,9 @@ const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cu
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 // The maker and the model of a printer, as the label designer names it
-const printerName = p => [capsOf(p && p.model).vendor, p && p.model].filter(Boolean).join(' ');
+// Models other than Brother ones are named with their maker, e.g. PUQU/Q00
+const modelOnly = model => (model || '').split('/').pop();
+const printerName = p => [capsOf(p && p.model).vendor, p && modelOnly(p.model)].filter(Boolean).join(' ');
 
 function sizeName(id) {
     const s = SIZES[id];
@@ -889,7 +891,7 @@ function renderPrinterChip() {
     const st = printerState(S.printer);
     // Phones show the model only, a printer named in PRINTERS its name
     const vendor = S.printer && !S.printer.name && capsOf(S.printer.model).vendor;
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || S.printer.model) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || modelOnly(S.printer.model)) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
     // A long name is cut short in the chip
     chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
     // The printer on the stages shows the same, they are drawn again only
@@ -959,7 +961,7 @@ function announce(entry) {
     if (entry.state === 'printed') {
         if (window.matchMedia('(max-width: 760px)').matches) {
             sheet(`<div class="okc"><i class="fa-solid fa-check"></i></div><h2>${what} printed</h2>
-                <p>${esc(entryName(entry))} on ${esc(entry.printerName || 'the ' + (entry.printer || 'printer'))}</p>
+                <p>${esc(entryName(entry))} on ${esc(entry.printerName || thePrinter({ model: entry.printer }))}</p>
                 <button class="btn-print" data-close><i class="fa-solid fa-check"></i>Done</button>`);
         } else {
             toast(`Printed ${what}: ${entryName(entry)}`, { label: 'Print again', run: () => again(entry) });
@@ -2456,7 +2458,8 @@ const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
 function sideField(d, what) {
     const on = paired(d);
     const other = d.print_type === 'image_qrcode_text' ? ', the code is on the other side' : '';
-    return `<div title="${on ? `Where the ${what} is next to the text${other}` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+    const why = `Where the ${what} is next to the text${other}`;
+    return `<div id="edSide" data-why="${why}" title="${on ? why : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
         `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
@@ -2689,13 +2692,19 @@ function drawEditor() {
     const empty = isEmptyDesign(E.design);
     printable(empty);
     $('#edSave').disabled = empty;
-    const gap = $('#edGap');
+    // Typing the first line of text, or deleting the last, changes whether
+    // the position and the distance to the text apply
+    const on = paired(E.design), gap = $('#edGap'), side = $('#edSide');
     if (gap) {
-        const on = paired(E.design);
         gap.disabled = !on;
         gap.previousElementSibling.classList.toggle('off', !on);
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
+    }
+    if (side) {
+        $$('[data-side]', side).forEach(b => b.disabled = !on);
+        $('.label-s', side).classList.toggle('off', !on);
+        side.title = on ? side.dataset.why : 'Only with text on the label';
     }
     const files = labelFiles(E.design);
     $('#edFileStep').hidden = files.length < 2;
@@ -3057,7 +3066,8 @@ function printerPanelHTML() {
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
             <span class="grow"><b>${esc(printerLabel(p))}</b><span class="sm">${esc([p.name ? printerName(p) : '', st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
-                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
+                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}
+                ${p.battery_low ? '<span class="sm warn">The battery is low, charge the printer.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>

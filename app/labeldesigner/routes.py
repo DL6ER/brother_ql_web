@@ -1208,7 +1208,7 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
     if printers:
         configured, model = printers[0][1], printers[0][0]
     else:
-        configured, model = current_app.config['PRINTER_PRINTER'], current_app.config['PRINTER_MODEL']
+        configured, model = current_app.config['PRINTER_PRINTER'], drivers.canonical(current_app.config['PRINTER_MODEL'])
     device = requested_device or configured
     named = {n.casefold(): d for _, d, n in printers if n}
     device = named.get(device.casefold(), device)
@@ -1216,7 +1216,7 @@ def _printer(requested_device, requested_model) -> tuple[str, str]:
     if device not in (configured, 'simulation', '?', *listed) and \
             not any(pattern.fullmatch(device) for pattern in DEVICE_PATTERNS):
         raise ValueError(f"Unsupported printer: {device}")
-    model = requested_model or next((m for m, d, _ in printers if d == device), model)
+    model = drivers.canonical(requested_model) if requested_model else next((m for m, d, _ in printers if d == device), model)
     if model not in PRINTER_MODELS:
         # The driver would refuse it without a message
         raise ValueError(UNKNOWN_MODEL if model == 'Unknown' else f"Unknown printer model: {model}")
