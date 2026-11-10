@@ -343,7 +343,7 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .ed-head input:hover { border-color: var(--line); }
 .ed-head input:focus { outline: none; border-color: var(--select); }
 .ed-head .btn { flex: none; }
-.layouts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+.layouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
 .lay { border: 1px solid var(--line); border-radius: 9px; padding: .5rem .3rem .4rem; display: flex; flex-direction: column; align-items: center; gap: .35rem; font-size: .76rem; text-align: center; color: var(--muted); background: var(--surface); cursor: pointer; }
 .lay .sch { width: 54px; max-width: 100%; height: 26px; border-radius: 3px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); display: flex; gap: 3px; padding: 4px; }
 .lay .sch i { display: block; border-radius: 1px; background: var(--muted); opacity: .55; }

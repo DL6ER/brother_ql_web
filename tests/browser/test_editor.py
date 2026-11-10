@@ -545,12 +545,43 @@ def test_text_can_fill_the_label(designer):
     assert designer.evaluate("() => [normalize({ text_fit: 'fill' }).text_fit, textFit(normalize({}))]") == ['fill', 'none']
 
 
-def test_code_alone_has_no_text_settings(designer):
-    type_line(designer, 0, 'Spices')
-    designer.click('[data-lay="code"]')
+def test_a_code_alone_is_a_code_with_its_text_left_empty(designer):
+    assert designer.locator('.lay').all_inner_texts() == ['Text', 'Image', 'Code', 'Image + Code']
+    designer.click('[data-lay="codetext"]')
     wait_for_preview(designer)
-    assert designer.is_disabled('[data-tfit="shrink"]')
-    assert designer.locator('.label-s:text-is("Code runs")').count() == 1
+    assert designer.evaluate('() => [S.edit.design.code_text, S.edit.design.text.map(l => l.text)]') == ['https://example.com', ['']]
+    assert designer.is_enabled('[data-tfit="shrink"]')
+
+
+def test_a_code_alone_left_in_the_editor_is_a_code_with_its_text_left_empty(designer):
+    designer.evaluate("""() => {
+        S.edit = { title: 'Kept', design: Object.assign(baseDesign(S.tape), { print_type: 'qrcode', code_text: 'https://example.com', text: [L('Not printed', 40)] }), origin: null };
+        storeEdit();
+    }""")
+    designer.reload()
+    wait_for_preview(designer)
+    assert 'on' in designer.get_attribute('[data-lay="codetext"]', 'class')
+    assert designer.evaluate('() => [S.edit.design.print_type, S.edit.design.text.map(l => l.text)]') == ['qrcode_text', ['']]
+    # Printed before, without a code of its own the code took the lines:
+    # they are shown now
+    designer.evaluate("""() => openEditor({ design: Object.assign(baseDesign(S.tape), { print_type: 'qrcode', code_text: '', text: [L('Shelf 12', 40)] }) })""")
+    wait_for_preview(designer)
+    assert designer.evaluate('() => [S.edit.design.print_type, S.edit.design.text.map(l => l.text)]') == ['qrcode_text', ['Shelf 12']]
+
+
+def test_a_saved_code_alone_is_edited_as_a_code_with_its_text_left_empty(designer, app):
+    path = os.path.join(app.config['LABEL_REPOSITORY_DIR'], 'Contact.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump({'title': 'Contact', 'label_size': '62', 'print_type': 'qrcode', 'code_text': '',
+                   'text': [{'font': 'DejaVu Sans,Bold', 'size': '50', 'text': 'BEGIN:VCARD'}, {'font': 'DejaVu Sans,Book', 'size': '40', 'text': 'END:VCARD'}]}, f)
+    try:
+        designer.reload()
+        wait_for_preview(designer)
+        edit_saved_label(designer, 'Contact')
+        assert 'on' in designer.get_attribute('[data-lay="codetext"]', 'class')
+        assert designer.evaluate('() => [S.edit.design.code_text, S.edit.design.text.map(l => [l.text, l.font])]') == ['BEGIN:VCARD\nEND:VCARD', [['', 'DejaVu Sans,Bold']]]
+    finally:
+        os.remove(path)
 
 
 def test_distance_between_code_and_text(designer):
@@ -660,16 +691,17 @@ def test_new_labels_start_with_the_configured_defaults(browser, server, app, mon
 
 
 def test_size_of_a_dot_applies_to_a_code_of_fixed_size(designer):
-    designer.click('[data-lay="code"]')
+    designer.click('[data-lay="codetext"]')
     wait_for_preview(designer)
     # Fitted to the label, the size of a dot does not apply
     assert designer.is_disabled('#edQrSize')
     designer.click('[data-fit="0"]')
     wait_for_preview(designer)
-    length = preview_size(designer)[1]
+    # The code runs along the tape, its length grows
+    length = preview_size(designer)[0]
     designer.fill('#edQrSize', '20')
     wait_for_preview(designer)
-    assert preview_size(designer)[1] > length
+    assert preview_size(designer)[0] > length
 
 
 def test_symbols_closed_while_loading_stay_closed(designer):
@@ -754,7 +786,7 @@ def test_image_code_and_text_have_the_settings_of_both(designer):
     type_line(designer, 0, 'Pantry')
     designer.click('[data-lay="imagecode"]')
     wait_for_preview(designer)
-    assert designer.locator('.layouts .lay').count() == 5
+    assert designer.locator('.layouts .lay').count() == 4
     assert designer.locator('#edCode').count() == 1 and designer.locator('#edFile').count() == 1
     # The server tells what is missing
     assert designer.inner_text('#edStage .err').strip() == 'The label has no image'

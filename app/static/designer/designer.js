@@ -2109,7 +2109,7 @@ function loadEdit() {
     const images = new Map(load(own('designer_edit_images'), []).map(im => [imageKey(im), im]));
     // Stored before images were kept apart, the image is in the label
     const get = r => (r && r.ref ? images.get(r.ref) : r);
-    const d = edit.design;
+    const d = codeWithText(edit.design);
     if (d.image) d.image = get(d.image);
     if (!d.image) delete d.image;
     if (d.more_images) d.more_images = d.more_images.map(get).filter(Boolean);
@@ -2121,8 +2121,17 @@ function loadEdit() {
     return edit;
 }
 
+// A code alone from before is a code with its text left empty, its lines
+// were not printed. A code without content of its own took them, they stay.
+function codeWithText(d) {
+    if (d.print_type !== 'qrcode') return d;
+    d.print_type = 'qrcode_text';
+    if (String(d.code_text || '').trim()) d.text = [Object.assign(d.text[0] || L('', C.defaults.font_size, true), { text: '' })];
+    return d;
+}
+
 function openEditor({ title, design, origin }) {
-    setEdit({ title: title || 'New label', design: clone(design), origin: origin || null });
+    setEdit({ title: title || 'New label', design: codeWithText(clone(design)), origin: origin || null });
     S.focusBlank = true;
     S.editSel = 0;
     if (location.hash === '#edit') renderEditor(); else location.hash = 'edit';
@@ -2130,7 +2139,6 @@ function openEditor({ title, design, origin }) {
 
 function layoutOf(d) {
     if (d.print_type === 'qrcode_text') return 'codetext';
-    if (d.print_type === 'qrcode') return 'code';
     if (d.print_type === 'image') return 'image';
     if (d.print_type === 'image_qrcode_text') return 'imagecode';
     return 'text';
@@ -2171,8 +2179,7 @@ function renderEditor() {
     S.editShown = S.edit;
     const E = S.edit, d = E.design;
     const lay = layoutOf(d);
-    const hasCode = lay === 'code' || lay === 'codetext' || lay === 'imagecode';
-    const hasText = lay !== 'code';
+    const hasCode = lay === 'codetext' || lay === 'imagecode';
     const families = Object.keys(FONTS).sort((a, b) => a.localeCompare(b));
     // The font list in the header sets all lines, each line can have its own
     const used = [...new Set(d.text.map(l => familyOf(l.font)))];
@@ -2183,11 +2190,11 @@ function renderEditor() {
                 <button class="btn sm" type="button" id="edNew" title="Start a new, empty label"><i class="fa-solid fa-plus"></i>New</button>
                 <a class="btn sm" href="#templates" title="Start from a template"><i class="fa-solid fa-swatchbook"></i>Templates</a></div>
             <div><h3 style="margin-bottom:.55rem">Layout</h3><div class="layouts">
-                ${[['text', 'Text', '<i class="t"></i>'], ['codetext', 'Code, text', '<i class="q"></i><i class="t"></i>'], ['image', 'Image, text', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['imagecode', 'Image, code, text', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>'], ['code', 'Code', '<i class="q" style="margin:0 auto"></i>']]
+                ${[['text', 'Text', '<i class="t"></i>'], ['image', 'Image', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['codetext', 'Code', '<i class="q"></i><i class="t"></i>'], ['imagecode', 'Image + Code', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>']]
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
-                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'code' ? 'Link or text in the code' : 'Link or text, empty for the text of the label'}" aria-label="Content of the code">
+                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="Link or text, empty for the text of the label" aria-label="Content of the code">
                 ${lay === 'imagecode' ? '<span class="muted small">Fitted to the label when the image is, see Size under Image.</span>'
                     : `<div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>`}
                 ${((qr, fixed) => `<div class="pair">
@@ -2198,7 +2205,7 @@ function renderEditor() {
                 ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' || lay === 'imagecode' ? imageBlock(d) : ''}
-            ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+            <div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
                 <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d), isColorTape(d.label_size))).join('')}</div>
                 <div class="addl">
                     <button class="pill" type="button" id="edAdd"><i class="fa-solid fa-plus"></i>Line</button>
@@ -2209,13 +2216,13 @@ function renderEditor() {
                     <button class="pill${S.tplInfo ? ' on' : ''}" type="button" id="tplInfoBtn" aria-expanded="${!!S.tplInfo}" aria-controls="tplInfo"><i class="fa-solid fa-circle-info"></i>Variables</button>
                 </div>
                 <p class="ed-note">Write <b>[Name]</b> for a blank that is filled in when printing. Variables explains all of them.</p>
-                <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>` : ''}
+                <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
                     ${flagRow(d)}
-                    <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
-                    <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
+                    <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
+                    <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -2676,19 +2683,18 @@ function bindEditor() {
         // Rotation, cropping and scale belong to the image or the code they
         // were set for, also after the text layout between: they would act on
         // the other one, a code does not show them
-        const kindOf = t => (t === 'qrcode' || t === 'qrcode_text') ? 'code' : t === 'image' || t === 'image_qrcode_text' ? 'image' : null;
+        const kindOf = t => t === 'qrcode_text' ? 'code' : t === 'image' || t === 'image_qrcode_text' ? 'image' : null;
         if (E.lookOf === undefined) E.lookOf = kindOf(d.print_type);
-        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', imagecode: 'image_qrcode_text', code: 'qrcode' }[lay];
+        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', imagecode: 'image_qrcode_text' }[lay];
         const kind = kindOf(next);
         if (kind && kind !== E.lookOf && (E.lookOf || kind === 'code')) resetLook(d);
         if (kind) E.lookOf = kind;
         d.print_type = next;
         // Next to text, a code without content of its own holds the text
-        if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
         if ((lay === 'codetext' || lay === 'imagecode') && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
-        if (lay !== 'text' && lay !== 'code') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
+        if (lay !== 'text') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
         if ((lay === 'codetext' || lay === 'imagecode') && d.qrcode_size === '10') d.qrcode_size = '14';
-        if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
+        if (!d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
     });
     if ($('#edCode')) $('#edCode').oninput = e => { d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
@@ -3186,7 +3192,7 @@ async function receiveShared() {
         d.image = { data: item.data, mime: item.type, name: item.name };
         edit.title = item.name.replace(/\.[^.]+$/, '') || edit.title;
     } else if (item.url) {
-        d.print_type = 'qrcode';
+        d.print_type = 'qrcode_text';
         d.code_text = item.url;
     } else {
         d.text = item.text.split(/\r?\n/).filter(t => t.trim()).map((t, i) => L(t, i ? 44 : 70, i === 0));
