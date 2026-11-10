@@ -204,3 +204,36 @@ def test_printer_that_is_off_is_not_looked_for_at_every_status_query(client, mon
     for _ in range(2):
         assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == ['The printer cannot be reached']
     assert calls == [DEVICE]
+
+
+def test_bluetooth_connections_are_set_up_one_at_a_time(monkeypatch):
+    # The radio pages one device after another, a printer that was off made
+    # the others give up waiting
+    import threading
+    import time
+    from app.labeldesigner.drivers.puqu import protocol as puqu
+    paging, most = [], []
+
+    class Socket:
+        def __init__(self, *args):
+            pass
+
+        def settimeout(self, timeout):
+            pass
+
+        def connect(self, address):
+            paging.append(address)
+            most.append(len(paging))
+            time.sleep(0.05)
+            paging.remove(address)
+
+        def close(self):
+            pass
+    monkeypatch.setattr(protocol.socket, 'socket', Socket)
+    threads = [threading.Thread(target=protocol.Connection, args=(DEVICE,)),
+               threading.Thread(target=puqu.connect, args=('bt://CD:AC:BB:E0:46:4C/2',))]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert max(most) == 1 and len(most) == 2

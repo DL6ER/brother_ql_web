@@ -41,6 +41,11 @@ _fallback_locks = {}
 _fallback_locks_guard = threading.Lock()
 # The last status of each printer, by lock key
 status_cache = {}
+# Bluetooth connections are set up one at a time. The radio pages one device
+# after another, a PUQU Q00 and a P1L that were off took 5 s each before a
+# Niimbot D110_M was paged, which then gave up after its 10 s. Each now waits
+# for its turn, its time to connect counts from it.
+bluetooth_turn = threading.Lock()
 
 # A printer on Bluetooth that did not answer is not looked for again by the
 # status queries, only when printing on it or when asked to look for printers

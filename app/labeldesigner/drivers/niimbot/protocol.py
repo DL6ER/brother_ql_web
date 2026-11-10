@@ -8,6 +8,8 @@ import socket
 import struct
 import time
 
+from .. import devices
+
 # 8 dots per mm, the printhead is 15 mm wide
 DPI = 203
 HEAD = 120
@@ -97,7 +99,8 @@ class Connection:
         self.s = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         self.s.settimeout(CONNECT_WAIT)
         try:
-            self.s.connect(address(device))
+            with devices.bluetooth_turn:
+                self.s.connect(address(device))
         except OSError:
             self.s.close()
             raise
