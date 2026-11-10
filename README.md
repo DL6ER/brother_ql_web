@@ -19,7 +19,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Epson | TM-T20II (USB, ESC/POS) | 80 and 58 mm receipt paper, cut |
 | Niimbot | D110_M (Bluetooth) | 12 to 15 mm wide die-cut thermal labels, torn off, printed on 12 x 40 mm only |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
-| Zebra | ZPL printers (USB or network), tested on a Datamax-O'Neil E-4204B with its ZPL emulation only, not on a Zebra | 105 x 148, 102 x 152, 100 x 150, 102 x 76, 102 x 51, 57 x 32 and 51 x 25 mm die-cut labels, torn off |
+| Zebra | ZPL printers (USB or network), tested on a Datamax-O'Neil E-4204B with its ZPL emulation only, not on a Zebra | common metric and inch die-cut labels up to 104 mm wide, e.g. 4 x 6 in or A6, torn off |
 
 USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
 
