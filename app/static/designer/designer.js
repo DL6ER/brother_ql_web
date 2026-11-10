@@ -135,7 +135,7 @@ function baseDesign(size) {
         code_text: '', barcode_type: 'QR', qrcode_size: String(def.qrcode_size), qrcode_correction: 'M',
         margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
-        image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0',
+        image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0', image_contrast: '0',
         image_scaling_factor: '100', image_rotation: '0', text_fit: 'shrink', print_color: 'black', high_res: '0', pdf_pages: '',
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
@@ -144,7 +144,12 @@ function baseDesign(size) {
         // Empty: cut as set for the printer, else as saved with the label
         cut: '', half_cut: '', chain: '',
         // Empty: a Cat.7 cable
-        cable_flag: '0', cable_diameter: ''
+        cable_flag: '0', cable_diameter: '',
+        // Empty: an endless label is as long as its content, else its
+        // length in millimeters as cut
+        label_length: '',
+        // Where the content is on a label with room to spare
+        vertical_align: 'center'
     };
 }
 
@@ -164,6 +169,14 @@ function setTextFit(d, fit) {
     delete d.shrink_text;
 }
 
+// Where the content is between the top and bottom margins, as the text
+// reads. An endless label across the tape is as long as its content, unless
+// it has a length.
+const VERTICAL_ALIGNS = [['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']];
+const verticalAlign = d => d.vertical_align || 'center';
+const NO_ROOM = 'Endless labels end where the content ends, there is no room to place it in';
+const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d) && !hasFixedLength(d));
+
 // Labels as the API stores them (text as JSON, booleans as true/false)
 function normalize(raw) {
     const d = Object.assign(baseDesign(raw.label_size || C.default_label_size), {});
@@ -180,6 +193,7 @@ function normalize(raw) {
     // Cutting saved through the API e.g. as half_cut: 0 or chain: true
     for (const k of CUT_KEYS) d[k] = !given(raw[k]) ? '' : raw[k] === true ? '1' : raw[k] === false ? '0' : String(raw[k]);
     d.cable_flag = !given(raw.cable_flag) ? '0' : raw.cable_flag === true ? '1' : raw.cable_flag === false ? '0' : String(raw.cable_flag);
+    d.image_contrast = !given(raw.image_contrast) ? '0' : [true, 'true'].includes(raw.image_contrast) ? '1' : [false, 'false'].includes(raw.image_contrast) ? '0' : String(raw.image_contrast);
     if (!given(raw.text_fit) && given(raw.shrink_text)) d.shrink_text = String(raw.shrink_text);
     if (raw.image_data) d.image = { data: raw.image_data, mime: raw.image_mime || 'image/png', name: raw.image_name || 'image.png' };
     if (raw.fields && typeof raw.fields === 'object') d.fields = raw.fields;
@@ -599,7 +613,7 @@ function preview(design, values, stale, first = false) {
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
-            side: r.headers.get('X-Label-Image-Position') || ''
+            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1'
         };
     }, stale, first);
     previewCache.set(key, p);
@@ -1333,7 +1347,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // Some printers leave blank paper before each label, which was between
     // their printhead and cutter
     const lead = isEndless(size) ? sizeCaps(design.label_size).lead_mm : 0;
-    const lengthMm = isEndless(size) ? along + lead : size.tape[1];
+    // An endless label of a given length is as long as that when cut
+    const lengthMm = !isEndless(size) ? size.tape[1] : hasLength(design) && +design.label_length > 0 ? +design.label_length : along + lead;
     // Labels that leave the printer top first are shown leaving it upwards,
     // the printer below them. Those that leave sideways have it to their left.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
@@ -1711,7 +1726,7 @@ function bindAgain(root) {
 const CAT_ICONS = {
     address: 'truck', mail: 'envelope', signs: 'triangle-exclamation', doors: 'door-closed', visitors: 'id-badge',
     names: 'user', prices: 'tag', hazards: 'skull-crossbones', lab: 'vial', health: 'kit-medical', workshop: 'screwdriver-wrench',
-    office: 'briefcase', storage: 'box', kitchen: 'utensils', garden: 'seedling', events: 'gift', school: 'graduation-cap', letters: 'font'
+    office: 'briefcase', storage: 'box', kitchen: 'utensils', garden: 'seedling', events: 'gift', school: 'graduation-cap', kids: 'car-side', letters: 'font'
 };
 
 function libItems(cat) {
@@ -2241,10 +2256,11 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
+                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
+                    ${(room => `<div title="${room ? 'Where the content is on the label, as the text reads' : NO_ROOM}"><span class="label-s${room ? '' : ' off'}">Vertical position</span><div class="seg">${VERTICAL_ALIGNS.map(([v, n]) => `<button type="button" data-valign="${v}" class="${verticalAlign(d) === v ? 'on' : ''}"${room ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`)(hasRoom(d))}
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -2317,6 +2333,21 @@ function tapeNote(d) {
     return `<span class="tape-note warn">${who} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
 }
 
+// The length of an endless label as cut, next to the tape, where the server
+// offers one for the tape. Die-cut labels have their own, it shows as the hint.
+const LENGTH_TITLE = 'The label as cut, with the margin the printer leaves before and after the print. Empty: as long as its content.';
+const hasLength = d => !!SIZES[d.label_size] && !!SIZES[d.label_size].length && !flagOn(d);
+// An endless label of a length typed is laid out as a die-cut one
+const hasFixedLength = d => hasLength(d) && +d.label_length > 0;
+const lengthWhy = d => hasLength(d) ? LENGTH_TITLE : isDieCut(d.label_size) ? 'Die-cut labels have their own length'
+    : flagOn(d) ? 'Cable flags are as long as their content' : 'Labels on this tape are as long as their content';
+const lengthLabel = d => `<label class="label-s${hasLength(d) ? '' : ' off'}" for="edLength" title="${lengthWhy(d)}">Length, mm</label>`;
+function lengthInput(d) {
+    const on = hasLength(d), s = SIZES[d.label_size];
+    return `<input class="field" type="number"${on ? ` min="${s.length[0]}" max="${s.length[1]}"` : ''} step="0.5" id="edLength" value="${on ? esc(d.label_length) : ''}" placeholder="${on || !isDieCut(d.label_size) ? 'Automatic' : esc(s.tape[1])}"
+        title="${lengthWhy(d)}"${on ? '' : ' disabled'}>`;
+}
+
 function imageBlock(d) {
     const red = redTape(d), color = isColorTape(d.label_size);
     const modes = [['black_and_white', 'Black and white'], ['grayscale', 'Grayscale'], ['red_and_black', 'Red and black'], ['colored', 'Full color']];
@@ -2329,7 +2360,9 @@ function imageBlock(d) {
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
             ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own with these settings. Step through them above the preview, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
-            ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
+            ${color ? `<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>
+            <div class="row"><label class="check"><input type="checkbox" id="edContrast"${d.image_contrast === '1' ? ' checked' : ''}><span>Stronger contrast, for light drawings</span></label></div>
+            <span class="muted small" id="edContrastHint" hidden>This image looks light and may print faint. <button type="button" class="link" id="edContrastOn">Use stronger contrast</button></span>` : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
             ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
             <div class="row" style="flex-wrap:wrap;align-items:flex-end">
                 <div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fit ? '' : 'on'}">Scale</button></div></div>
@@ -2397,7 +2430,8 @@ const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
 function sideField(d, what) {
     const on = paired(d);
     const other = d.print_type === 'image_qrcode_text' ? ', the code is on the other side' : '';
-    return `<div title="${on ? `Where the ${what} is next to the text${other}` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+    const why = `Where the ${what} is next to the text${other}`;
+    return `<div id="edSide" data-why="${why}" title="${on ? why : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
         `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
@@ -2630,13 +2664,19 @@ function drawEditor() {
     const empty = isEmptyDesign(E.design);
     printable(empty);
     $('#edSave').disabled = empty;
-    const gap = $('#edGap');
+    // Typing the first line of text, or deleting the last, changes whether
+    // the position and the distance to the text apply
+    const on = paired(E.design), gap = $('#edGap'), side = $('#edSide');
     if (gap) {
-        const on = paired(E.design);
         gap.disabled = !on;
         gap.previousElementSibling.classList.toggle('off', !on);
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
+    }
+    if (side) {
+        $$('[data-side]', side).forEach(b => b.disabled = !on);
+        $('.label-s', side).classList.toggle('off', !on);
+        side.title = on ? side.dataset.why : 'Only with text on the label';
     }
     const files = labelFiles(E.design);
     $('#edFileStep').hidden = files.length < 2;
@@ -2662,6 +2702,8 @@ const drawStage = latest(async () => {
         }
         if (p && p.auto && !empty) setTimeout(() => $('#edFits') && $('#edFits').insertAdjacentHTML('beforeend', ' <span class="muted">Turned automatically to fit the label best.</span>'));
         if (gap && p && paired(E.design)) gap.placeholder = p.gap ? `Automatic, ${dotsToMm(p.gap, dpiOf(E.design.label_size, p.highRes))}` : 'Automatic';
+        // The server finds the image light, stronger contrast would help it
+        if ($('#edContrastHint')) $('#edContrastHint').hidden = !(p && p.faint && !empty);
         if (empty) { const n = $('#edFits'); n.className = 'fits'; n.innerHTML = ''; }
         else fitsNote($('#edFits'), w, err, E.design, () => renderEditor());
         editorFailed = !!refused;
@@ -2778,11 +2820,22 @@ function bindEditor() {
     if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(d, S.tape); renderEditor(); };
     $('#edSize').onchange = e => { changeSize(d, e.target.value); renderEditor(); };
     $('#edFlag').onchange = e => { d.cable_flag = e.target.checked ? '1' : '0'; renderEditor(); };
+    if ($('#edContrast')) $('#edContrast').onchange = e => { d.image_contrast = e.target.checked ? '1' : '0'; renderEditor(); };
+    if ($('#edContrastOn')) $('#edContrastOn').onclick = () => { d.image_contrast = '1'; renderEditor(); };
     // A diameter the server refuses shows why, one being typed waits
     if ($('#edCable')) $('#edCable').addEventListener('input', e => {
         if (e.target.validity.badInput) return;
         d.cable_diameter = e.target.value.trim();
         redrawEditor();
+    });
+    // Taken once typed, a length on the way to another may be too short
+    $('#edLength').addEventListener('change', e => {
+        const v = e.target.value.trim();
+        // Drawn anew the field is replaced, which tells the length again
+        if (v === d.label_length || v !== '' && !(+v > 0)) return;
+        d.label_length = v;
+        // Of a length the content has room to be placed in
+        renderEditor();
     });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
@@ -2793,6 +2846,7 @@ function bindEditor() {
         renderEditor();
     };
     $$('[data-lcut]').forEach(b => b.onclick = () => { d[b.dataset.lcut] = b.dataset.v; renderEditor(); });
+    $$('[data-valign]').forEach(b => b.onclick = () => { d.vertical_align = b.dataset.valign; renderEditor(); });
     // Code
     if ($('#edQrSize')) $('#edQrSize').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.qrcode_size = String(v); redrawEditor(); } });
     if ($('#edQrCorr')) $('#edQrCorr').onchange = e => { d.qrcode_correction = e.target.value; redrawEditor(); };
@@ -2984,7 +3038,8 @@ function printerPanelHTML() {
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
             <span class="grow"><b>${esc(printerLabel(p))}</b><span class="sm">${esc([p.name ? printerName(p) : '', st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
-                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
+                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}
+                ${p.battery_low ? '<span class="sm warn">The battery is low, charge the printer.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>

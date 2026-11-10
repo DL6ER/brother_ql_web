@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import re
-from PIL import Image
+from PIL import Image, ImageChops
 from io import BytesIO
 from typing import BinaryIO
 from PIL.ImageOps import colorize
@@ -30,6 +30,66 @@ def convert_image_to_red_and_black(image: Image.Image,
                                    redpoint: int = 127) -> Image.Image:
     return colorize(on_white(image).convert('L'), black='black', white='white', mid='red',
                     blackpoint=blackpoint, whitepoint=whitepoint, midpoint=redpoint)
+
+
+# Stronger contrast for drawings with light washes, which print faint on ZINK
+# paper: luma to the power of 2.2, the darkest 0.5 % (at most luma 50) black,
+# color differences 1.5 times. Picked on the VC-500W from four printed steps.
+# From luma 225 up it eases back to the image, paper keeps its grain unchanged.
+CONTRAST_GAMMA = 2.2
+CONTRAST_KNEE = 225
+CONTRAST_BLACK_SHARE = 0.005
+CONTRAST_BLACK_MAX = 50
+CONTRAST_CHROMA = 1.5
+# Faint: the picture, without its white background, has its middle luma at
+# least this light and less than this share darker than luma 64
+FAINT_MEDIAN = 200
+FAINT_DARK_SHARE = 0.02
+
+
+def stronger_contrast(image: Image.Image) -> Image.Image:
+    """image with darker middle tones, the darkest bits black and stronger
+    colors. White, black and transparency stay."""
+    alpha = image.convert('RGBA').getchannel('A') if image.has_transparency_data else None
+    y, cb, cr = image.convert('RGB').convert('YCbCr').split()
+    # How much of the image stays, 0 below the knee, 1 at white
+    keep = [(lambda t: t * t * (3 - 2 * t))(max(0, (v - CONTRAST_KNEE) / (255 - CONTRAST_KNEE))) for v in range(256)]
+    kept = y.point([round(255 * k) for k in keep])
+    curve = [255 * (v / 255) ** CONTRAST_GAMMA for v in range(256)]
+    black = min(_percentile(y.point([round(c) for c in curve]).histogram(alpha), CONTRAST_BLACK_SHARE), CONTRAST_BLACK_MAX)
+    y = y.point([round(max(0, c - black) * 255 / (255 - black) * (1 - k) + v * k) for v, c, k in zip(range(256), curve, keep)])
+    chroma = [min(255, max(0, round(128 + (v - 128) * CONTRAST_CHROMA))) for v in range(256)]
+    cb, cr = (Image.composite(c, c.point(chroma), kept) for c in (cb, cr))
+    out = Image.merge('YCbCr', (y, cb, cr)).convert('RGB')
+    if alpha is not None:
+        out.putalpha(alpha)
+    return out
+
+
+def looks_faint(image: Image.Image) -> bool:
+    """Whether the image is light all over, like a drawing in light washes,
+    and would print better with stronger_contrast(). Photos are not."""
+    small = on_white(image).convert('RGB')
+    small.thumbnail((256, 256))
+    y, cb, cr = small.convert('YCbCr').split()
+    # The content: what is not white paper, darker or with some color
+    tinted = [channel.point(lambda v: 255 if abs(v - 128) > 4 else 0) for channel in (cb, cr)]
+    content = ImageChops.lighter(y.point(lambda v: 255 if v <= 245 else 0), ImageChops.lighter(*tinted))
+    histogram = y.histogram(content)
+    pixels = sum(histogram)
+    if pixels < 0.05 * small.width * small.height:
+        return False
+    return _percentile(histogram, 0.5) >= FAINT_MEDIAN and sum(histogram[:64]) < FAINT_DARK_SHARE * pixels
+
+
+def _percentile(histogram: list[int], share: float) -> int:
+    """The value below which share of the counted pixels lie."""
+    wanted, seen = share * sum(histogram), 0
+    for value, count in enumerate(histogram):
+        seen += count
+        if seen >= wanted:
+            return value
+    return len(histogram) - 1
 
 
 def read_file(file: FileStorage | BinaryIO) -> bytes:

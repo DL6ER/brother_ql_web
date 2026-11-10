@@ -41,6 +41,11 @@ _fallback_locks = {}
 _fallback_locks_guard = threading.Lock()
 # The last status of each printer, by lock key
 status_cache = {}
+# Bluetooth connections are set up one at a time. The radio pages one device
+# after another, a PUQU Q00 and a P1L that were off took 5 s each before a
+# Niimbot D110_M was paged, which then gave up after its 10 s. Each now waits
+# for its turn, its time to connect counts from it.
+bluetooth_turn = threading.Lock()
 
 # A printer on Bluetooth that did not answer is not looked for again by the
 # status queries, only when printing on it or when asked to look for printers
@@ -48,6 +53,9 @@ status_cache = {}
 # the radio of a Raspberry Pi 3B busy at every status query, and its Wi-Fi,
 # which shares it, slowed down to seconds.
 _unanswered = {}
+# When the label designer last asked to look for printers. Printers that beep
+# at each connection are asked only then and when printing.
+looked = 0.0
 
 
 def unanswered_before(device_specifier: str) -> Exception | None:
@@ -71,6 +79,8 @@ def note_answer(device_specifier: str, error: Exception | None = None):
 
 def look_again():
     """Look for the printers that did not answer at the next status query."""
+    global looked
+    looked = time.monotonic()
     _unanswered.clear()
 
 

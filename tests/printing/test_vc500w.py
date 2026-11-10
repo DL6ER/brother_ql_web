@@ -867,6 +867,34 @@ def test_webhook_prints_fast_in_color(client, fake):
     assert b > 200 and r < 80
 
 
+@pytest.mark.parametrize('route', ['print', 'repository', 'webhook'])
+def test_images_print_with_stronger_contrast(client, fake, tmp_path, route):
+    # A light wash prints darker with image_contrast, however it is printed
+    png = io.BytesIO()
+    Image.new('RGB', (300, 200), (225, 225, 225)).save(png, 'PNG')
+    data = base64.b64encode(png.getvalue()).decode('ascii')
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+
+    def printed(contrast):
+        label = {'label_size': 'vc25', 'model': 'VC-500W', 'print_type': 'image', 'image_fit': '1', 'image_contrast': contrast}
+        if route == 'print':
+            response = client.post('/labeldesigner/api/print', data={**label, 'text': '[]', 'image': (io.BytesIO(png.getvalue()), 'wash.png')})
+        elif route == 'repository':
+            body = {**label, 'name': 'Wash', 'text': [], 'image_data': data, 'image_mime': 'image/png', 'image_name': 'wash.png'}
+            assert client.post('/labeldesigner/api/repository/save', json=body).status_code == 200
+            response = client.post('/labeldesigner/api/repository/print', json={'name': 'Wash.json'})
+        else:
+            response = client.post('/labeldesigner/api/webhook/print', json={**label, 'password': 'secret', 'images': [data]})
+        assert response.get_json()['success'] is True
+        image = _sent(fake)[-1]
+        return image.getpixel((image.width // 2, image.height // 2))
+
+    plain, strong = printed(0), printed(1)
+    assert max(plain) - min(plain) <= 2 and max(strong) - min(strong) <= 2
+    assert strong[0] < plain[0] - 30
+
+
 def test_printer_error_through_the_label_designer(client, fake):
     fake.statuses = [status_xml(), status_xml('BUSY', 'PRINTING'), status_xml('ERROR', 'PRINTING', 'MEDIA_EMPTY')]
     response = client.post('/labeldesigner/api/print', data={

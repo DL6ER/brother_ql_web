@@ -27,14 +27,15 @@ from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
-from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
+from .label_names import LABELS, MODELS, check_cut, label_dpi, label_length_problem, label_name, label_palette, label_printers, label_size_problem, length_limits
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
 from app.utils import (
     convert_image_to_bw, convert_image_to_grayscale, convert_image_to_red_and_black, fill_first_line_fields,
-    pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError
+    pdffile_to_image, imgfile_to_image, image_to_png_bytes, pdf_page_count, selected_pdf_pages, PageSelectionError,
+    looks_faint, stronger_contrast
 )
 
 # The label size of a request or a saved label that names none, the same for
@@ -208,7 +209,9 @@ def index():
         {'id': label.identifier, 'name': label_name(label), 'form': label.form_factor.name.lower(),
          'tape': list(label.tape_size), 'dots': list(label.dots_printable), 'red': label.color == 1,
          'palette': label_palette(label), 'models': label_printers(label),
-         'dpi': list(drivers.for_label(label.identifier).label_dpi(label))}
+         'dpi': list(drivers.for_label(label.identifier).label_dpi(label)),
+         # The shortest and longest endless label as cut, None without a length to set
+         'length': list(limits[:2]) if (limits := length_limits(label)) else None}
         for label in LABELS
     ]
     return render_template(
@@ -542,6 +545,7 @@ def repo_save():
         _text_fit(data)
         cut = _cutting(data.get)[0]
         check_image_position(data.get('image_position'))
+        check_vertical_align(data.get('vertical_align'))
         check_image_mode(data.get('image_mode'))
         if 'label_size' in data:
             data['label_size'] = stored_label_size(data['label_size'])
@@ -550,8 +554,8 @@ def repo_save():
                 raise ValueError('Unknown label_size')
             for model in label_printers(label):
                 check_cut(cut, model)
-        size = data.get('label_size', DEFAULT_LABEL_SIZE)
-        _cable_flag(data, next(label.form_factor for label in LABELS if label.identifier == size))
+        size = next(label for label in LABELS if label.identifier == data.get('label_size', DEFAULT_LABEL_SIZE))
+        _printed_length(_label_length(data.get('label_length')), size, _cable_flag(data, size.form_factor))
     except ValueError as e:
         _log_refused_request('Saving the label', e)
         return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
@@ -689,7 +693,7 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
-    for key, default in (('image_fit', 1), ('image_crop', 0)):
+    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0)):
         try:
             data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
         except (TypeError, ValueError):
@@ -1072,6 +1076,10 @@ def preview_from_image():
     # The label designer offers to choose pages of a PDF with several
     if page_count:
         response.headers.set('X-PDF-Pages', str(page_count))
+    # It suggests stronger contrast for a light image on the tapes of the VC-500W
+    if (images[0] is not None and _palette(values.get('label_size', DEFAULT_LABEL_SIZE)) == 'color'
+            and not _image_contrast(values) and looks_faint(images[0])):
+        response.headers.set('X-Image-Faint', '1')
     return response
 
 
@@ -1280,6 +1288,12 @@ def _image_mode(d: dict) -> str:
     return 'colored' if _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color' else mode
 
 
+def _image_contrast(d: dict) -> bool:
+    """Whether the image gets stronger contrast, only on the tapes of the
+    VC-500W, where light drawings print faint."""
+    return _palette(d.get('label_size', DEFAULT_LABEL_SIZE)) == 'color' and _whole_or(d.get('image_contrast'), 0) != 0
+
+
 def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, image=_LOAD_IMAGE, mark_blanks: bool = False, layouts: dict | None = None):
     label_size = d.get('label_size', DEFAULT_LABEL_SIZE)
     size = next((label for label in LABELS if label.identifier == label_size), None)
@@ -1318,9 +1332,13 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'high_res': _whole_or(d.get('high_res'), 0) != 0 and _palette(label_size) != 'color',
         'code_text': d.get('code_text', '').strip(),
         'text_fit': _text_fit(d),
+        # Empty: an endless label grows with its content
+        'label_length': _label_length(d.get('label_length')),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
+        # Left out or empty: in the middle of a label with room to spare
+        'vertical_align': check_vertical_align(d.get('vertical_align')),
         'blanks': _blank_values(d.get('blanks')),
         # The settings of the blanks, saved with a label or sent with it
         'blank_fields': _blank_fields(d.get('fields')),
@@ -1355,6 +1373,13 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         width, height = height, width
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
+    # A length given for an endless label is its size along the tape
+    length = _printed_length(context['label_length'], size, diameter, context['high_res'])
+    if length is not None:
+        if label_orientation == LabelOrientation.STANDARD:
+            height = length
+        else:
+            width = length
 
     # For each line in text, we determine and add the font path
     fonts = get_fonts()
@@ -1436,6 +1461,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
         with_code=with_code,
+        fixed_length=length is not None,
+        vertical_align=context['vertical_align'],
         **_flag_wrap(label_size, diameter, context['high_res']),
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
@@ -1459,6 +1486,38 @@ def _text_fit(d: dict) -> str:
     if value not in ('none', 'shrink', 'fill'):
         raise ValueError("text_fit must be none, shrink or fill")
     return value
+
+
+def _label_length(value) -> float | None:
+    """The length of an endless label of a request in millimeters, as it is
+    cut. None (left out, empty or null) lets the label grow with its
+    content."""
+    if value is None or str(value).strip() == '':
+        return None
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        length = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("label_length must be a length in millimeters or empty") from None
+    if not math.isfinite(length) or length <= 0:
+        raise ValueError("label_length must be a length in millimeters or empty")
+    return length
+
+
+def _printed_length(length: float | None, label, diameter: float | None, high_res: bool = False) -> int | None:
+    """Dots along the tape of the print of an endless label of length
+    millimeters as cut, the printer feeds paper before and after it. None
+    where the label has no length set: die-cut labels, cable flags, which
+    hold the label twice, and tapes of printers whose labels grow with their
+    content."""
+    limits = length_limits(label)
+    if length is None or diameter is not None or limits is None:
+        return None
+    problem = label_length_problem(label, length)
+    if problem:
+        raise ValueError(problem)
+    return round((length - 2 * limits[2]) / 25.4 * label_dpi(label.identifier, high_res))
 
 
 def _image_text_gap(value) -> int | None:
@@ -1554,6 +1613,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
     it was read with the label."""
     image_mode = _image_mode(d)
     bw_threshold = int(d.get('image_bw_threshold', 70))
+    contrast = _image_contrast(d)
     # PDFs are rendered at the resolution the label is printed with
     dpi = label_dpi(d.get('label_size', DEFAULT_LABEL_SIZE), _whole_or(d.get('high_res'), 0) != 0)
     pdf_pages = str(d.get('pdf_pages') or '')
@@ -1577,7 +1637,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
         images, page_count = [], None
         for i, upload in enumerate(uploads):
             opened, count = open_images(upload, upload.filename, dpi, pdf_pages, first_only, copies)
-            images += [_convert_image(image, image_mode, bw_threshold) for image in opened]
+            images += [_convert_image(image, image_mode, bw_threshold, contrast) for image in opened]
             if i == 0:
                 page_count = count
         return images, page_count
@@ -1592,7 +1652,7 @@ def load_label_images(d: dict, files: dict, first_only: bool = False, copies: in
             if image_bytes is not None or os.path.exists(image_path):
                 with (io.BytesIO(image_bytes) if image_bytes is not None else open(image_path, 'rb')) as fh:
                     images, page_count = open_images(fh, image_path, dpi, pdf_pages, first_only, copies)
-                    return [_convert_image(image, image_mode, bw_threshold) for image in images], page_count
+                    return [_convert_image(image, image_mode, bw_threshold, contrast) for image in images], page_count
         except PageSelectionError:
             raise
         except Exception:
@@ -1643,13 +1703,13 @@ def _get_label_dimensions(label_size: str, high_res: bool = False):
     return dimensions
 
 
-def _convert_image(img: Image.Image, image_mode: str, bw_threshold: int = 70) -> Image.Image:
+def _convert_image(img: Image.Image, image_mode: str, bw_threshold: int = 70, contrast: bool = False) -> Image.Image:
     if image_mode == 'grayscale':
         return convert_image_to_grayscale(img)
     elif image_mode == 'red_and_black':
         return convert_image_to_red_and_black(img)
     elif image_mode == 'colored':
-        return img
+        return stronger_contrast(img) if contrast else img
     else:
         return convert_image_to_bw(img, bw_threshold)
 
@@ -1720,6 +1780,7 @@ def webhook_print():
         - bw_threshold: black/white threshold 0-255 (default: from config)
         - high_res: 0 or 1 for 600 DPI (default: 0)
         - fast_printing: 0 or 1, 1 prints faster and a little less sharp (default: 0)
+        - image_contrast: 0 or 1, 1 prints the images with stronger contrast on the tapes of the VC-500W (default: 0)
         - printer: printer device specifier (default: from config)
         - model: printer model (default: from config)
 
@@ -1764,6 +1825,7 @@ def webhook_print():
         bw_threshold = int(_param('bw_threshold', current_app.config['IMAGE_DEFAULT_BW_THRESHOLD']))
         high_res = _whole_or(_requested('high_res'), 0) != 0
         fast = _whole_or(_requested('fast_printing'), 0) != 0
+        contrast = _image_contrast({'label_size': label_size, 'image_contrast': _requested('image_contrast')})
         device, model = _printer(_param('printer', None), _param('model', None))
 
         # Validate label_size
@@ -1819,7 +1881,7 @@ def webhook_print():
         # Convert and scale right away, so only label sized images are kept.
         # Images on die-cut labels are turned like with auto-fit in the label
         # designer.
-        img = _convert_image(img, image_mode, bw_threshold)
+        img = _convert_image(img, image_mode, bw_threshold, contrast)
         image_width, image_height, image_orientation = width, height, label_orientation
         if label_type == LabelType.DIE_CUT_LABEL:
             image_width, image_height, image_orientation = _fitting_orientation(img, width, height, label_orientation)
