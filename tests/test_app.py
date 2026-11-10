@@ -166,6 +166,27 @@ def test_printers_from_environment(monkeypatch):
             create_app()
 
 
+def test_printers_with_names_from_environment(monkeypatch):
+    monkeypatch.setenv('PRINTERS', 'Kitchen:QL-700=usb://0x04f9:0x2042, Office desk 2 : QL-1100=file:///dev/usb/lp1,QL-800=simulation')
+    assert create_app().config['PRINTERS'] == [
+        ('QL-700', 'usb://0x04f9:0x2042', 'Kitchen'),
+        ('QL-1100', 'file:///dev/usb/lp1', 'Office desk 2'),
+        ('QL-800', 'simulation'),
+    ]
+    for value in (
+            ':QL-700=file:///dev/usb/lp0',  # an empty name
+            'Kitchen:QL-700=file:///dev/usb/lp0,kitchen:QL-1100=file:///dev/usb/lp1',  # the same name twice
+            'Simulation:QL-700=file:///dev/usb/lp0',  # the name of the simulator
+            'Kit:chen:QL-700=file:///dev/usb/lp0',
+            'Kitchen/1:QL-700=file:///dev/usb/lp0',
+            '-Kitchen:QL-700=file:///dev/usb/lp0',
+            'Kitchen:QL-9999=file:///dev/usb/lp0',
+            'A' * 41 + ':QL-700=file:///dev/usb/lp0'):
+        monkeypatch.setenv('PRINTERS', value)
+        with pytest.raises(ValueError, match='PRINTERS'):
+            create_app()
+
+
 def test_label_designer_below_a_path_behind_a_proxy(monkeypatch):
     headers = {'X-Forwarded-Prefix': '/labels', 'X-Forwarded-Host': 'example.com', 'X-Forwarded-Proto': 'https'}
     # With PROXY_COUNT=0, the default, the headers are not trusted

@@ -39,6 +39,12 @@ DISCOVERY_INTERVAL = 60
 _discovered = None
 
 
+def configured_printers(config) -> list[tuple[str, str, str]]:
+    """The printers of PRINTERS as (model, device, name), the name is empty
+    for a printer without one."""
+    return [(entry[0], entry[1], entry[2] if len(entry) > 2 else '') for entry in config.get('PRINTERS') or []]
+
+
 def is_simulation(device_specifier) -> bool:
     return isinstance(device_specifier, str) and device_specifier in ['simulation', '?']
 
@@ -262,9 +268,10 @@ def get_ptr_status(config: Config):
             # model, a failed query must not move it to another printer. The
             # simulator is listed only when configured, e.g. QL-700=simulation.
             printers = []
-            for (model, device), state in zip(config['PRINTERS'], _configured_states(config['PRINTERS'])):
+            listed = configured_printers(config)
+            for (model, device, name), state in zip(listed, _configured_states([(m, d) for m, d, _ in listed])):
                 state = state or SIMULATOR_PRINTER.copy()
-                state.update({'path': device, 'model': model})
+                state.update({'path': device, 'model': model, 'name': name})
                 state['red_support'] = _red_support(model)
                 printers.append(state)
             return {

@@ -148,6 +148,10 @@ function baseDesign(size) {
 
 // Layouts with an image: alone or with text, or with a code as well
 const withImage = d => d.print_type === 'image' || d.print_type === 'image_qrcode_text';
+// The files of a label, each prints as a label of its own. The editor
+// previews one of them at a time.
+const labelFiles = d => withImage(d) && d.image ? [d.image, ...(d.more_images || [])] : [];
+const fileShown = E => Math.min(E.fileShown || 0, Math.max(0, labelFiles(E.design).length - 1));
 
 // How the text is sized: as set, shrunk where it does not fit, or as large as
 // fits. Labels kept from before have shrink_text only.
@@ -768,7 +772,7 @@ async function refreshPrinters(look = false) {
         // The chosen one comes back by itself when it is there again
         if (chosen && !kept && S.printer && S.printerGone !== chosen) {
             S.printerGone = chosen;
-            toast(`The printer ${chosen.replace('file://', '')} is not connected, labels print on the ${printerName(S.printer)} (${S.printer.path.replace('file://', '')})`);
+            toast(`The printer ${chosen.replace('file://', '')} is not connected, labels print on ${thePrinter(S.printer)} (${S.printer.path.replace('file://', '')})`);
         }
         if (kept) S.printerGone = null;
     } catch (e) {
@@ -780,6 +784,10 @@ async function refreshPrinters(look = false) {
 }
 
 const printerKey = () => (S.printer && S.printer.path) || '';
+// A printer is called by its name, given in PRINTERS, else by its model.
+// Sentences put "the" before a model, not before a name.
+const printerLabel = p => (p && (p.name || printerName(p))) || 'Printer';
+const thePrinter = (p, start = false) => p && p.name ? p.name : `${start ? 'The' : 'the'} ${(p && printerName(p)) || 'printer'}`;
 const manualTape = () => (S.settings.tapes || {})[printerKey()] || '';
 
 // Whether the printer takes a label size, any size if its model is unknown
@@ -843,10 +851,11 @@ function printerState(p) {
 function renderPrinterChip() {
     const chip = $('#printerChip');
     const st = printerState(S.printer);
-    // Phones show the model only
-    const vendor = S.printer && capsOf(S.printer.model).vendor;
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? S.printer.model : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
-    chip.title = st.text;
+    // Phones show the model only, a printer named in PRINTERS its name
+    const vendor = S.printer && !S.printer.name && capsOf(S.printer.model).vendor;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || S.printer.model) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    // A long name is cut short in the chip
+    chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
 }
 
 // --- Printing ------------------------------------------------------------------
@@ -866,7 +875,7 @@ async function printJob(job) {
     const entry = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), time: Date.now(), title: job.title,
         design: clone(job.design), values: Object.assign({}, job.values || {}), copies: job.copies || 1,
-        source: job.source || null, printer: S.printer ? S.printer.model : '', state: 'printing', message: ''
+        source: job.source || null, printer: S.printer ? S.printer.model : '', printerName: (S.printer && S.printer.name) || '', state: 'printing', message: ''
     };
     S.history.unshift(entry);
     saveHistory();
@@ -911,7 +920,7 @@ function announce(entry) {
     if (entry.state === 'printed') {
         if (window.matchMedia('(max-width: 760px)').matches) {
             sheet(`<div class="okc"><i class="fa-solid fa-check"></i></div><h2>${what} printed</h2>
-                <p>${esc(entryName(entry))} on the ${esc(entry.printer || 'printer')}</p>
+                <p>${esc(entryName(entry))} on ${esc(entry.printerName || 'the ' + (entry.printer || 'printer'))}</p>
                 <button class="btn-print" data-close><i class="fa-solid fa-check"></i>Done</button>`);
         } else {
             toast(`Printed ${what}: ${entryName(entry)}`, { label: 'Print again', run: () => again(entry) });
@@ -947,7 +956,7 @@ function tapeGuard(job) {
         const canAdapt = SIZES[job.design.label_size] && SIZES[S.tape] && !flagged;
         sheet(`<div class="okc warn"><i class="fa-solid fa-ruler-combined"></i></div>
             <h2>This label needs ${esc(need)}</h2>
-            <p>The ${esc(S.printer ? printerName(S.printer) : 'printer')} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
+            <p>${esc(thePrinter(S.printer, true))} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
             ${flagged ? '<p>Cable flags need continuous tape.</p>' : ''}
             ${canAdapt ? `<button class="btn-print" data-r="adapt"><i class="fa-solid fa-maximize"></i>Print it on ${esc(have)}</button>` : ''}
             <button class="btn" data-r="anyway">Print anyway</button>
@@ -1323,8 +1332,8 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // their printhead and cutter
     const lead = isEndless(size) ? sizeCaps(design.label_size).lead_mm : 0;
     const lengthMm = isEndless(size) ? along + lead : size.tape[1];
-    // Some printers let labels out the other way round than a QL printer,
-    // the top first. Those that leave sideways leave them as a QL printer.
+    // Labels that leave the printer top first are shown leaving it upwards,
+    // the printer below them. Those that leave sideways have it to their left.
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
@@ -1395,7 +1404,7 @@ function placeOnStage(el, redraw = false) {
     // The front of the printer with its exit slot, its name and status light
     const st = printerState(S.printer);
     const led = `<span class="led ${st.cls}" title="${esc(st.text)}"></span>`;
-    const model = `<span class="model">${esc(S.printer ? printerName(S.printer) : 'Printer')}</span>`;
+    const model = `<span class="model">${esc(printerLabel(S.printer))}</span>`;
     const printer = side
         ? `<div class="printer side" style="height:${dh + 64}px" aria-hidden="true">${led}${model}<span class="mouth" style="height:${dh + 16}px"></span></div>`
         : `<div class="printer top" style="width:${dw + 72}px" aria-hidden="true">${led}${model}<span class="mouth" style="width:${dw + 16}px"></span></div>`;
@@ -1858,7 +1867,7 @@ async function showDetail(item) {
     box.innerHTML = `
         <div class="row"><h2 class="grow">${esc(item.title)}</h2><button class="btn quiet icon close" type="button" title="Close"><i class="fa-solid fa-xmark"></i></button></div>
         ${stageHTML('libStage')}
-        <div>${fits ? `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in the ${esc(S.printer ? printerName(S.printer) : 'printer')}</span>`
+        <div>${fits ? `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in ${esc(thePrinter(S.printer))}</span>`
             : `<span class="badge warn"><i class="fa-solid fa-ruler-combined"></i>Made for ${esc(sizeName(design.label_size))}</span>`}</div>
         <div class="fields" id="libFields"></div>
         <div class="fits" id="libFitsNote"></div>
@@ -1925,6 +1934,13 @@ async function showDetail(item) {
     };
 }
 
+// The content of a code, which may have several lines, e.g. a vCard: they
+// are not wrapped, the field grows with them. The line break after the tag
+// keeps one the code starts with.
+const codeRows = text => Math.min(8, Math.max(1, String(text).split('\n').length));
+const codeField = (id, code, attrs) =>
+    `<textarea class="field code" id="${id}" rows="${codeRows(toDisplay(code))}" wrap="off" spellcheck="false"${attrs}>\n${esc(toDisplay(code))}</textarea>`;
+
 // Labels with blanks get a field per blank. Labels without get a field
 // per line, which changes the line itself.
 function renderFields(box, item, work, refresh, onEnter) {
@@ -1935,7 +1951,7 @@ function renderFields(box, item, work, refresh, onEnter) {
     } else {
         html = work.design.text.map((l, i) => `<div><label class="label-s" for="ln${i}">Line ${i + 1}</label><input class="field" id="ln${i}" data-line="${i}" value="${esc(toDisplay(l.text))}"></div>`).join('');
         if (['qrcode_text', 'qrcode', 'image_qrcode_text'].includes(work.design.print_type)) {
-            html += `<div><label class="label-s" for="lnCode">Code content</label><input class="field" id="lnCode" value="${esc(toDisplay(work.design.code_text))}"${work.design.print_type !== 'qrcode' ? ' placeholder="Empty: the text of the label"' : ''}></div>`;
+            html += `<div><label class="label-s" for="lnCode">Code content</label>${codeField('lnCode', work.design.code_text, work.design.print_type !== 'qrcode' ? ' placeholder="Empty: the text of the label"' : '')}</div>`;
         }
         if (!work.design.text.length && work.design.print_type === 'image') html += '<p class="muted small">An image label without text. Change the design to replace the image.</p>';
     }
@@ -1946,7 +1962,11 @@ function renderFields(box, item, work, refresh, onEnter) {
         l.text = fromDisplay(inp.value, l.text, inp.selectionStart);
         refresh();
     }));
-    if ($('#lnCode', box)) $('#lnCode', box).addEventListener('input', e => { work.design.code_text = fromDisplay(e.target.value, work.design.code_text, e.target.selectionStart); refresh(); });
+    if ($('#lnCode', box)) {
+        $('#lnCode', box).addEventListener('input', e => { e.target.rows = codeRows(e.target.value); work.design.code_text = fromDisplay(e.target.value, work.design.code_text, e.target.selectionStart); refresh(); });
+        // Enter starts a new line of the code
+        $('#lnCode', box).addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onEnter(); } });
+    }
     $$('[data-stepf]', box).forEach(b => b.onclick = () => {
         const inp = $('#' + b.dataset.for, box);
         inp.value = Math.max(0, (parseInt(inp.value, 10) || 0) + +b.dataset.stepf);
@@ -2109,7 +2129,7 @@ function loadEdit() {
     const images = new Map(load(own('designer_edit_images'), []).map(im => [imageKey(im), im]));
     // Stored before images were kept apart, the image is in the label
     const get = r => (r && r.ref ? images.get(r.ref) : r);
-    const d = edit.design;
+    const d = codeWithText(edit.design);
     if (d.image) d.image = get(d.image);
     if (!d.image) delete d.image;
     if (d.more_images) d.more_images = d.more_images.map(get).filter(Boolean);
@@ -2121,8 +2141,17 @@ function loadEdit() {
     return edit;
 }
 
+// A code alone from before is a code with its text left empty, its lines
+// were not printed. A code without content of its own took them, they stay.
+function codeWithText(d) {
+    if (d.print_type !== 'qrcode') return d;
+    d.print_type = 'qrcode_text';
+    if (String(d.code_text || '').trim()) d.text = [Object.assign(d.text[0] || L('', C.defaults.font_size, true), { text: '' })];
+    return d;
+}
+
 function openEditor({ title, design, origin }) {
-    setEdit({ title: title || 'New label', design: clone(design), origin: origin || null });
+    setEdit({ title: title || 'New label', design: codeWithText(clone(design)), origin: origin || null });
     S.focusBlank = true;
     S.editSel = 0;
     if (location.hash === '#edit') renderEditor(); else location.hash = 'edit';
@@ -2130,7 +2159,6 @@ function openEditor({ title, design, origin }) {
 
 function layoutOf(d) {
     if (d.print_type === 'qrcode_text') return 'codetext';
-    if (d.print_type === 'qrcode') return 'code';
     if (d.print_type === 'image') return 'image';
     if (d.print_type === 'image_qrcode_text') return 'imagecode';
     return 'text';
@@ -2171,8 +2199,7 @@ function renderEditor() {
     S.editShown = S.edit;
     const E = S.edit, d = E.design;
     const lay = layoutOf(d);
-    const hasCode = lay === 'code' || lay === 'codetext' || lay === 'imagecode';
-    const hasText = lay !== 'code';
+    const hasCode = lay === 'codetext' || lay === 'imagecode';
     const families = Object.keys(FONTS).sort((a, b) => a.localeCompare(b));
     // The font list in the header sets all lines, each line can have its own
     const used = [...new Set(d.text.map(l => familyOf(l.font)))];
@@ -2183,11 +2210,11 @@ function renderEditor() {
                 <button class="btn sm" type="button" id="edNew" title="Start a new, empty label"><i class="fa-solid fa-plus"></i>New</button>
                 <a class="btn sm" href="#templates" title="Start from a template"><i class="fa-solid fa-swatchbook"></i>Templates</a></div>
             <div><h3 style="margin-bottom:.55rem">Layout</h3><div class="layouts">
-                ${[['text', 'Text', '<i class="t"></i>'], ['codetext', 'Code, text', '<i class="q"></i><i class="t"></i>'], ['image', 'Image, text', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['imagecode', 'Image, code, text', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>'], ['code', 'Code', '<i class="q" style="margin:0 auto"></i>']]
+                ${[['text', 'Text', '<i class="t"></i>'], ['image', 'Image', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['codetext', 'Code', '<i class="q"></i><i class="t"></i>'], ['imagecode', 'Image + Code', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>']]
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
             ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
-                <div class="block-b"><input class="field" id="edCode" value="${esc(toDisplay(d.code_text))}" placeholder="${lay === 'code' ? 'Link or text in the code' : 'Link or text, empty for the text of the label'}" aria-label="Content of the code">
+                <div class="block-b">${codeField('edCode', d.code_text, ' placeholder="Link or text, empty for the text of the label" aria-label="Content of the code"')}
                 ${lay === 'imagecode' ? '<span class="muted small">Fitted to the label when the image is, see Size under Image.</span>'
                     : `<div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>`}
                 ${((qr, fixed) => `<div class="pair">
@@ -2198,7 +2225,7 @@ function renderEditor() {
                 ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' || lay === 'imagecode' ? imageBlock(d) : ''}
-            ${hasText ? `<div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
+            <div class="block"><div class="block-h"><i class="fa-solid fa-font"></i>Text<select id="edFamily" aria-label="Font of all lines" title="Font of all lines">${fam ? missingFont(fam) : '<option value="" selected>Several fonts</option>'}${families.map(f => `<option${f === fam ? ' selected' : ''}>${esc(f)}</option>`).join('')}</select></div>
                 <div id="edLines">${d.text.map((l, i) => lineRow(l, i, mainFamily(d), families, redTape(d), isColorTape(d.label_size))).join('')}</div>
                 <div class="addl">
                     <button class="pill" type="button" id="edAdd"><i class="fa-solid fa-plus"></i>Line</button>
@@ -2209,13 +2236,13 @@ function renderEditor() {
                     <button class="pill${S.tplInfo ? ' on' : ''}" type="button" id="tplInfoBtn" aria-expanded="${!!S.tplInfo}" aria-controls="tplInfo"><i class="fa-solid fa-circle-info"></i>Variables</button>
                 </div>
                 <p class="ed-note">Write <b>[Name]</b> for a blank that is filled in when printing. Variables explains all of them.</p>
-                <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>` : ''}
+                <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
                     <div><label class="label-s" for="edSize">Tape</label>${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select></div>
                     ${flagRow(d)}
-                    <div><span class="label-s">${hasText ? 'Text' : 'Code'} runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
-                    <div${hasText ? '' : ' title="Only with text"'}><span class="label-s${hasText ? '' : ' off'}">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}${hasText ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>
+                    <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
+                    <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
                         ${frameOf(d) === 'none' ? '' : frameDetails(d)}
@@ -2242,6 +2269,11 @@ function renderEditor() {
                 </div>
             </div>
             <div class="fill-in" id="edFields"></div>
+            <div class="file-step" id="edFileStep" hidden>
+                <button class="btn quiet icon" type="button" data-file="-1" title="Previous file" aria-label="Previous file"><i class="fa-solid fa-chevron-left"></i></button>
+                <span id="edFileOf" aria-live="polite"></span>
+                <button class="btn quiet icon" type="button" data-file="1" title="Next file" aria-label="Next file"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
             ${stageHTML('edStage', true)}
         </section>
     </div>`;
@@ -2274,13 +2306,13 @@ function flagRow(d) {
 }
 
 function tapeNote(d) {
-    const model = esc(S.printer ? printerName(S.printer) : 'printer');
-    if (S.tapeUnknown) return `<span class="tape-note warn">The ${model} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
+    const who = esc(thePrinter(S.printer, true));
+    if (S.tapeUnknown) return `<span class="tape-note warn">${who} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
     // An assumed tape matches nothing in the printer
     if (d.label_size === S.tape) return S.tapeAssumed ? '' : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
     if (fitsTape(d.label_size)) return '';
     const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
-    return `<span class="tape-note warn">The ${model} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
+    return `<span class="tape-note warn">${who} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
 }
 
 function imageBlock(d) {
@@ -2293,7 +2325,7 @@ function imageBlock(d) {
     return `<div class="block"><div class="block-h"><i class="fa-regular fa-image"></i>Image</div>
         <div class="block-b">
             <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
-            ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own. The preview shows the first, saving the label keeps only the first.</span>` : ''}
+            ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own with these settings. Step through them above the preview, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
             ${color ? '<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>' : `<div><span class="label-s">Colors</span><div class="seg wrap">${modes.map(([v, n]) => `<button type="button" data-imode="${v}" class="${d.image_mode === v ? 'on' : ''}"${needsRed(v) ? ' disabled title="Needs black and red tape"' : ''}>${n}</button>`).join('')}</div></div>`}
             ${color ? '' : `<label title="${bw ? '' : 'Only for black and white'}"><span class="label-s${bw ? '' : ' off'}">Pixels darker than <b id="edThrV">${esc(d.image_bw_threshold)}</b> of 255 print black${bw ? '' : ', only for black and white'}</span><input type="range" id="edThr" min="1" max="254" value="${esc(d.image_bw_threshold)}"${bw ? '' : ' disabled'}></label>`}
@@ -2604,6 +2636,9 @@ function drawEditor() {
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
     }
+    const files = labelFiles(E.design);
+    $('#edFileStep').hidden = files.length < 2;
+    if (files.length > 1) $('#edFileOf').textContent = `File ${fileShown(E) + 1} of ${files.length}: ${files[fileShown(E)].name}`;
     drawStage();
 }
 // A stage drawn anew, e.g. for another layout, does not wait for the preview
@@ -2612,7 +2647,9 @@ const drawStage = latest(async () => {
     const E = S.edit, stage = $('#edStage');
     if (!E || !stage) return;
     const empty = isEmptyDesign(E.design);
-    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) }) : E.design;
+    const file = fileShown(E);
+    const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) })
+        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file] }) : E.design;
     const gap = $('#edGap');
     await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
         // Where the server put the code or image, its setting shows that
@@ -2641,6 +2678,18 @@ function bindEditor() {
         placeOnStage(e.currentTarget, true);
         $('#edStage .zoom').focus();
     };
+    // From the last file on to the first, the buttons keep the focus
+    const stepFile = by => {
+        const n = labelFiles(E.design).length;
+        E.fileShown = (fileShown(E) + by + n) % n;
+        redrawEditor();
+    };
+    $$('#edFileStep [data-file]').forEach(b => b.onclick = () => stepFile(+b.dataset.file));
+    $('#edFileStep').onkeydown = e => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        e.preventDefault();
+        stepFile(e.key === 'ArrowLeft' ? -1 : 1);
+    };
     $('#edNew').onclick = () => {
         const before = S.edit;
         setEdit(newEdit());
@@ -2654,22 +2703,21 @@ function bindEditor() {
         // Rotation, cropping and scale belong to the image or the code they
         // were set for, also after the text layout between: they would act on
         // the other one, a code does not show them
-        const kindOf = t => (t === 'qrcode' || t === 'qrcode_text') ? 'code' : t === 'image' || t === 'image_qrcode_text' ? 'image' : null;
+        const kindOf = t => t === 'qrcode_text' ? 'code' : t === 'image' || t === 'image_qrcode_text' ? 'image' : null;
         if (E.lookOf === undefined) E.lookOf = kindOf(d.print_type);
-        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', imagecode: 'image_qrcode_text', code: 'qrcode' }[lay];
+        const next = { text: 'text', codetext: 'qrcode_text', image: 'image', imagecode: 'image_qrcode_text' }[lay];
         const kind = kindOf(next);
         if (kind && kind !== E.lookOf && (E.lookOf || kind === 'code')) resetLook(d);
         if (kind) E.lookOf = kind;
         d.print_type = next;
         // Next to text, a code without content of its own holds the text
-        if (lay === 'code' && !d.code_text) d.code_text = (d.text[0] && d.text[0].text) || 'https://example.com';
         if ((lay === 'codetext' || lay === 'imagecode') && !d.code_text && !hasTextLines(d)) d.code_text = 'https://example.com';
-        if (lay !== 'text' && lay !== 'code') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
+        if (lay !== 'text') { setWide(d, true); d.text.forEach(l => { if (l.align === 'center') l.align = 'left'; }); }
         if ((lay === 'codetext' || lay === 'imagecode') && d.qrcode_size === '10') d.qrcode_size = '14';
-        if (lay !== 'code' && !d.text.length) d.text.push(L('Text', 80, true, 'left'));
+        if (!d.text.length) d.text.push(L('Text', 80, true, 'left'));
         renderEditor();
     });
-    if ($('#edCode')) $('#edCode').oninput = e => { d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
+    if ($('#edCode')) $('#edCode').oninput = e => { e.target.rows = codeRows(e.target.value); d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
     if ($('#edBarcode')) $('#edBarcode').onchange = e => {
         d.barcode_type = e.target.value;
         // A QR code has the size of a dot instead of a scale
@@ -2876,6 +2924,7 @@ function readImages(files) {
         d.image = first;
         if (more.length) d.more_images = more; else delete d.more_images;
         if (!withImage(d)) d.print_type = 'image';
+        S.edit.fileShown = 0;
         renderEditor();
     }).catch(() => toast('The file could not be read'));
 }
@@ -2932,7 +2981,7 @@ function printerPanelHTML() {
         const st = printerState(p);
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
-            <span class="grow"><b>${esc(printerName(p) || 'Printer')}</b><span class="sm">${esc([st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
+            <span class="grow"><b>${esc(printerLabel(p))}</b><span class="sm">${esc([p.name ? printerName(p) : '', st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
                 ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
@@ -3001,7 +3050,7 @@ function settingsCard() {
             <button type="button" data-q="fast" class="${q === 'fast' ? 'on' : ''}"${oneQuality ? ONE : ''}>Fast</button>
             <button type="button" data-q="quality" class="${q === 'quality' ? 'on' : ''}"${oneQuality ? ONE : ''}>Quality</button>
             ${!offersHigh ? '' : `<button type="button" data-q="high" class="${q === 'high' ? 'on' : ''}"${noHigh ? ' disabled title="This printer cannot print at 600 dpi"' : ''}>600 dpi, slow</button>`}</div>
-            ${noHigh ? `<span class="muted small">The ${esc(printerName(p))} cannot print at 600 dpi.</span>` : ''}
+            ${noHigh ? `<span class="muted small">${esc(thePrinter(p, true))} cannot print at 600 dpi.</span>` : ''}
             <div class="info-box" id="qInfo"${S.qualityInfo ? '' : ' hidden'}>
                 ${caps.colors === 'color' ? `<p>Fast printing is a few seconds quicker, colors come out lighter. Quality heats the paper longer for stronger colors.</p>
                 <p>A label takes about 40 seconds, most of it to prepare and preheat. With "After each label" take every label out of the printer, the next one waits for that. "After the last label" keeps the labels together on a strip.</p>`
@@ -3163,7 +3212,7 @@ async function receiveShared() {
         d.image = { data: item.data, mime: item.type, name: item.name };
         edit.title = item.name.replace(/\.[^.]+$/, '') || edit.title;
     } else if (item.url) {
-        d.print_type = 'qrcode';
+        d.print_type = 'qrcode_text';
         d.code_text = item.url;
     } else {
         d.text = item.text.split(/\r?\n/).filter(t => t.trim()).map((t, i) => L(t, i ? 44 : 70, i === 0));

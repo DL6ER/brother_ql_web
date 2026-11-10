@@ -88,10 +88,10 @@ class Driver:
         off by hand with a lever, half cuts between labels and chain prints,
         whether it feeds tape before the first label, reports the stage of a
         job it prints, its colors, why it does not leave labels uncut, if it
-        does not, whether labels that leave it top first come out turned
-        around from how the label designer shows them leaving a QL printer,
-        the blank paper in mm before each label that is cut, which was between
-        printhead and cutter, and the maker of the model."""
+        does not, whether labels leave it top first, the label designer then
+        shows the printer below them, the blank paper in mm before each label
+        that is cut, which was between printhead and cutter, and the maker of
+        the model."""
         return {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
                 'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': self.colors(model),
                 'never_cut': '', 'leaves_turned': False, 'lead_mm': 0, 'vendor': self.vendor}

@@ -2,6 +2,7 @@
 and shared."""
 
 import io
+import re
 
 import pytest
 from PIL import Image
@@ -48,6 +49,48 @@ def test_several_images_are_printed(designer, monkeypatch, tmp_path):
     assert len(list(tmp_path.glob('*.png'))) == 2
 
 
+def test_each_of_several_files_can_be_previewed(designer):
+    # They print with the same settings, each can be checked before printing
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+        {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
+        {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
+    ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
+    wait_for_preview(designer)
+    assert designer.inner_text('#edFileOf') == 'File 1 of 3: one.png'
+    first = preview_size(designer)
+    # The preview of the second file is made of that file alone
+    with designer.expect_request('**/api/preview') as request:
+        designer.click('#edFileStep [data-file="1"]')
+    assert re.findall(rb'filename="([^"]*)"', request.value.post_data_buffer) == [b'two.png']
+    wait_for_preview(designer)
+    assert designer.inner_text('#edFileOf') == 'File 2 of 3: two.png'
+    assert preview_size(designer) != first
+    # With the arrow keys, from the first file on to the last
+    designer.focus('#edFileStep [data-file="-1"]')
+    designer.keyboard.press('ArrowLeft')
+    wait_for_preview(designer)
+    assert preview_size(designer) == first
+    designer.keyboard.press('ArrowLeft')
+    wait_for_preview(designer)
+    assert designer.inner_text('#edFileOf') == 'File 3 of 3: three.png'
+    assert designer.evaluate('() => document.activeElement.dataset.file') == '-1'
+    # Also in the large preview
+    designer.click('#edStage .zoom')
+    assert designer.is_visible('#edFileStep') and 'large' in designer.get_attribute('#edStage', 'class').split()
+    # All three are printed
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert re.findall(rb'filename="([^"]*)"', request.value.post_data_buffer) == [b'one.png', b'two.png', b'three.png']
+    # New files are previewed from the first, a single one needs no steps
+    designer.set_input_files('#edFile', files=[{'name': 'four.png', 'mimeType': 'image/png', 'buffer': png()}])
+    designer.wait_for_selector('#edFileStep', state='hidden')
+    assert designer.evaluate('() => fileShown(S.edit)') == 0
+
+
 def test_pages_of_a_pdf_can_be_chosen(designer):
     designer.click('[data-lay="image"]')
     wait_for_preview(designer)
@@ -89,8 +132,9 @@ def test_shared_image_becomes_the_label(designer, server):
 
 def test_shared_link_becomes_a_qr_code(designer, server):
     share(designer, server, text='https://example.com/shelf/12')
-    assert 'on' in designer.get_attribute('[data-lay="code"]', 'class')
+    assert 'on' in designer.get_attribute('[data-lay="codetext"]', 'class')
     assert designer.input_value('#edCode') == 'https://example.com/shelf/12'
+    assert designer.evaluate('() => [S.edit.design.print_type, S.edit.design.text.map(l => l.text)]') == ['qrcode_text', ['']]
 
 
 def test_shared_text_becomes_the_label(designer, server):

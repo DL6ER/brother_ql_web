@@ -5,6 +5,8 @@ import base64
 import json
 from urllib.parse import parse_qs
 
+import pytest
+
 from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
 
 
@@ -149,6 +151,34 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     assert designer.inner_text('#printerChip b') == 'Brother QL-1100'
     offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
     assert '103x164' in offered and '62red' not in offered
+
+
+def test_configured_printers_are_shown_by_their_names(designer, app, monkeypatch):
+    other = 'file:///nonexistent/lp0'
+    monkeypatch.setitem(app.config, 'PRINTERS', [('QL-800', 'simulation', 'Desk'), ('QL-1100', other, 'Shelf'), ('QL-700', 'file:///nonexistent/lp1')])
+    designer.reload()
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip b') == 'Desk'
+    assert designer.inner_text('#edStage .printer .model') == 'Desk'
+    designer.click('#printerChip')
+    rows = designer.eval_on_selector_all('.plist [data-printer] .grow', 'rows => rows.map(r => [r.querySelector("b").textContent, r.querySelector(".sm").textContent])')
+    # The model next to the name, a printer without one shows its model
+    assert [name for name, _ in rows] == ['Desk', 'Shelf', 'Brother QL-700']
+    assert rows[0][1].startswith('Brother QL-800, ') and rows[1][1].startswith('Brother QL-1100, ')
+    assert not rows[2][1].startswith('Brother QL-700')
+    designer.click(f'[data-printer="{other}"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip b') == 'Shelf'
+
+
+@pytest.mark.parametrize('name, called', [('Kitchen', 'Kitchen'), ('', 'The Brother QL-800')])
+def test_sentences_call_a_printer_by_its_name(designer, name, called):
+    # "the" before a model, not before a name
+    fake_printer(designer, name=name, media_width=29, media_length=90)
+    designer.select_option('#edSize', '62')
+    wait_for_preview(designer)
+    assert designer.inner_text('.tape-note').startswith(f'{called} has 29 x 90 mm')
 
 
 def test_no_600_dpi_on_the_ql1100(designer):
@@ -409,7 +439,7 @@ def test_printer_still_being_asked_is_not_shown_as_failing(designer):
 
 
 def test_labels_of_a_q00_leave_it_turned(designer):
-    # They come out readable, the other way round than from a QL printer
+    # Their top comes out first
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
         openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
     wait_for_preview(designer)
@@ -417,15 +447,16 @@ def test_labels_of_a_q00_leave_it_turned(designer):
     # The printer stands below the label, which leaves it upwards
     assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'column-reverse'
     assert designer.locator('#edStage .flow .fa-arrow-up-long').count() == 1
-    # Labels that leave it sideways leave it as from a QL printer, their end
-    # first, the printer to their left
+    # Labels that leave it sideways have the printer to their left
     designer.evaluate("() => { S.tape = 'puqu50x80'; openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x80'), { text: [L('Q', 40)] }) }); }")
     wait_for_preview(designer)
     classes = designer.get_attribute('#edStage', 'class').split()
     assert 'side' in classes and 'turned' not in classes
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700' }); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
-    wait_for_preview(designer)
-    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    # As those of a QL or P-touch printer, their top first, unlike the VC-500W
+    for model, tape, turned in (('QL-700', '62', True), ('PT-P700', 'pt12', True), ('VC-500W', 'vc25', False)):
+        designer.evaluate(f"() => {{ S.printer = Object.assign({{}}, S.printer, {{ model: '{model}' }}); S.tape = '{tape}'; openEditor({{ title: 'Q', design: Object.assign(baseDesign('{tape}'), {{ text: [L('Q', 40)] }}) }}); }}")
+        wait_for_preview(designer)
+        assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
 
 
 def test_receipt_shows_the_blank_paper_before_it(designer):

@@ -87,7 +87,7 @@ def test_label_designer_gets_what_each_printer_offers(tmp_path):
     assert set(models) == set(drivers.MODELS)
     assert models['QL-800'] == {'qualities': ['fast', 'quality', 'high'], 'high_res': True, 'cutter': True, 'manual_cutter': False,
                                 'half_cut': False, 'chain': False, 'feed_waste': False, 'job_stages': False, 'colors': 'red',
-                                'never_cut': '', 'leaves_turned': False, 'lead_mm': 0, 'vendor': 'Brother'}
+                                'never_cut': '', 'leaves_turned': True, 'lead_mm': 0, 'vendor': 'Brother'}
     assert (models['QL-1100']['high_res'], models['PT-P700']['half_cut'], models['PT-P700']['chain']) == (False, False, True)
     assert models['PT-E550W']['half_cut'] and models['PT-E550W']['feed_waste']
     assert models['VC-500W'] == {'qualities': ['fast', 'quality'], 'high_res': False, 'cutter': True, 'manual_cutter': False,
