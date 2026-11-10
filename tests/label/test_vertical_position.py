@@ -33,6 +33,8 @@ def _ink(response) -> tuple:
     {'label_size': '62x100'},
     # Along endless tape the room is across it
     {'label_size': '62', 'orientation': 'rotated'},
+    # Endless tape of a fixed length is laid out as a die-cut label
+    {'label_size': '62', 'label_length': '60'},
 ])
 def test_the_content_is_at_the_top_in_the_middle_or_at_the_bottom(tmp_path, values):
     client = make_client(tmp_path)

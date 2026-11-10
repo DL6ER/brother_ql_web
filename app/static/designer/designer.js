@@ -168,11 +168,12 @@ function setTextFit(d, fit) {
 }
 
 // Where the content is between the top and bottom margins, as the text
-// reads. An endless label across the tape is as long as its content.
+// reads. An endless label across the tape is as long as its content, unless
+// it has a length.
 const VERTICAL_ALIGNS = [['top', 'Top'], ['center', 'Middle'], ['bottom', 'Bottom']];
 const verticalAlign = d => d.vertical_align || 'center';
 const NO_ROOM = 'Endless labels end where the content ends, there is no room to place it in';
-const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d));
+const hasRoom = d => !(SIZES[d.label_size] && isEndless(SIZES[d.label_size]) && !runsAlong(d) && !hasFixedLength(d));
 
 // Labels as the API stores them (text as JSON, booleans as true/false)
 function normalize(raw) {
@@ -2334,6 +2335,8 @@ function tapeNote(d) {
 // offers one for the tape. Die-cut labels have their own, it shows as the hint.
 const LENGTH_TITLE = 'The label as cut, with the margin the printer leaves before and after the print. Empty: as long as its content.';
 const hasLength = d => !!SIZES[d.label_size] && !!SIZES[d.label_size].length && !flagOn(d);
+// An endless label of a length typed is laid out as a die-cut one
+const hasFixedLength = d => hasLength(d) && +d.label_length > 0;
 const lengthWhy = d => hasLength(d) ? LENGTH_TITLE : isDieCut(d.label_size) ? 'Die-cut labels have their own length'
     : flagOn(d) ? 'Cable flags are as long as their content' : 'Labels on this tape are as long as their content';
 const lengthLabel = d => `<label class="label-s${hasLength(d) ? '' : ' off'}" for="edLength" title="${lengthWhy(d)}">Length, mm</label>`;
@@ -2819,9 +2822,11 @@ function bindEditor() {
     // Taken once typed, a length on the way to another may be too short
     $('#edLength').addEventListener('change', e => {
         const v = e.target.value.trim();
-        if (v !== '' && !(+v > 0)) return;
+        // Drawn anew the field is replaced, which tells the length again
+        if (v === d.label_length || v !== '' && !(+v > 0)) return;
         d.label_length = v;
-        redrawEditor();
+        // Of a length the content has room to be placed in
+        renderEditor();
     });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
