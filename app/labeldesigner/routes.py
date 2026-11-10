@@ -28,7 +28,7 @@ from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
 from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, datetime_codes, parse_color
-from .label_names import LABELS, MODELS, check_cut, label_dpi, label_name, label_palette, label_printers, label_size_problem
+from .label_names import LABELS, MODELS, check_cut, label_dpi, label_length_problem, label_name, label_palette, label_printers, label_size_problem, length_limits
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
 from werkzeug.utils import secure_filename
@@ -209,7 +209,9 @@ def index():
         {'id': label.identifier, 'name': label_name(label), 'form': label.form_factor.name.lower(),
          'tape': list(label.tape_size), 'dots': list(label.dots_printable), 'red': label.color == 1,
          'palette': label_palette(label), 'models': label_printers(label),
-         'dpi': list(drivers.for_label(label.identifier).label_dpi(label))}
+         'dpi': list(drivers.for_label(label.identifier).label_dpi(label)),
+         # The shortest and longest endless label as cut, None without a length to set
+         'length': list(limits[:2]) if (limits := length_limits(label)) else None}
         for label in LABELS
     ]
     return render_template(
@@ -551,8 +553,8 @@ def repo_save():
                 raise ValueError('Unknown label_size')
             for model in label_printers(label):
                 check_cut(cut, model)
-        size = data.get('label_size', DEFAULT_LABEL_SIZE)
-        _cable_flag(data, next(label.form_factor for label in LABELS if label.identifier == size))
+        size = next(label for label in LABELS if label.identifier == data.get('label_size', DEFAULT_LABEL_SIZE))
+        _printed_length(_label_length(data.get('label_length')), size, _cable_flag(data, size.form_factor))
     except ValueError as e:
         _log_refused_request('Saving the label', e)
         return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
@@ -1329,6 +1331,8 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'high_res': _whole_or(d.get('high_res'), 0) != 0 and _palette(label_size) != 'color',
         'code_text': d.get('code_text', '').strip(),
         'text_fit': _text_fit(d),
+        # Empty: an endless label grows with its content
+        'label_length': _label_length(d.get('label_length')),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
@@ -1366,6 +1370,13 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         width, height = height, width
     if label_orientation == LabelOrientation.ROTATED:
         height, width = width, height
+    # A length given for an endless label is its size along the tape
+    length = _printed_length(context['label_length'], size, diameter, context['high_res'])
+    if length is not None:
+        if label_orientation == LabelOrientation.STANDARD:
+            height = length
+        else:
+            width = length
 
     # For each line in text, we determine and add the font path
     fonts = get_fonts()
@@ -1447,6 +1458,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         mark_blanks=context['mark_blanks'],
         layouts=layouts,
         with_code=with_code,
+        fixed_length=length is not None,
         **_flag_wrap(label_size, diameter, context['high_res']),
     )
     if (label_type == LabelType.DIE_CUT_LABEL and image_label and image is not None
@@ -1470,6 +1482,38 @@ def _text_fit(d: dict) -> str:
     if value not in ('none', 'shrink', 'fill'):
         raise ValueError("text_fit must be none, shrink or fill")
     return value
+
+
+def _label_length(value) -> float | None:
+    """The length of an endless label of a request in millimeters, as it is
+    cut. None (left out, empty or null) lets the label grow with its
+    content."""
+    if value is None or str(value).strip() == '':
+        return None
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        length = float(value)
+    except (TypeError, ValueError):
+        raise ValueError("label_length must be a length in millimeters or empty") from None
+    if not math.isfinite(length) or length <= 0:
+        raise ValueError("label_length must be a length in millimeters or empty")
+    return length
+
+
+def _printed_length(length: float | None, label, diameter: float | None, high_res: bool = False) -> int | None:
+    """Dots along the tape of the print of an endless label of length
+    millimeters as cut, the printer feeds paper before and after it. None
+    where the label has no length set: die-cut labels, cable flags, which
+    hold the label twice, and tapes of printers whose labels grow with their
+    content."""
+    limits = length_limits(label)
+    if length is None or diameter is not None or limits is None:
+        return None
+    problem = label_length_problem(label, length)
+    if problem:
+        raise ValueError(problem)
+    return round((length - 2 * limits[2]) / 25.4 * label_dpi(label.identifier, high_res))
 
 
 def _image_text_gap(value) -> int | None:

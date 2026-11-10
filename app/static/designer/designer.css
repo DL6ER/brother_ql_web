@@ -372,6 +372,8 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .margins label { display: flex; flex-direction: column; gap: .15rem; font-size: .75rem; color: var(--muted); }
 .margins .field { padding: .35rem .45rem; font-size: .9rem; }
 .frame-details { display: flex; flex-direction: column; gap: .2rem; padding: .6rem .7rem; background: var(--surface-2); border-radius: 9px; }
+.tape-row { display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem; column-gap: .5rem; align-items: end; }
+.tape-row .tape-note { grid-column: 1 / -1; }
 .tape-note { display: block; font-size: .8rem; margin: -.15rem 0 .35rem; }
 .tape-note.ok { color: var(--ok); }
 .tape-note.warn { color: var(--warn); }

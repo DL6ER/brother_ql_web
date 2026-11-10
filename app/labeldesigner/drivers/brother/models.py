@@ -69,11 +69,21 @@ MODELS_WITHOUT_600_DPI = ('QL-1100', 'QL-1110NWB', 'QL-1115NWB', 'PT-E550W', 'PT
 # P-touch printers with a half cutter, the PT-P700 has none
 HALF_CUTTERS = ('PT-E550W', 'PT-P750W', 'PT-P900W', 'PT-P950NW')
 
+# Brother's raster command references: a print of at least 12.7 mm (150
+# dots) on QL printers, 4.4 mm (31 dots at 180 dpi) on TZe tape
+MIN_PRINT_LENGTH = 12.7
+MIN_PTOUCH_PRINT_LENGTH = 4.4
+
+
+def longest_label(model: str) -> int:
+    """The longest label the model prints, in whole mm."""
+    spec = MODELS[model]
+    return round(spec.max_length_dots / spec.dpi * 25.4)
+
 
 def length_problem(model: str) -> str:
     """Why a label is too long for the model."""
-    spec = MODELS[model]
-    return f'Labels on the {model} can be at most {round(spec.max_length_dots / spec.dpi * 25.4)} mm long'
+    return f'Labels on the {model} can be at most {longest_label(model)} mm long'
 
 
 def resolution_problem(model: str, high_res: bool) -> str:

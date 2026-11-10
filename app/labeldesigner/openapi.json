@@ -1674,6 +1674,12 @@
             ],
             "default": "standard"
           },
+          "label_length": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 3000,
+            "description": "Length of an endless label as cut, in millimeters, with the margin the printer feeds before and after the print: 3 mm each on QL printers, 2 mm on TZe tape, 1 mm on that of the PT-P900 series. The content is laid out in it as on a die-cut label. At least 12.7 mm (TZe tape: 4.4 mm) and these margins, at most the longest label a printer of the tape prints, e.g. 3000 mm on 62 mm tape (QL-1100), which a QL-800 refuses to print beyond 1000 mm. Empty or left out, the label is as long as its content. Die-cut labels have their own length and do not use it, neither do cable flags and the tapes of the VC-500W and of receipt printers, whose labels are as long as their content."
+          },
           "high_res": {
             "type": "integer",
             "enum": [
