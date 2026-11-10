@@ -180,6 +180,8 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 /* The stage: the front of the printer with the label leaving it */
 .stage { background: var(--stage); border-radius: 14px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.6rem 3rem 2.8rem; min-height: 180px; }
 .stage.side { flex-direction: row; }
+/* Room below the size of the label for how copies are cut in the corner */
+.stage:not(.side):not(.turned):not(.large) { padding-bottom: 4.4rem; }
 .stage .printer { position: relative; z-index: 2; flex: none; display: flex; align-items: center; gap: .45rem; color: var(--printer-ink); font-size: .7rem; font-weight: 650; letter-spacing: .03em; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 18px rgba(0, 0, 0, .22); }
 .stage .printer.top { height: 58px; padding: .55rem .9rem 0; align-items: flex-start; border-radius: 14px 14px 6px 6px; background: linear-gradient(180deg, var(--printer-top), var(--printer-bottom)); max-width: 100%; }
 .stage .printer.side { width: 58px; padding: .8rem 0 0; flex-direction: column; border-radius: 14px 6px 6px 14px; background: linear-gradient(90deg, var(--printer-top), var(--printer-bottom)); align-self: center; }
@@ -242,9 +244,11 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .dim-x::before, .stage .dim-x::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .5; }
 .stage .dim-y { top: 0; bottom: 0; right: -2.7rem; flex-direction: column; justify-content: center; }
 .stage .dim-y::before, .stage .dim-y::after { content: ""; flex: 1; border-left: 1px solid currentColor; opacity: .5; }
-/* Printers that let labels out the other way round than a QL printer, the
-   top first, stand below the label, so that it shows as it comes out */
+/* Printers that let labels out top first stand below the label, so that it
+   shows as it comes out */
 .stage.turned { flex-direction: column-reverse; padding-top: 2.8rem; }
+/* How copies are cut is above a large label */
+.stage.large.turned { padding: 4rem 3rem 1.6rem; }
 .stage.turned .printer.top { border-radius: 6px 6px 14px 14px; background: linear-gradient(0deg, var(--printer-top), var(--printer-bottom)); align-items: flex-end; padding: 0 .9rem .55rem; }
 .stage.turned .printer.top .mouth { bottom: auto; top: 4px; }
 .stage.turned .feed { margin-top: 0; margin-bottom: -8.5px; }

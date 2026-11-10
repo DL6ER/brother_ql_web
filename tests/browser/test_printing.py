@@ -439,7 +439,7 @@ def test_printer_still_being_asked_is_not_shown_as_failing(designer):
 
 
 def test_labels_of_a_q00_leave_it_turned(designer):
-    # They come out readable, the other way round than from a QL printer
+    # Their top comes out first
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
         openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
     wait_for_preview(designer)
@@ -447,15 +447,16 @@ def test_labels_of_a_q00_leave_it_turned(designer):
     # The printer stands below the label, which leaves it upwards
     assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'column-reverse'
     assert designer.locator('#edStage .flow .fa-arrow-up-long').count() == 1
-    # Labels that leave it sideways leave it as from a QL printer, their end
-    # first, the printer to their left
+    # Labels that leave it sideways have the printer to their left
     designer.evaluate("() => { S.tape = 'puqu50x80'; openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x80'), { text: [L('Q', 40)] }) }); }")
     wait_for_preview(designer)
     classes = designer.get_attribute('#edStage', 'class').split()
     assert 'side' in classes and 'turned' not in classes
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700' }); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
-    wait_for_preview(designer)
-    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    # As those of a QL or P-touch printer, their top first, unlike the VC-500W
+    for model, tape, turned in (('QL-700', '62', True), ('PT-P700', 'pt12', True), ('VC-500W', 'vc25', False)):
+        designer.evaluate(f"() => {{ S.printer = Object.assign({{}}, S.printer, {{ model: '{model}' }}); S.tape = '{tape}'; openEditor({{ title: 'Q', design: Object.assign(baseDesign('{tape}'), {{ text: [L('Q', 40)] }}) }}); }}")
+        wait_for_preview(designer)
+        assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
 
 
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):

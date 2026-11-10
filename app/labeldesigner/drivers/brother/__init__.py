@@ -55,7 +55,9 @@ class BrotherRaster(Driver):
         cutting = MODELS[model].cutting
         return dict(super().capabilities(model), qualities=['fast', 'quality', 'high'],
                     high_res=not resolution_problem(model, True), cutter=cutting, manual_cutter=not cutting,
-                    half_cut=model in HALF_CUTTERS, chain=ptouch, feed_waste=ptouch)
+                    half_cut=model in HALF_CUTTERS, chain=ptouch, feed_waste=ptouch,
+                    # The top of a label leaves a QL or P-touch printer first
+                    leaves_turned=True)
 
     def resolution_problem(self, model, high_res):
         return resolution_problem(model, high_res)
