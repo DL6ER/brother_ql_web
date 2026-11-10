@@ -856,6 +856,9 @@ function renderPrinterChip() {
     chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || S.printer.model) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
     // A long name is cut short in the chip
     chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
+    // The printer on the stages shows the same, they are drawn again only
+    // with another preview
+    $$('.stage .printer .led').forEach(led => { led.className = `led ${st.cls}`; led.title = st.text; });
 }
 
 // --- Printing ------------------------------------------------------------------

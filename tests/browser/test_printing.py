@@ -570,3 +570,12 @@ def test_cutting_does_not_render_the_preview_again(designer):
     designer.select_option('#edCut', 'none')
     wait_for_preview(designer)
     assert asked == []
+
+
+def test_printer_on_the_stage_follows_its_status(designer):
+    # It kept the status of the last preview, red while the printer list was green
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { status_type: 'Reply to status request', errors: ['The cover of the printer is open'] }); renderPrinterChip(); }""")
+    assert designer.get_attribute('#edStage .printer .led', 'class') == 'led bad'
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { errors: [] }); renderPrinterChip(); }""")
+    assert designer.get_attribute('#edStage .printer .led', 'class') == 'led '
+    assert designer.get_attribute('#edStage .printer .led', 'title') == 'Ready'
