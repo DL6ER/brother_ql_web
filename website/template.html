@@ -13,6 +13,10 @@
     <link rel="icon" href="app/static/images/app/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="app/static/images/app/apple-touch-icon.png">
     <link rel="stylesheet" href="site.css">
+    <script>
+        // Light or dark as chosen with the switch, else as the system is set
+        try { const t = localStorage.getItem('theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+    </script>
 </head>
 <body>
     <header class="bar">
@@ -27,6 +31,9 @@
             <a href="#api">API</a>
             <a href="https://github.com/DL6ER/labelburg">GitHub</a>
         </nav>
+        <button class="theme" id="theme" type="button" title="Light or dark" aria-label="Switch between light and dark">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></svg>
+        </button>
     </header>
     <main id="top">
         <section class="hero">
@@ -53,5 +60,14 @@
     <footer>
         <p>Labelburg is free software under the GPLv3. <a href="https://github.com/DL6ER/labelburg">Source, issues and releases on GitHub</a>.</p>
     </footer>
+    <script>
+        // The switch turns to the other of light and dark and keeps it
+        document.getElementById('theme').addEventListener('click', () => {
+            const root = document.documentElement;
+            const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+            root.dataset.theme = dark ? 'light' : 'dark';
+            try { localStorage.setItem('theme', root.dataset.theme); } catch (e) {}
+        });
+    </script>
 </body>
 </html>

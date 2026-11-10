@@ -45,6 +45,20 @@ def _rewrite(page: str, out: Path) -> str:
     return re.sub(r'\b(href|src)="([^"]*)"', attr, page)
 
 
+def _with_dark(page: str) -> str:
+    """Screenshots with a copy named <name>-dark.png next to them shown as
+    that copy in dark mode."""
+    def img(m):
+        src = html.unescape(m.group(1)).removeprefix('./')
+        dark = re.sub(r'\.png$', '-dark.png', src)
+        if dark == src or not (ROOT / dark).exists():
+            return m.group(0)
+        tag = m.group(0)
+        return (tag.replace('<img ', '<img class="light-only" ', 1)
+                + tag.replace('<img ', '<img class="dark-only" loading="lazy" ', 1).replace(m.group(1), html.escape(dark)))
+    return re.sub(r'<img [^>]*\bsrc="([^"]+)"[^>]*>', img, page)
+
+
 def build(out: Path):
     readme = (ROOT / 'README.md').read_text(encoding='utf-8')
     head, _, body = readme.partition('\n## ')
@@ -67,7 +81,8 @@ def build(out: Path):
     page = (SITE / 'template.html').read_text(encoding='utf-8')
     page = (page.replace('{{tagline}}', html.escape(tagline))
             .replace('{{about}}', html.escape(f'{tagline}. {html.unescape(about)}', quote=True))
-            .replace('{{intro}}', _rewrite(intro_html, out)).replace('{{body}}', _rewrite(body_html, out)))
+            .replace('{{intro}}', _rewrite(_with_dark(intro_html), out))
+            .replace('{{body}}', _rewrite(_with_dark(body_html), out)))
     (out / 'index.html').write_text(page, encoding='utf-8')
     shutil.copyfile(SITE / 'site.css', out / 'site.css')
     for asset in ASSETS:

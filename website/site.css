@@ -1,5 +1,5 @@
 /* The project website, in the colors of the label designer. Light or dark
-   as the system is set. */
+   as the system is set, or as chosen with the switch. */
 @font-face {
     font-family: "Archivo";
     src: url("app/static/designer/archivo.woff2") format("woff2");
@@ -22,8 +22,10 @@
     --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
     color-scheme: light;
 }
+/* Dark as the system is set, unless the switch chose light, or chosen
+   with the switch */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --page: #111315;
         --surface: #1b1e21;
         --surface-2: #23272b;
@@ -36,6 +38,26 @@
         color-scheme: dark;
     }
 }
+:root[data-theme="dark"] {
+    --page: #111315;
+    --surface: #1b1e21;
+    --surface-2: #23272b;
+    --ink: #f2f3f4;
+    --on-ink: #111315;
+    --muted: #9aa3ac;
+    --line: #343a40;
+    --link: #7ea2ff;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+    color-scheme: dark;
+}
+/* Screenshots of the label designer in light or dark, see website/build.py */
+.dark-only { display: none !important; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .light-only { display: none !important; }
+    :root:not([data-theme="light"]) .dark-only { display: block !important; }
+}
+:root[data-theme="dark"] .light-only { display: none !important; }
+:root[data-theme="dark"] .dark-only { display: block !important; }
 
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 4.5rem; }
@@ -43,9 +65,11 @@ body { margin: 0; background: var(--page); color: var(--ink); font: 400 1rem/1.6
 a { color: var(--link); text-underline-offset: 2px; }
 img { max-width: 100%; height: auto; }
 
-.bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .7rem max(1rem, calc((100% - 72rem) / 2)); background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.bar { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 1rem; padding: .7rem max(1rem, calc((100% - 72rem) / 2)); background: color-mix(in srgb, var(--page) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
 .brand { display: flex; align-items: center; gap: .55rem; color: var(--ink); text-decoration: none; font-weight: 750; font-size: 1.1rem; flex: none; }
-.bar nav { display: flex; gap: 1.2rem; overflow-x: auto; min-width: 0; }
+.bar nav { display: flex; margin-left: auto; gap: 1.2rem; overflow-x: auto; min-width: 0; }
+.theme { flex: none; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.theme:hover { border-color: var(--muted); }
 .bar nav a { color: var(--muted); text-decoration: none; font-weight: 550; white-space: nowrap; }
 .bar nav a:hover { color: var(--ink); }
 
