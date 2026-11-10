@@ -42,6 +42,10 @@ class NoAnswer(NiimbotError):
     pass
 
 
+class NoTag(NiimbotError):
+    pass
+
+
 class NotPrinted(NiimbotError):
     pass
 
@@ -135,7 +139,7 @@ class Connection:
             found, self.received = parse(self.received + data)
             for reply, content in found:
                 if reply == ERROR:
-                    raise NiimbotError(f'error 0x{content[0]:02x} on 0x{command:02x}')
+                    raise NiimbotError(f'error 0x{content[0]:02x} on 0x{command:02x}', content[0])
                 if reply in replies:
                     return content
         raise NoAnswer(f'no answer to 0x{command:02x}')
@@ -164,7 +168,8 @@ def errors(beat: dict) -> list[str]:
 
 
 def roll(c: Connection) -> dict | None:
-    """The loaded roll from its RFID tag, None without a tag."""
+    """The loaded roll from its RFID tag, None without a tag (the D110_M
+    answers 00 so), {} for a tag laid out otherwise."""
     data = c.ask(0x1a, b'\x01', 0x1b)
     if len(data) <= 1:
         return None
@@ -176,8 +181,7 @@ def roll(c: Connection) -> dict | None:
         i += 1 + data[i]
         total, used, kind = struct.unpack('>HHB', data[i:i + 5])
     except (IndexError, UnicodeDecodeError, struct.error):
-        # A tag laid out otherwise is taken as no tag
-        return None
+        return {}
     return {'barcode': barcode, 'serial': serial, 'total': total, 'used': used, 'type': kind}
 
 
@@ -188,7 +192,13 @@ def print_label(c: Connection, rows: list[list[int]], label_type: int):
     height, width = len(rows), len(rows[0])
     c.ok(0x21, bytes([DENSITY]), 0x31)
     c.ok(0x23, bytes([label_type]), 0x33)
-    c.ok(0x01, struct.pack('>H7B', 1, 0, 0, 0, 0, 0, 0, 0), 0x02)
+    try:
+        c.ok(0x01, struct.pack('>H7B', 1, 0, 0, 0, 0, 0, 0, 0), 0x02)
+    except NiimbotError as e:
+        # A D110_M answered so to a roll with its RFID tag peeled off
+        if e.args[1:] == (0x14,):
+            raise NoTag(e.args[0]) from e
+        raise
     c.send(packet(0xdc, b'\x01'))
     c.ok(0x13, struct.pack('>HHHHB', height, width, 1, 0, 0), 0x14)
     for data in row_packets(rows):

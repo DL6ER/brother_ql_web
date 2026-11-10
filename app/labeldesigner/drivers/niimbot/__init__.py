@@ -115,6 +115,9 @@ class Niimbot(Driver):
         state = network_status(device, model)
         state.update({'media_type': 'Die-cut labels', 'phase_type': 'Waiting to receive'})
         state['errors'] = protocol.errors(beat)
+        # A D110_M neither parks nor prints a roll without its tag
+        if roll is None and not state['errors']:
+            state['errors'] = ['No Niimbot roll with its RFID tag is in the printer']
         state['status_type'] = 'Error occurred' if state['errors'] else 'Reply to status request'
         # Told only when it needs charging, at 1 of 4 or less
         state['battery_low'] = beat.get('battery') in (0, 1)
@@ -157,6 +160,8 @@ class Niimbot(Driver):
             _asked.pop(device, None)
             if isinstance(e, protocol.NoAnswer):
                 return 'The printer does not answer'
+            if isinstance(e, protocol.NoTag):
+                return 'The printer prints only on Niimbot rolls with their RFID tag'
             if isinstance(e, protocol.NotPrinted):
                 return 'The printer did not tell that it printed the label'
             return 'The printer refused the label, the log of the server names the reason'
