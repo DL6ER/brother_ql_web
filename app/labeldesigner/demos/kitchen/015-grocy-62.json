@@ -1,0 +1,74 @@
+{
+  "label_size": "62",
+  "orientation": "standard",
+  "sync_font_settings": false,
+  "print_color": "black",
+  "barcode_type": "QR",
+  "qrcode_size": "8",
+  "qrcode_correction": "M",
+  "code_text": "{{blank:grocycode}}",
+  "image_mode": "black_and_white",
+  "image_fit": false,
+  "image_crop": false,
+  "image_scaling_factor": "100",
+  "image_rotation": "0",
+  "image_bw_threshold": "128",
+  "margin_top": "24",
+  "margin_bottom": "24",
+  "margin_left": "35",
+  "margin_right": "35",
+  "border_thickness": "0",
+  "border_roundness": "0",
+  "border_distance_x": "0",
+  "border_distance_y": "0",
+  "border_color": "black",
+  "print_type": "qrcode_text",
+  "pdf_pages": "",
+  "shrink_text": true,
+  "title": "Grocy",
+  "language": "en",
+  "text": [
+    {
+      "font": "DejaVu Sans,Bold",
+      "size": "70",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:product}}{{blank:chore}}{{blank:battery}}{{blank:recipe}}"
+    },
+    {
+      "font": "DejaVu Sans,Book",
+      "size": "40",
+      "inverted": false,
+      "checkbox": false,
+      "align": "center",
+      "line_spacing": "100",
+      "color": "black",
+      "text": "{{blank:due_date}}"
+    }
+  ],
+  "label_text": "{{blank:product}}{{blank:chore}}{{blank:battery}}{{blank:recipe}}\n{{blank:due_date}}",
+  "fields": {
+    "product": {
+      "type": "text"
+    },
+    "chore": {
+      "type": "text"
+    },
+    "battery": {
+      "type": "text"
+    },
+    "recipe": {
+      "type": "text"
+    },
+    "due_date": {
+      "type": "text"
+    },
+    "grocycode": {
+      "type": "text",
+      "default": "grcy:p:1"
+    }
+  }
+}
