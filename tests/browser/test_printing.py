@@ -433,8 +433,13 @@ def test_look_for_printers_looks_also_for_those_that_did_not_answer(designer):
     assert 'look=1' in request.value.url
 
 
-def test_printer_on_a_battery_tells_its_level(designer):
-    assert designer.evaluate("() => printerState({ status_type: 'Reply to status request', errors: [], battery: 3 })") == {'cls': '', 'text': 'Ready, battery 3/4'}
+def test_printer_with_a_low_battery_asks_to_charge_it(designer):
+    hint = 'The battery is low, charge the printer.'
+    for low in (True, False):
+        designer.evaluate(f"""() => {{ S.printers = [Object.assign({{}}, S.printer, {{ status_type: 'Reply to status request', battery_low: {str(low).lower()} }})]; S.printer = S.printers[0]; openPrinterPanel(); }}""")
+        assert (hint in designer.inner_text('.plist')) is low
+        assert designer.evaluate('() => printerState(S.printer).text') == 'Ready'
+        designer.evaluate('() => closeLayer(true)')
 
 
 def test_printer_still_being_asked_is_not_shown_as_failing(designer):

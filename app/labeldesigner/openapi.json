@@ -2021,6 +2021,10 @@
             "type": "boolean",
             "description": "VC-500W on Wi-Fi: some of the last 20 status questions of the server got no answer, moving the printer closer to the Wi-Fi router may help."
           },
+          "battery_low": {
+            "type": "boolean",
+            "description": "Niimbot: the battery of the printer needs charging, it is at 1 of 4 or less."
+          },
           "job": {
             "type": "object",
             "description": "VC-500W: what it does while it prints a label, which takes about 40 s.",

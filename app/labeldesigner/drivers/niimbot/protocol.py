@@ -25,9 +25,20 @@ DENSITY = 3
 WITH_GAPS = 1
 
 ERROR = 0xdb
+# The lid in the heartbeat of a D110_M, 1 when closed. It tells no paper: the
+# bytes that change without a roll change with an open lid too.
+LID_OPEN = 0
 
 
 class NiimbotError(Exception):
+    pass
+
+
+class NoAnswer(NiimbotError):
+    pass
+
+
+class NotPrinted(NiimbotError):
     pass
 
 
@@ -122,7 +133,7 @@ class Connection:
                     raise NiimbotError(f'error 0x{content[0]:02x} on 0x{command:02x}')
                 if reply in replies:
                     return content
-        raise NiimbotError(f'no answer to 0x{command:02x}')
+        raise NoAnswer(f'no answer to 0x{command:02x}')
 
     def ok(self, command: int, data: bytes, reply: int):
         if not self.ask(command, data, reply)[:1] == b'\x01':
@@ -134,13 +145,17 @@ def connect(device: str) -> Connection:
 
 
 def heartbeat(c: Connection) -> dict:
-    """Lid, battery (0 to 4), paper and RFID state, at the offsets
-    hass-niimbot reads them; the raw data if the length is unknown."""
+    """Lid and battery (0 to 4) in the 10 bytes a D110_M answers, e.g.
+    10 1f 00 69 00 69 32 46 01 04; the raw data if the length is another."""
     data = c.ask(0xdc, b'\x01', {0xd9, 0xdd, 0xde, 0xdf})
-    offsets = {13: (9, 10, 11, 12), 19: (15, 16, 17, 18), 10: (8, 9, None, None)}.get(len(data))
-    if not offsets:
+    if len(data) != 10:
         return {'raw': data.hex()}
-    return {key: data[o] if o is not None else None for key, o in zip(('lid', 'battery', 'paper', 'rfid'), offsets)}
+    return {'lid': data[8], 'battery': data[9]}
+
+
+def errors(beat: dict) -> list[str]:
+    """What keeps the printer from printing, by its heartbeat."""
+    return ['The cover of the printer is open'] if beat.get('lid') == LID_OPEN else []
 
 
 def roll(c: Connection) -> dict | None:
@@ -148,12 +163,16 @@ def roll(c: Connection) -> dict | None:
     data = c.ask(0x1a, b'\x01', 0x1b)
     if len(data) <= 1:
         return None
-    i = 8
-    barcode = data[i + 1:i + 1 + data[i]].decode()
-    i += 1 + data[i]
-    serial = data[i + 1:i + 1 + data[i]].decode()
-    i += 1 + data[i]
-    total, used, kind = struct.unpack('>HHB', data[i:i + 5])
+    try:
+        i = 8
+        barcode = data[i + 1:i + 1 + data[i]].decode()
+        i += 1 + data[i]
+        serial = data[i + 1:i + 1 + data[i]].decode()
+        i += 1 + data[i]
+        total, used, kind = struct.unpack('>HHB', data[i:i + 5])
+    except (IndexError, UnicodeDecodeError, struct.error):
+        # A tag laid out otherwise is taken as no tag
+        return None
     return {'barcode': barcode, 'serial': serial, 'total': total, 'used': used, 'type': kind}
 
 
@@ -176,5 +195,5 @@ def print_label(c: Connection, rows: list[list[int]], label_type: int):
         if struct.unpack('>H', c.ask(0xa3, b'\x01', 0xb3)[:2])[0] >= 1:
             break
         if time.monotonic() > deadline:
-            raise NiimbotError('the label was not printed')
+            raise NotPrinted('the label was not printed')
     c.ok(0xf3, b'\x01', 0xf4)

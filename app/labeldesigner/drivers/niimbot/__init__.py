@@ -26,8 +26,9 @@ SIZES = ((12, 22), (12, 40), (14, 22), (14, 40), (14, 60), (15, 30), (15, 50))
 # designer then picks them. Niimbot tells it only online, at
 # print.niimbot.com, the label designer stays offline.
 ROLLS = {'01222281': (12, 40)}  # T12*40-155WHITE
-# It beeps at each connection: its status is asked at most this often, in s
-STATUS_EVERY = 300
+# It beeps at each connection: it is asked only when the label designer looks
+# for printers and when printing, the other status queries are answered from
+# the last state. When each was last asked:
 _asked: dict[str, float] = {}
 
 
@@ -84,7 +85,7 @@ class Niimbot(Driver):
         if error:
             raise error.with_traceback(None)
         cached = devices.status_cache.get(devices.lock_key(device))
-        if cached and time.monotonic() - _asked.get(device, 0) < STATUS_EVERY:
+        if cached and _asked.get(device, -1) >= devices.looked:
             return dict(cached)
         try:
             state = self._status(device, model)
@@ -92,25 +93,34 @@ class Niimbot(Driver):
             devices.note_answer(device, e)
             raise
         devices.note_answer(device)
-        _asked[device] = time.monotonic()
         return state
 
     def _status(self, device, model):
-        state = network_status(device, model)
-        state.update({'media_type': 'Die-cut labels', 'phase_type': 'Waiting to receive',
-                      'status_type': 'Reply to status request'})
         with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
             if not acquired:
+                state = network_status(device, model)
                 state.update(devices.status_cache.get(devices.lock_key(device), {}))
                 state.update({'errors': [], 'status_type': devices.BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
                 return state
             with protocol.connect(device) as c:
-                state['battery'] = protocol.heartbeat(c).get('battery')
+                beat = protocol.heartbeat(c)
                 roll = protocol.roll(c)
+        return self._keep(device, model, beat, roll)
+
+    def _keep(self, device, model, beat, roll):
+        """The state of the printer by its heartbeat and roll, kept for the
+        status queries until it is asked again."""
+        state = network_status(device, model)
+        state.update({'media_type': 'Die-cut labels', 'phase_type': 'Waiting to receive'})
+        state['errors'] = protocol.errors(beat)
+        state['status_type'] = 'Error occurred' if state['errors'] else 'Reply to status request'
+        # Told only when it needs charging, at 1 of 4 or less
+        state['battery_low'] = beat.get('battery') in (0, 1)
         # The label designer then picks the labels of the roll
         if roll and roll['barcode'] in ROLLS:
             state['media_width'], state['media_length'] = ROLLS[roll['barcode']]
         devices.status_cache[devices.lock_key(device)] = state
+        _asked[device] = time.monotonic()
         return state
 
     def render(self, queue, entries, keep=None):
@@ -125,19 +135,34 @@ class Niimbot(Driver):
     def send(self, queue, job) -> str:
         """Print each label as a job of its own, the way the script this
         came from prints one, with the label type of the roll."""
-        device = queue.device_specifier
+        device, model = queue.device_specifier, queue.model
         try:
             with protocol.connect(device) as c:
+                # What the status keeps is updated, e.g. another roll
+                beat = protocol.heartbeat(c)
                 loaded = protocol.roll(c)
+                state = self._keep(device, model, beat, loaded)
+                if state['errors']:
+                    devices.note_answer(device)
+                    return state['errors'][0]
                 label_type = loaded['type'] if loaded else protocol.WITH_GAPS
                 for rows in job:
                     protocol.print_label(c, rows, label_type)
             devices.note_answer(device)
         except protocol.NiimbotError as e:
             logger.warning('Printing on %s failed: %s', device, e)
+            # Asked again at the next status query
+            _asked.pop(device, None)
+            if isinstance(e, protocol.NoAnswer):
+                return 'The printer does not answer'
+            if isinstance(e, protocol.NotPrinted):
+                return 'The printer did not tell that it printed the label'
             return 'The printer refused the label, the log of the server names the reason'
         except OSError as e:
             logger.warning('Printing on %s failed: %s', device, e)
+            # Asked again at the next status query, which then tells why
+            devices.note_answer(device, e)
+            _asked.pop(device, None)
             reason = devices.unanswered_reason(e)
             return (f'Could not send the label to the printer: {reason}' if reason
                     else 'Could not send the label to the printer, the log of the server names the reason')

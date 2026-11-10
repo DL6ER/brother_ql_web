@@ -14,7 +14,7 @@ TEXT = json.dumps([{'font': 'DejaVu Sans,Book', 'text': 'OK', 'size': '30'}])
 # The replies of a D110_M as the script this driver came from got them
 REPLIES = {0x21: (0x31, b'\x01'), 0x23: (0x33, b'\x01'), 0x01: (0x02, b'\x01'), 0x13: (0x14, b'\x01'),
            0xe3: (0xe4, b'\x01'), 0xa3: (0xb3, struct.pack('>H', 1)), 0xf3: (0xf4, b'\x01'),
-           0x1a: (0x1b, b'\x00'), 0xdc: (0xdd, bytes(9) + bytes([0, 3, 0, 1]))}
+           0x1a: (0x1b, b'\x00'), 0xdc: (0xdd, bytes.fromhex('101f0069006932460104'))}
 
 
 class FakePrinter:
@@ -44,6 +44,7 @@ def answered(monkeypatch):
     monkeypatch.setattr(devices, '_unanswered', {})
     monkeypatch.setattr(devices, 'status_cache', {})
     monkeypatch.setattr(niimbot, '_asked', {})
+    monkeypatch.setattr(devices, 'looked', 0.0)
 
 
 @pytest.fixture
@@ -82,7 +83,7 @@ def test_label_is_printed_in_the_order_of_the_script(client, fake):
     assert response.get_json() == {'success': True}
     rows = [c for c in fake.commands if c in (0x84, 0x85)]
     sent = [c for c in fake.commands if c not in (0x84, 0x85)]
-    assert rows and sent == [0x1a, 0x21, 0x23, 0x01, 0xdc, 0x13, 0xe3, 0xa3, 0xf3]
+    assert rows and sent == [0xdc, 0x1a, 0x21, 0x23, 0x01, 0xdc, 0x13, 0xe3, 0xa3, 0xf3]
 
 
 def test_rows_are_as_wide_as_the_label_across_the_printhead():
@@ -117,14 +118,80 @@ def test_status_tells_the_size_of_a_known_roll(client, fake, monkeypatch):
     assert (printer_['media_width'], printer_['media_length']) == (12, 40)
 
 
-def test_status_is_asked_only_every_few_minutes(client, fake, monkeypatch):
-    # The printer beeps at each connection
+def test_printer_is_asked_only_when_looking_for_printers(client, fake):
+    # It beeps at each connection, the designer asks for the status every 20 s
     client.get('/labeldesigner/api/printer_status')
     client.get('/labeldesigner/api/printer_status')
     assert fake.commands == [0xdc, 0x1a]
-    monkeypatch.setattr(niimbot, 'STATUS_EVERY', 0)
-    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == []
+    assert client.get('/labeldesigner/api/printer_status?look=1').get_json()['printers'][0]['errors'] == []
     assert fake.commands == [0xdc, 0x1a] * 2
+    client.get('/labeldesigner/api/printer_status')
+    assert fake.commands == [0xdc, 0x1a] * 2
+
+
+def beat(lid=1, battery=3):
+    # As a D110_M answers, 1 when its lid is closed
+    return (0xdd, bytes.fromhex('101f0069006932460000')[:8] + bytes([lid, battery]))
+
+
+@pytest.mark.parametrize('battery, low', [(0, True), (1, True), (2, False), (4, False)])
+def test_status_tells_only_whether_the_battery_needs_charging(client, fake, monkeypatch, battery, low):
+    monkeypatch.setitem(REPLIES, 0xdc, beat(battery=battery))
+    printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert printer_['battery_low'] is low and 'battery' not in printer_
+
+
+def test_open_lid_is_an_error(client, fake, monkeypatch):
+    error = 'The cover of the printer is open'
+    monkeypatch.setitem(REPLIES, 0xdc, (0xdd, bytes.fromhex('10220054005432460004')))
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == [error]
+    # Not printed then
+    response = client.post('/labeldesigner/api/print', data={
+        'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    assert response.get_json()['message'] == error
+    assert 0x21 not in fake.commands
+
+
+def test_printer_that_stops_answering(client, fake, monkeypatch):
+    monkeypatch.delitem(REPLIES, 0xe3)
+    response = client.post('/labeldesigner/api/print', data={
+        'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    assert response.get_json()['message'] == 'The printer does not answer'
+
+
+def test_printer_that_does_not_tell_it_printed(client, fake, monkeypatch):
+    monkeypatch.setitem(REPLIES, 0xa3, (0xb3, struct.pack('>H', 0)))
+    monkeypatch.setattr(protocol, 'PRINT_WAIT', 0)
+    response = client.post('/labeldesigner/api/print', data={
+        'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    assert response.get_json()['message'] == 'The printer did not tell that it printed the label'
+
+
+def test_tag_laid_out_otherwise_is_no_tag(client, fake, monkeypatch):
+    monkeypatch.setitem(REPLIES, 0x1a, (0x1b, bytes(8) + b'\x0801'))
+    printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert (printer_['errors'], printer_['media_width']) == ([], None)
+
+
+def test_print_updates_the_status(client, fake, monkeypatch):
+    client.get('/labeldesigner/api/printer_status')
+    # Another roll was loaded since
+    tag = bytes(8) + b'\x0801222281' + b'\x10PZ1G910304007921' + struct.pack('>HHB', 192, 87, 1)
+    monkeypatch.setitem(REPLIES, 0x1a, (0x1b, tag))
+    client.post('/labeldesigner/api/print', data={'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
+    assert (printer_['media_width'], printer_['media_length']) == (12, 40)
+
+
+def test_print_that_could_not_reach_the_printer_asks_it_again(client, fake, monkeypatch):
+    client.get('/labeldesigner/api/printer_status')
+
+    def unreachable(device):
+        raise OSError(112, 'Host is down')
+    monkeypatch.setattr(protocol, 'connect', unreachable)
+    client.post('/labeldesigner/api/print', data={'label_size': 'niimbot12x40', 'print_type': 'text', 'text': TEXT})
+    # No longer Ready
+    assert client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]['errors'] == ['The printer cannot be reached']
 
 
 def test_printer_that_is_off_is_not_looked_for_at_every_status_query(client, monkeypatch):

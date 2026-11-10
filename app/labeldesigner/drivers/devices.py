@@ -48,6 +48,9 @@ status_cache = {}
 # the radio of a Raspberry Pi 3B busy at every status query, and its Wi-Fi,
 # which shares it, slowed down to seconds.
 _unanswered = {}
+# When the label designer last asked to look for printers. Printers that beep
+# at each connection are asked only then and when printing.
+looked = 0.0
 
 
 def unanswered_before(device_specifier: str) -> Exception | None:
@@ -71,6 +74,8 @@ def note_answer(device_specifier: str, error: Exception | None = None):
 
 def look_again():
     """Look for the printers that did not answer at the next status query."""
+    global looked
+    looked = time.monotonic()
     _unanswered.clear()
 
 
