@@ -79,7 +79,8 @@ def test_repository_save_list_load_delete_and_preview(tmp_path, label: str):
     file = fill_first_line_fields(file["text"], file)
     file.update({'image_fit': '1' if _whole_or(file.get('image_fit'), 1) > 0 else '0',
                  'image_crop': '1' if _whole_or(file.get('image_crop'), 0) > 0 else '0',
-                 'image_contrast': '1' if _whole_or(file.get('image_contrast'), 0) > 0 else '0', 'text_fit': _text_fit(file)})
+                 'image_contrast': '1' if _whole_or(file.get('image_contrast'), 0) > 0 else '0', 'text_fit': _text_fit(file),
+                 'text_wrap': '1' if _whole_or(file.get('text_wrap'), 0) > 0 else '0'})
     assert loaded == file
 
     # Delete the file
@@ -273,18 +274,18 @@ def test_flags_of_a_saved_label_are_loaded_as_they_are_printed(tmp_path):
     client = make_client(tmp_path, empty_repo=True)
     repo = client.application.config['LABEL_REPOSITORY_DIR']
     labels = {
-        'A.json': ({'image_fit': 'true', 'image_crop': 'false', 'shrink_text': 'true'}, ('1', '0', 'shrink', 'true')),
-        'B.json': ({'image_fit': False, 'image_crop': 1, 'shrink_text': 0}, ('0', '1', 'none', 0)),
-        'C.json': ({}, ('1', '0', 'none', None)),
-        'D.json': ({'image_fit': 'maybe', 'shrink_text': 'yes'}, ('maybe', '0', None, 'yes')),
-        'E.json': ({'text_fit': 'Shrink', 'shrink_text': 'true'}, ('1', '0', 'Shrink', 'true')),
+        'A.json': ({'image_fit': 'true', 'image_crop': 'false', 'shrink_text': 'true', 'text_wrap': 'true'}, ('1', '0', 'shrink', 'true', '1')),
+        'B.json': ({'image_fit': False, 'image_crop': 1, 'shrink_text': 0, 'text_wrap': 0}, ('0', '1', 'none', 0, '0')),
+        'C.json': ({}, ('1', '0', 'none', None, '0')),
+        'D.json': ({'image_fit': 'maybe', 'shrink_text': 'yes', 'text_wrap': 'often'}, ('maybe', '0', None, 'yes', 'often')),
+        'E.json': ({'text_fit': 'Shrink', 'shrink_text': 'true', 'text_wrap': True}, ('1', '0', 'Shrink', 'true', '1')),
     }
     for name, (flags, _) in labels.items():
         with open(os.path.join(repo, name), 'w', encoding='utf-8') as f:
             json.dump(dict({'title': name, 'label_size': '62', 'text': TEXT}, **flags), f)
     for name, (_, expected) in labels.items():
         loaded = client.get('/labeldesigner/api/repository/load', query_string={'name': name}).get_json()
-        assert tuple(loaded.get(key) for key in ('image_fit', 'image_crop', 'text_fit', 'shrink_text')) == expected, name
+        assert tuple(loaded.get(key) for key in ('image_fit', 'image_crop', 'text_fit', 'shrink_text', 'text_wrap')) == expected, name
 
 
 def test_cable_flag_is_saved_and_loaded(tmp_path):
@@ -389,6 +390,7 @@ def test_label_with_invalid_blanks_or_their_settings_is_not_saved(tmp_path, valu
     ({'image_text_gap': -4}, 'image_text_gap must not be negative'),
     ({'image_position': 'top'}, 'image_position must be above, below, left or right'),
     ({'text_fit': 'large'}, 'text_fit must be none, shrink or fill'),
+    ({'text_wrap': 'yes'}, 'text_wrap must be 0 or 1'),
     ({'image_mode': 'sepia'}, 'image_mode must be grayscale, black_and_white, red_and_black or colored'),
     ({'label_size': '63'}, 'Unknown label_size'),
     ({'label_size': None}, 'Unknown label_size'),

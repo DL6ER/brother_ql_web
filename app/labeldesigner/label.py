@@ -298,6 +298,7 @@ class SimpleLabel:
         warnings: list[str] | None = None,
         shrink_text: bool = False,
         fill_text: bool = False,
+        text_wrap: bool = False,
         image_text_gap: int | None = None,
         image_position: str | None = None,
         blanks: dict[str, str] | None = None,
@@ -374,6 +375,11 @@ class SimpleLabel:
         # A cable flag with a wrap of this many dots at flag_dpi, 0 for none
         self._flag_wrap = flag_wrap
         self._flag_dpi = flag_dpi
+        # Lines wider than the room for the text wrap at spaces into lines
+        # with their settings. How wide the lines may be, None where they do
+        # not wrap, is set before the text is laid out, see _wrap_room().
+        self._text_wrap = text_wrap
+        self._wrap_width: int | None = None
         # The text measured at each set of line sizes, see _measure(), shared
         # by the copies of a print job where given
         self._shared_layouts = layouts
@@ -493,8 +499,9 @@ class SimpleLabel:
         self.text = []
         total_length = 0
         for line in copy.deepcopy(self.input_text):
-            # Only the templates set it, not the request
+            # Only the templates and wrapping set them, not the request
             line.pop('unmarked', None)
+            line.pop('todo_continued', None)
             text_val = line.get('text', '')
             if len(text_val) > WARNING_TEXT_LENGTH:
                 logger.warning(
@@ -758,6 +765,7 @@ class SimpleLabel:
             self._layouts = self._shared_layouts if self._shared_layouts is not None else {}
             # The text is part of the key: copies differ e.g. by a counter
             self._text_key = json.dumps(self.text, sort_keys=True, default=str)
+            self._wrap_width = self._wrap_room(width, height, img_width, img_height, self._gap(img_width, img_height))
             bboxes, textsize = self._measure()
             if self._shrink_text or self._fill_text:
                 bboxes, textsize = self._shrink_text_next_to_image(bboxes, textsize, width, height, img_width, img_height)
@@ -1035,12 +1043,15 @@ class SimpleLabel:
         # where only an empty final line follows, which takes no room and no
         # spacing before it. Empty lines before the final one stay blank
         # lines, a line before them is measured like any other.
-        last = len(self.text) - 1
-        last_shown = max((i for i, line in enumerate(self.text) if self._shows_something(line)), default=last)
-        spaced = last if self.text and self._shows_something(self.text[-1]) else last - 1
+        # The lines as laid out, also those that long lines wrapped into. Drawn,
+        # each comes with its box.
+        lines = [entry[2] for entry in bboxes] if do_draw else self._wrapped(draw, self.text)
+        last = len(lines) - 1
+        last_shown = max((i for i, line in enumerate(lines) if self._shows_something(line)), default=last)
+        spaced = last if lines and self._shows_something(lines[-1]) else last - 1
 
         # Iterate over lines of text
-        for i, line in enumerate(self.text):
+        for i, line in enumerate(lines):
             # Calculate spacing
             spacing = int(self._line_size(line)*((int(line['line_spacing']) - 100) / 100)) if 'line_spacing' in line else 0
 
@@ -1066,8 +1077,10 @@ class SimpleLabel:
 
             color = parse_color(line.get('color') or 'black')
 
-            # Draw checkbox if needed
+            # Draw checkbox if needed. The lines a to-do line wrapped into
+            # start where its text starts, without a box.
             checkbox = line.get('checkbox', False)
+            indented = checkbox or line.get('todo_continued', False)
 
             INVERT_LINE = 'inverted' in line and line['inverted']
             if do_draw and INVERT_LINE:
@@ -1098,9 +1111,9 @@ class SimpleLabel:
                 # text, its room counts to the line, so that the label is
                 # large enough for it (labels along the tape are only as long
                 # as their text).
-                checkbox_space = self._checkbox_space(line) if checkbox else 0
+                checkbox_space = self._checkbox_space(line) if indented else 0
                 bbox = self._draw_line(draw, (checkbox_space, y), line['text'], font, "lt", align=align, measuring=not do_draw)
-                if checkbox:
+                if indented:
                     bbox = (0, bbox[1], bbox[2], bbox[3])
 
                 # Ensure consistent line heights for each line except the last
@@ -1132,7 +1145,7 @@ class SimpleLabel:
                 # included, also where the text is lower or there is none
                 if checkbox:
                     bbox = (bbox[0], bbox[1], bbox[2], max(bbox[3], text_y + 8 * self._line_size(line) // 10 + 1))
-                bboxes.append((bbox, text_y))
+                bboxes.append((bbox, text_y, line))
                 y += bbox[3] - bbox[1] + (spacing if i < spaced else 0)
             else:
                 bbox = bboxes[i][0]
@@ -1157,11 +1170,12 @@ class SimpleLabel:
 
                 # Draw checkbox if needed, in the room left for it in front of
                 # the text
-                if checkbox:
+                if indented:
                     if align == "left":
                         x += self._checkbox_space(line)
                     elif align == "center":
                         x += self._checkbox_space(line) / 2
+                if checkbox:
                     checkbox_box_dimensions = 8 * self._line_size(line) // 10
                     bbox = self._draw_line(draw, (x - 1.2 * checkbox_box_dimensions, y), line['text'], font, anchor, align=align, measuring=not do_draw)
                     box_dimensions = bbox[0], y, bbox[0] + checkbox_box_dimensions, y + checkbox_box_dimensions
@@ -1181,6 +1195,65 @@ class SimpleLabel:
         # Return total bbox
         # each in form (x0, y0, x1, y1)
         return bboxes
+
+    def _wrapped(self, draw, lines) -> list:
+        """The lines as laid out: where long lines wrap, each line wider than
+        the room for the text becomes several lines with its settings."""
+        if self._wrap_width is None:
+            return lines
+        return [piece for line in lines for piece in self._wrap_line(draw, line)]
+
+    def _wrap_line(self, draw, line) -> list:
+        """line split at spaces into lines that fit the width the lines may take.
+        A longer word is broken where the text keeps its size; shrunk or
+        filled, the text is made smaller until it fits."""
+        text = str(line.get('text', ''))
+        font = self._get_font(line['path'], self._line_size(line), measuring=True)
+        # A to-do box takes room in front of the text
+        room = self._wrap_width - (self._checkbox_space(line) if line.get('checkbox') else 0)
+
+        def fits(piece):
+            box = self._draw_line(draw, (0, 0), piece, font, "lt", measuring=True)
+            return box[2] - min(box[0], 0) <= room
+
+        if room < 1 or fits(text):
+            return [line]
+        # Each word with the spaces in front of it, the spaces at the end
+        # stay with the last line
+        words = re.findall(r'\s*\S+', text)
+        tail = text[len(''.join(words)):]
+        pieces, current = [], ''
+        for word in words:
+            if not current.strip() or fits(current + word):
+                current += word
+            else:
+                pieces.append(current)
+                current = word.lstrip()
+        pieces.append(current + tail)
+        if not (self._shrink_text or self._fill_text):
+            pieces = [part for piece in pieces for part in self._broken(piece, fits)]
+        # The printed text belongs to the line as written, for a code that
+        # takes it
+        first = {key: value for key, value in line.items() if key != 'unmarked'}
+        rest = dict(first, checkbox=False, todo_continued=bool(line.get('checkbox')))
+        return [dict(first if i == 0 else rest, text=piece) for i, piece in enumerate(pieces)]
+
+    @staticmethod
+    def _broken(piece: str, fits) -> list:
+        """piece in parts that fit, each the longest start of what is left, at
+        least one character."""
+        parts = []
+        while len(piece) > 1 and not fits(piece):
+            low, high = 1, len(piece) - 1
+            while low < high:
+                middle = (low + high + 1) // 2
+                if fits(piece[:middle]):
+                    low = middle
+                else:
+                    high = middle - 1
+            parts.append(piece[:low])
+            piece = piece[low:]
+        return parts + [piece]
 
     def _draw_line(self, draw, xy, text, font, anchor, fill=None, measuring=False, **kwargs):
         """The bounding box of a line of text at xy, also drawn in fill if
@@ -1298,6 +1371,17 @@ class SimpleLabel:
         endless = self._label_type == LabelType.ENDLESS_LABEL and not self._fixed_length
         return endless and self._label_orientation == LabelOrientation.ROTATED, endless and self._label_orientation == LabelOrientation.STANDARD
 
+    def _wrap_room(self, width, height, img_width, img_height, gap) -> int | None:
+        """How wide lines may be: the room for the text beside, above or below
+        an image or code at the distance gap. None where they do not wrap,
+        along endless tape and where lines are filled on endless tape."""
+        if not self._text_wrap:
+            return None
+        if self._fill_text and any(self._grows()):
+            return None
+        max_width = self._text_space(width, height, img_width, img_height, gap)[0]
+        return max_width if max_width is not None and max_width > 0 else None
+
     def _text_space(self, width, height, img_width, img_height, gap, largest=False):
         """Width and height the text may take within the margins, beside,
         above or below an image or code at the distance gap, and a code on
@@ -1339,6 +1423,9 @@ class SimpleLabel:
 
         def fit(gap):
             if gap not in fits:
+                # Beside an image or code, the room for the lines depends on
+                # the distance
+                self._wrap_width = self._wrap_room(width, height, img_width, img_height, gap)
                 if self._fill_text:
                     # A larger distance leaves less room: the size filled in
                     # at one fits at this one too, the size at a smaller one
@@ -1350,8 +1437,8 @@ class SimpleLabel:
                 else:
                     self._text_scale = 1.0
                     fitted = self._shrink_text_to_fit(*full_size, *self._text_space(width, height, img_width, img_height, gap))
-                fits[gap] = (self._text_scale, fitted)
-            self._text_scale = fits[gap][0]
+                fits[gap] = (self._text_scale, fitted, self._wrap_width)
+            self._text_scale, _, self._wrap_width = fits[gap]
             return fits[gap]
 
         # Fitted at the distance of the largest text, the text keeps to it:
@@ -1384,7 +1471,7 @@ class SimpleLabel:
             # distance the text keeps to is used
             if self._gap(img_width, img_height) <= high:
                 best = candidate
-        self._text_scale, (bboxes, textsize) = best
+        self._text_scale, (bboxes, textsize), self._wrap_width = best
         return bboxes, textsize
 
     def _fill_room(self, max_width, max_height, at_least=1, at_most=MAX_FILL_SIZE):
@@ -1445,7 +1532,15 @@ class SimpleLabel:
     def _shrink_text_to_fit(self, bboxes, textsize, max_width, max_height):
         """Make all lines smaller by the same factor until the text fits into
         max_width x max_height. Font sizes are whole numbers and text does not
-        scale exactly, so it may take a few steps."""
+        scale exactly, so it may take a few steps. Lines that wrap are wrapped
+        anew at each size and do not shrink in proportion: the largest size
+        that fits is searched instead."""
+        if self._wrap_width is not None:
+            bboxes, textsize = self._measure()
+            if self._fits_room(textsize, max_width, max_height):
+                return bboxes, textsize
+            largest = max((int(line['size']) for line in self.text), default=0)
+            return self._fill_room(max_width, max_height, at_most=max(largest - 1, 1))
         for _ in range(10):
             factor = 1.0
             if max_width is not None and self._text_width(textsize) > max_width:
@@ -1460,11 +1555,10 @@ class SimpleLabel:
         return bboxes, textsize
 
     def _measure(self):
-        """The lines laid out at the current scale and the box around them.
-        Measured once per label for each set of line sizes: a layout does not
-        depend on the room, and next to an image the text is fitted at
-        several distances, which often comes to the same sizes."""
-        key = (tuple(self._line_size(line) for line in self.text), self._text_key)
+        """The lines laid out at the current scale and the box around them,
+        measured once per set of line sizes and wrap width: next to an image
+        the text is fitted at several distances, which often repeat them."""
+        key = (tuple(self._line_size(line) for line in self.text), self._text_key, self._wrap_width)
         if key not in self._layouts:
             bboxes = self._draw_text(None, [])
             self._layouts[key] = (bboxes, self._compute_bbox(bboxes))
