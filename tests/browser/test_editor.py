@@ -60,9 +60,16 @@ def test_text_next_to_a_code_on_a_small_die_cut_label(designer):
 
 def test_the_code_can_be_on_any_side_of_the_text(designer):
     designer.click('[data-lay="codetext"]')
-    # Only with text
+    # Only with text, from the moment it is typed
     assert designer.is_disabled('[data-side="left"]')
     designer.fill('#edCode', 'https://example.com')
+    type_line(designer, 0, 'Chili')
+    assert designer.is_enabled('[data-side="left"]')
+    assert designer.get_attribute('#edSide', 'title') == 'Where the code is next to the text'
+    assert 'off' not in designer.get_attribute('#edSide .label-s', 'class')
+    type_line(designer, 0, '')
+    assert designer.is_disabled('[data-side="left"]')
+    assert designer.get_attribute('#edSide', 'title') == 'Only with text on the label'
     type_line(designer, 0, 'Chili')
     designer.select_option('#edSize', '62')
     wait_for_preview(designer)

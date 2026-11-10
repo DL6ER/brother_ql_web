@@ -1,11 +1,13 @@
 """The Brother VC-500W in the label designer: its color tape, colors, print
 modes, the tape left and what it does while it prints."""
 
+import io
 import json
 
 import pytest
+from PIL import Image, ImageDraw
 
-from tests.browser.helpers import fits_note, preview_size, printed, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
 
 VC = {'errors': [], 'model': 'VC-500W', 'path': 'file:///dev/usb/lp0', 'media_width': 25, 'media_length': 0,
       'media_type': 'Continuous length tape', 'tape_length_mm': 5004, 'tape_remaining_mm': 4596, 'color_support': True}
@@ -205,3 +207,31 @@ def test_sticker_of_this_project_for_the_50_mm_tape(designer, lang, title):
     # About 140 mm long at 320 dpi
     width, height = preview_size(designer)
     assert height == 617 and 135 < width / 320 * 25.4 < 145
+
+
+def _light_drawing() -> bytes:
+    image = Image.new('RGB', (300, 400), 'white')
+    ImageDraw.Draw(image).ellipse((40, 40, 260, 360), fill=(240, 215, 190))
+    out = io.BytesIO()
+    image.save(out, format='PNG')
+    return out.getvalue()
+
+
+def test_stronger_contrast_for_light_drawings(designer):
+    fake_vc500w(designer)
+    use_tape(designer)
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[{'name': 'black.png', 'mimeType': 'image/png', 'buffer': png()}])
+    wait_for_preview(designer)
+    # A dark image prints as it is, nothing is suggested
+    assert not designer.is_checked('#edContrast') and designer.is_hidden('#edContrastHint')
+    designer.set_input_files('#edFile', files=[{'name': 'drawing.png', 'mimeType': 'image/png', 'buffer': _light_drawing()}])
+    wait_for_preview(designer)
+    assert designer.is_visible('#edContrastHint')
+    designer.click('#edContrastOn')
+    wait_for_preview(designer)
+    assert designer.is_checked('#edContrast') and designer.is_hidden('#edContrastHint')
+    assert designer.evaluate("() => formFor(S.edit.design, 1, true).get('image_contrast')") == '1'
+    designer.uncheck('#edContrast')
+    wait_for_preview(designer)
+    assert designer.evaluate("() => S.edit.design.image_contrast") == '0' and designer.is_visible('#edContrastHint')

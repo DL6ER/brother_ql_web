@@ -17,7 +17,7 @@ from qrcode.exceptions import DataOverflowError
 
 from .cable_flag import CABLE_DIAMETER_REFUSED, CABLE_FLAG_REFUSED
 from .label import MAX_BARCODE_LENGTH, MAX_IMAGE_SCALING_FACTOR, MAX_RANDOM_LENGTH, TextTooLong, check_digit_problems
-from .label_names import cut_problems, label_size_problems
+from .label_names import cut_problems, label_length_problems, label_size_problems
 from .drivers import DRIVERS, MODELS, resolution_problem
 
 IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_black or colored'
@@ -46,6 +46,9 @@ MESSAGES = (
     BLANKS_MESSAGE,
     FIELDS_MESSAGE,
     'image_position must be above, below, left or right',
+    'label_length must be a length in millimeters or empty',
+    *label_length_problems(),
+    'vertical_align must be top, center or bottom',
     'Width and height must be non-negative.',
     'Border thickness must be non-negative.',
     'QR size must be positive.',

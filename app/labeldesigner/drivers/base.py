@@ -87,6 +87,12 @@ class Driver:
         600 dpi. The label designer converts millimeters with them."""
         return self.dpi(False), self.dpi(True)
 
+    def length_rules(self, label) -> tuple[float, float, float] | None:
+        """For an endless label of the size of a fixed length, in mm: the
+        paper fed before and after its print, each, and the shortest and the
+        longest print. None where labels are as long as their content."""
+        return None
+
     def capabilities(self, model: str) -> dict:
         """What the label designer offers for the model: the qualities it
         shows (fast, quality, high for 600 dpi), whether the model prints at

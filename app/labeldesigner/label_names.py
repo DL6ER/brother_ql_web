@@ -1,6 +1,8 @@
 """Label sizes in the label designer: their names and which printer models
 print them. Each driver (drivers/) has the label sizes of its printers."""
 
+import math
+
 from .drivers.labels import Label
 
 from . import drivers
@@ -79,3 +81,34 @@ def check_cut(cut: str, model: str):
     problem = drivers.for_model(model).cut_problem(cut, model)
     if problem:
         raise ValueError(problem)
+
+
+def length_limits(label: Label) -> tuple[float, float, float] | None:
+    """The shortest and the longest an endless label of the size is as cut,
+    the shortest rounded up to a tenth, and the paper fed before and after
+    its print, each, in mm. None where its labels have no length to set:
+    die-cut labels and tapes of printers whose labels grow with their
+    content."""
+    driver = drivers.for_label(label.identifier)
+    rules = driver.length_rules(label) if driver else None
+    if rules is None:
+        return None
+    margin, shortest, longest = rules
+    return math.ceil((shortest + 2 * margin) * 10) / 10, longest, margin
+
+
+def label_length_problem(label: Label, length: float) -> str:
+    """Why an endless label of the size cannot be length mm long as cut, or
+    an empty string if it can."""
+    shortest, longest, _ = length_limits(label)
+    if length < shortest:
+        return f"label_length must be at least {shortest:g} mm on this tape"
+    if length > longest:
+        return f"label_length must not be longer than {longest:g} mm on this tape"
+    return ''
+
+
+def label_length_problems() -> list[str]:
+    """Every message a length of an endless label is refused with."""
+    return list(dict.fromkeys(problem for label in LABELS if length_limits(label)
+                              for length in (0, math.inf) if (problem := label_length_problem(label, length))))
