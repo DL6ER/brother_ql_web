@@ -147,7 +147,9 @@ function baseDesign(size) {
         // length in millimeters as cut
         label_length: '',
         // Where the content is on a label with room to spare
-        vertical_align: 'center'
+        vertical_align: 'center',
+        // Printed mirror-inverted, to be read through clear tape behind glass
+        mirror: '0'
     };
 }
 
@@ -186,7 +188,7 @@ function normalize(raw) {
     // label. One it refuses stays as it is, the preview tells why, until
     // another is chosen.
     const given = v => v !== undefined && v !== null && v !== '';
-    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
+    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0'], ['mirror', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
     d.text_fit = given(raw.text_fit) ? String(raw.text_fit) : '';
     // Cutting saved through the API e.g. as half_cut: 0 or chain: true
     for (const k of CUT_KEYS) d[k] = !given(raw[k]) ? '' : raw[k] === true ? '1' : raw[k] === false ? '0' : String(raw[k]);
@@ -2257,6 +2259,7 @@ function renderEditor() {
                     <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
+                    <div class="row" title="Prints mirror-inverted, to be read through clear tape stuck behind glass"><label class="check"><input type="checkbox" id="edMirror"${d.mirror === '1' ? ' checked' : ''}><span>Mirrored</span></label></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
                     ${(room => `<div title="${room ? 'Where the content is on the label, as the text reads' : NO_ROOM}"><span class="label-s${room ? '' : ' off'}">Vertical position</span><div class="seg">${VERTICAL_ALIGNS.map(([v, n]) => `<button type="button" data-valign="${v}" class="${verticalAlign(d) === v ? 'on' : ''}"${room ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`)(hasRoom(d))}
                     <div class="group">
@@ -2829,6 +2832,7 @@ function bindEditor() {
         renderEditor();
     });
     $$('[data-along]').forEach(b => b.onclick = () => { setRunsAlong(d, b.dataset.along === '1'); renderEditor(); });
+    $('#edMirror').onchange = e => { d.mirror = e.target.checked ? '1' : '0'; renderEditor(); };
     $$('[data-frame]').forEach(b => b.onclick = () => { setFrame(d, b.dataset.frame); renderEditor(); });
     $$('[data-tfit]').forEach(b => b.onclick = () => { setTextFit(d, b.dataset.tfit); renderEditor(); });
     $('#edCut').onchange = e => {
