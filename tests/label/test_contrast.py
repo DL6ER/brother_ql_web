@@ -45,6 +45,17 @@ def test_stronger_contrast_keeps_white_and_black():
     assert 185 < r < 205 and r - g > 110 and abs(g - b) < 6
 
 
+def test_paper_keeps_its_grain():
+    # Near white paper stays as it is, darkened its grain would print as specks
+    image = Image.new('RGB', (100, 100), (255, 253, 248))
+    image.paste((252, 250, 243), (0, 0, 50, 100))
+    image.paste((200, 200, 200), (40, 40, 60, 60))
+    out = stronger_contrast(image)
+    for xy in ((10, 10), (90, 90)):
+        assert all(abs(a - b) <= 3 for a, b in zip(out.getpixel(xy), image.getpixel(xy)))
+    assert out.getpixel((50, 50))[0] < 160
+
+
 def test_stronger_contrast_blackens_only_the_darkest_bits():
     # Without dark parts nothing becomes black: light gray stays clearly gray
     image = Image.new('RGB', (100, 100), (200, 200, 200))

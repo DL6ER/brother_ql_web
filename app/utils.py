@@ -35,7 +35,9 @@ def convert_image_to_red_and_black(image: Image.Image,
 # Stronger contrast for drawings with light washes, which print faint on ZINK
 # paper: luma to the power of 2.2, the darkest 0.5 % (at most luma 50) black,
 # color differences 1.5 times. Picked on the VC-500W from four printed steps.
+# From luma 225 up it eases back to the image, paper keeps its grain unchanged.
 CONTRAST_GAMMA = 2.2
+CONTRAST_KNEE = 225
 CONTRAST_BLACK_SHARE = 0.005
 CONTRAST_BLACK_MAX = 50
 CONTRAST_CHROMA = 1.5
@@ -50,11 +52,15 @@ def stronger_contrast(image: Image.Image) -> Image.Image:
     colors. White, black and transparency stay."""
     alpha = image.convert('RGBA').getchannel('A') if image.has_transparency_data else None
     y, cb, cr = image.convert('RGB').convert('YCbCr').split()
-    y = y.point([round(255 * (v / 255) ** CONTRAST_GAMMA) for v in range(256)])
-    black = min(_percentile(y.histogram(alpha), CONTRAST_BLACK_SHARE), CONTRAST_BLACK_MAX)
-    y = y.point([0 if v <= black else round((v - black) * 255 / (255 - black)) for v in range(256)])
+    # How much of the image stays, 0 below the knee, 1 at white
+    keep = [(lambda t: t * t * (3 - 2 * t))(max(0, (v - CONTRAST_KNEE) / (255 - CONTRAST_KNEE))) for v in range(256)]
+    kept = y.point([round(255 * k) for k in keep])
+    curve = [255 * (v / 255) ** CONTRAST_GAMMA for v in range(256)]
+    black = min(_percentile(y.point([round(c) for c in curve]).histogram(alpha), CONTRAST_BLACK_SHARE), CONTRAST_BLACK_MAX)
+    y = y.point([round(max(0, c - black) * 255 / (255 - black) * (1 - k) + v * k) for v, c, k in zip(range(256), curve, keep)])
     chroma = [min(255, max(0, round(128 + (v - 128) * CONTRAST_CHROMA))) for v in range(256)]
-    out = Image.merge('YCbCr', (y, cb.point(chroma), cr.point(chroma))).convert('RGB')
+    cb, cr = (Image.composite(c, c.point(chroma), kept) for c in (cb, cr))
+    out = Image.merge('YCbCr', (y, cb, cr)).convert('RGB')
     if alpha is not None:
         out.putalpha(alpha)
     return out
