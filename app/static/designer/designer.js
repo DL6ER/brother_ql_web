@@ -784,6 +784,16 @@ async function refreshPrinters(look = false) {
     // An open printer panel lists the new status, its settings stay as they are
     const list = $('.pp .plist');
     if (list) { list.innerHTML = printerListHTML(); bindPrinterPanel(); }
+    // The note of the editor on the tape follows the tape the printer reports
+    const size = $('#edSize');
+    if (size && S.edit) {
+        const note = document.createElement('div');
+        note.innerHTML = tapeNote(S.edit.design);
+        const old = size.parentElement.querySelector('.tape-note');
+        if (old) old.replaceWith(...note.children);
+        else size.before(...note.children);
+        if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(S.edit.design, S.tape); renderEditor(); };
+    }
 }
 
 const printerKey = () => (S.printer && S.printer.path) || '';
