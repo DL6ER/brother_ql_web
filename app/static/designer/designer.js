@@ -2428,7 +2428,8 @@ const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
 function sideField(d, what) {
     const on = paired(d);
     const other = d.print_type === 'image_qrcode_text' ? ', the code is on the other side' : '';
-    return `<div title="${on ? `Where the ${what} is next to the text${other}` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+    const why = `Where the ${what} is next to the text${other}`;
+    return `<div id="edSide" data-why="${why}" title="${on ? why : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
         `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
@@ -2661,13 +2662,19 @@ function drawEditor() {
     const empty = isEmptyDesign(E.design);
     printable(empty);
     $('#edSave').disabled = empty;
-    const gap = $('#edGap');
+    // Typing the first line of text, or deleting the last, changes whether
+    // the position and the distance to the text apply
+    const on = paired(E.design), gap = $('#edGap'), side = $('#edSide');
     if (gap) {
-        const on = paired(E.design);
         gap.disabled = !on;
         gap.previousElementSibling.classList.toggle('off', !on);
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
+    }
+    if (side) {
+        $$('[data-side]', side).forEach(b => b.disabled = !on);
+        $('.label-s', side).classList.toggle('off', !on);
+        side.title = on ? side.dataset.why : 'Only with text on the label';
     }
     const files = labelFiles(E.design);
     $('#edFileStep').hidden = files.length < 2;
