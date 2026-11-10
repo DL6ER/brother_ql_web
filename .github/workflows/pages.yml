@@ -1,0 +1,48 @@
+name: Website
+
+# The README as the project website on GitHub Pages, see website/build.py.
+# Pull requests only build it, so that a broken link fails them.
+on:
+  push:
+    branches: [master]
+    paths: [README.md, screenshots/**, website/**, app/static/images/app/**, app/static/designer/archivo.woff2, .github/workflows/pages.yml]
+  pull_request:
+    paths: [README.md, screenshots/**, website/**, app/static/images/app/**, app/static/designer/archivo.woff2, .github/workflows/pages.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.15'
+      - name: Build the website
+        run: |
+          pip install -r website/requirements.txt
+          python website/build.py _site
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

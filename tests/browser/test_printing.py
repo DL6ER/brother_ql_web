@@ -448,7 +448,7 @@ def test_printer_still_being_asked_is_not_shown_as_failing(designer):
 
 
 def test_labels_of_a_q00_leave_it_turned(designer):
-    # They come out readable, the other way round than from a QL printer
+    # Their top comes out first
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
         openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
     wait_for_preview(designer)
@@ -456,15 +456,40 @@ def test_labels_of_a_q00_leave_it_turned(designer):
     # The printer stands below the label, which leaves it upwards
     assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'column-reverse'
     assert designer.locator('#edStage .flow .fa-arrow-up-long').count() == 1
-    # Labels that leave it sideways leave it as from a QL printer, their end
-    # first, the printer to their left
+    # Labels that leave it sideways have the printer to their left
     designer.evaluate("() => { S.tape = 'puqu50x80'; openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x80'), { text: [L('Q', 40)] }) }); }")
     wait_for_preview(designer)
     classes = designer.get_attribute('#edStage', 'class').split()
     assert 'side' in classes and 'turned' not in classes
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700' }); S.tape = '62'; openEditor({ title: 'Q', design: Object.assign(baseDesign('62'), { text: [L('Q', 40)] }) }); }")
+    # As those of a QL or P-touch printer, their top first, unlike the VC-500W
+    for model, tape, turned in (('QL-700', '62', True), ('PT-P700', 'pt12', True), ('VC-500W', 'vc25', False)):
+        designer.evaluate(f"() => {{ S.printer = Object.assign({{}}, S.printer, {{ model: '{model}' }}); S.tape = '{tape}'; openEditor({{ title: 'Q', design: Object.assign(baseDesign('{tape}'), {{ text: [L('Q', 40)] }}) }}); }}")
+        wait_for_preview(designer)
+        assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
+
+
+def test_receipt_shows_the_blank_paper_before_it(designer):
+    # A TM-T20II feeds 12 mm to its cutter after a label, blank before the next
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'TM-T20II' }); S.tape = 'escpos80';
+        openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { text: [L('R', 40)] }) }); }""")
     wait_for_preview(designer)
-    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    assert 'turned' in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .paper .lead').count() == 1
+    shown = int(designer.text_content('#edStage .dim-y').split()[0])
+    img = designer.evaluate("() => document.querySelector('#edStage .paper img').naturalHeight")
+    assert shown == round(img / 203 * 25.4) + 12
+    # Also at the right end of a label that leaves sideways, which leaves first
+    designer.evaluate("""() => openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { orientation: 'rotated', text: [L('Receipt', 40)] }) })""")
+    wait_for_preview(designer)
+    assert 'side' in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .paper img + .lead').count() == 1
+    shown = int(designer.text_content('#edStage .dim-x').split()[0])
+    img = designer.evaluate("() => document.querySelector('#edStage .paper img').naturalWidth")
+    assert shown == round(img / 203 * 25.4) + 12
+    # Drawn 12 mm long, at the scale of the label
+    drawn = designer.evaluate("""() => { const r = s => document.querySelector('#edStage .paper ' + s).getBoundingClientRect().width;
+        return r('.lead') / r('img') * document.querySelector('#edStage .paper img').naturalWidth; }""")
+    assert abs(drawn - 12 / 25.4 * 203) < 3
 
 
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):

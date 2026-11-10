@@ -68,7 +68,7 @@ def test_a_preview_that_takes_too_long_does_not_hold_back_printing(designer):
     designer.unroute_all(behavior='ignoreErrors')
     designer.evaluate('() => { previewTimeout = 60000; }')
     # One the server refuses, it cannot print either
-    designer.click('[data-lay="code"]')
+    designer.click('[data-lay="codetext"]')
     designer.select_option('#edBarcode', 'EAN13')
     designer.fill('#edCode', '12')
     wait_for_preview(designer)
@@ -78,7 +78,7 @@ def test_a_preview_that_takes_too_long_does_not_hold_back_printing(designer):
 def test_an_earlier_preview_does_not_tell_whether_a_newer_label_prints(designer):
     # The preview of the code before arrives while the newer one waits:
     # it must not decide whether the label as it is now can be printed
-    designer.click('[data-lay="code"]')
+    designer.click('[data-lay="codetext"]')
     designer.select_option('#edBarcode', 'EAN13')
     designer.fill('#edCode', '12')
     wait_for_preview(designer)
@@ -256,7 +256,7 @@ def test_print_waits_for_a_preview_that_does_not_fail(designer):
     # The server refused the preview, it refuses printing too. Changed, the
     # label is printed once its preview no longer fails.
     designer.evaluate("""() => {
-        Object.assign(S.edit.design, { print_type: 'qrcode', barcode_type: 'ean13', code_text: '12' });
+        Object.assign(S.edit.design, { print_type: 'qrcode_text', barcode_type: 'ean13', code_text: '12' });
         renderEditor();
     }""")
     wait_for_preview(designer)
@@ -303,7 +303,7 @@ def test_failed_preview_of_the_text_before_is_not_shown(designer):
     # Fixed while the preview of the wrong code was on its way, the error of
     # that preview showed and disabled Print until the next one came
     designer.evaluate("""() => {
-        Object.assign(S.edit.design, { print_type: 'qrcode', barcode_type: 'ean13', code_text: '400638133393' });
+        Object.assign(S.edit.design, { print_type: 'qrcode_text', barcode_type: 'ean13', code_text: '400638133393' });
         renderEditor();
     }""")
     wait_for_preview(designer)
@@ -440,7 +440,7 @@ def test_thumbnails_do_not_pile_up(designer):
 
 def test_a_wrong_check_digit_is_told(designer):
     # It was replaced by the right one: a typo printed another valid code
-    designer.click('[data-lay="code"]')
+    designer.click('[data-lay="codetext"]')
     designer.select_option('#edBarcode', 'EAN13')
     designer.fill('#edCode', '4006381333932')
     wait_for_preview(designer)

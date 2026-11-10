@@ -11,10 +11,12 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Vendor | Printers | Labels |
 |---|---|---|
 | Brother | PT-E550W, PT-P700, PT-P750W | TZe tapes 6 to 24 mm wide: laminated, non-laminated and fabric (iron-on) tapes, and heat-shrink tubes in compatible cassettes |
+| Brother | PT-P900W, PT-P950NW | TZe tapes 18 and 36 mm wide |
 | Brother | QL-500, QL-550, QL-560, QL-570, QL-580N, QL-600, QL-650TD, QL-700, QL-710W, QL-720NW | up to 62 mm wide |
 | Brother | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
 | Brother | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
 | Brother | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
+| Epson | TM-T20II (USB, ESC/POS) | 80 and 58 mm receipt paper, cut |
 | Niimbot | D110_M (Bluetooth) | 12 to 15 mm wide die-cut thermal labels, torn off, printed on 12 x 40 mm only |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 
@@ -24,13 +26,13 @@ USB printers are detected automatically, also one on another computer through [U
 
 - **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
-- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
+- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once and stepped through in the preview, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 500 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges and price tags
-- **Printers:** several printers at once, and a simulator to try everything without a printer
+- **Printers:** several printers at once, each with a name if you like, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label, only after the last one or none, on P-touch printers half cuts and chain printing, set for each printer or saved with a label, borders, round labels, cable flags that fold around a cable, 600 dpi printing, fast printing (a little less sharp)
-- **Interface:** an editor with the preview of the label leaving the printer, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
+- **Interface:** an editor with the preview of the label leaving the printer, also shown large, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
 - **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
 
 ## Screenshots

@@ -142,6 +142,7 @@ button.link { border: 0; background: none; padding: 0; color: var(--select); fon
 .field.rot { width: 4.6rem; padding: .35rem .5rem; }
 select.field { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 2rem; }
 textarea.field { resize: none; line-height: 1.5; }
+textarea.field.code { line-height: 1.25; overflow-x: hidden; }
 input[type=range] { width: 100%; accent-color: var(--ink); }
 .check { display: inline-flex; align-items: center; gap: .45rem; cursor: pointer; }
 .check input { width: 1rem; height: 1rem; margin: 0; accent-color: var(--ink); cursor: inherit; }
@@ -180,6 +181,8 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 /* The stage: the front of the printer with the label leaving it */
 .stage { background: var(--stage); border-radius: 14px; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 1.6rem 3rem 2.8rem; min-height: 180px; }
 .stage.side { flex-direction: row; }
+/* Room below the size of the label for how copies are cut in the corner */
+.stage:not(.side):not(.turned):not(.large) { padding-bottom: 4.4rem; }
 .stage .printer { position: relative; z-index: 2; flex: none; display: flex; align-items: center; gap: .45rem; color: var(--printer-ink); font-size: .7rem; font-weight: 650; letter-spacing: .03em; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 8px 18px rgba(0, 0, 0, .22); }
 .stage .printer.top { height: 58px; padding: .55rem .9rem 0; align-items: flex-start; border-radius: 14px 14px 6px 6px; background: linear-gradient(180deg, var(--printer-top), var(--printer-bottom)); max-width: 100%; }
 .stage .printer.side { width: 58px; padding: .8rem 0 0; flex-direction: column; border-radius: 14px 6px 6px 14px; background: linear-gradient(90deg, var(--printer-top), var(--printer-bottom)); align-self: center; }
@@ -204,6 +207,10 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .paper { background: #fff; line-height: 0; box-shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 24px rgba(0, 0, 0, .1); }
 .stage .paper img { display: block; width: 100%; height: auto; }
 .stage .paper .blank-paper { width: 100%; background: #fff; }
+.stage .paper .lead { background: #fff; border-bottom: 1px dashed rgba(0, 0, 0, .15); }
+.stage.side .paper { display: flex; }
+.stage.side .paper > :first-child { flex: 1; min-width: 0; }
+.stage.side .paper .lead { flex: none; border-bottom: 0; border-left: 1px dashed rgba(0, 0, 0, .15); }
 .stage.diecut .paper { border-radius: 6px; overflow: hidden; }
 .stage.round .paper { border-radius: 50%; }
 .stage .cut { position: absolute; left: -18px; right: -18px; bottom: -1px; border-bottom: 2px dashed #9aa3ac; }
@@ -242,9 +249,11 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .dim-x::before, .stage .dim-x::after { content: ""; flex: 1; border-top: 1px solid currentColor; opacity: .5; }
 .stage .dim-y { top: 0; bottom: 0; right: -2.7rem; flex-direction: column; justify-content: center; }
 .stage .dim-y::before, .stage .dim-y::after { content: ""; flex: 1; border-left: 1px solid currentColor; opacity: .5; }
-/* Printers that let labels out the other way round than a QL printer, the
-   top first, stand below the label, so that it shows as it comes out */
+/* Printers that let labels out top first stand below the label, so that it
+   shows as it comes out */
 .stage.turned { flex-direction: column-reverse; padding-top: 2.8rem; }
+/* How copies are cut is above a large label */
+.stage.large.turned { padding: 4rem 3rem 1.6rem; }
 .stage.turned .printer.top { border-radius: 6px 6px 14px 14px; background: linear-gradient(0deg, var(--printer-top), var(--printer-bottom)); align-items: flex-end; padding: 0 .9rem .55rem; }
 .stage.turned .printer.top .mouth { bottom: auto; top: 4px; }
 .stage.turned .feed { margin-top: 0; margin-bottom: -8.5px; }
@@ -343,7 +352,7 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .ed-head input:hover { border-color: var(--line); }
 .ed-head input:focus { outline: none; border-color: var(--select); }
 .ed-head .btn { flex: none; }
-.layouts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .45rem; }
+.layouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .45rem; }
 .lay { border: 1px solid var(--line); border-radius: 9px; padding: .5rem .3rem .4rem; display: flex; flex-direction: column; align-items: center; gap: .35rem; font-size: .76rem; text-align: center; color: var(--muted); background: var(--surface); cursor: pointer; }
 .lay .sch { width: 54px; max-width: 100%; height: 26px; border-radius: 3px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); display: flex; gap: 3px; padding: 4px; }
 .lay .sch i { display: block; border-radius: 1px; background: var(--muted); opacity: .55; }
@@ -411,6 +420,9 @@ select.mini.lsp { max-width: 4rem; }
 .ed-note { font-size: .8rem; color: var(--muted); padding: 0 .8rem .6rem; }
 .ed-canvas { display: flex; flex-direction: column; padding: 1.4rem 1.6rem; gap: 1rem; min-width: 0; overflow: auto; }
 .ed-canvas .stage { flex: 1; }
+.file-step { display: flex; align-items: center; justify-content: center; gap: .4rem; min-width: 0; margin-bottom: -.5rem; font-size: .85rem; color: var(--muted); }
+.file-step[hidden] { display: none; }
+.file-step span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-top { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
 .ed-top .copies { align-self: stretch; }
 .ed-top .break { display: none; flex-basis: 100%; height: 0; }
