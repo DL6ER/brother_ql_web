@@ -1710,7 +1710,7 @@ function bindAgain(root) {
 const CAT_ICONS = {
     address: 'truck', mail: 'envelope', signs: 'triangle-exclamation', doors: 'door-closed', visitors: 'id-badge',
     names: 'user', prices: 'tag', hazards: 'skull-crossbones', lab: 'vial', health: 'kit-medical', workshop: 'screwdriver-wrench',
-    office: 'briefcase', storage: 'box', kitchen: 'utensils', garden: 'seedling', events: 'gift', school: 'graduation-cap', letters: 'font'
+    office: 'briefcase', storage: 'box', kitchen: 'utensils', garden: 'seedling', events: 'gift', school: 'graduation-cap', kids: 'car-side', letters: 'font'
 };
 
 function libItems(cat) {
