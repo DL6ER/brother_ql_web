@@ -42,7 +42,7 @@ _discovered = None
 def configured_printers(config) -> list[tuple[str, str, str]]:
     """The printers of PRINTERS as (model, device, name), the name is empty
     for a printer without one."""
-    return [(entry[0], entry[1], entry[2] if len(entry) > 2 else '') for entry in config.get('PRINTERS') or []]
+    return [(drivers.canonical(entry[0]), entry[1], entry[2] if len(entry) > 2 else '') for entry in config.get('PRINTERS') or []]
 
 
 def is_simulation(device_specifier) -> bool:
@@ -223,7 +223,7 @@ def get_ptr_status(config: Config):
     global _last_scan_ts, _cached_printers
 
     device_specifier = config['PRINTER_PRINTER']
-    default_model = config['PRINTER_MODEL']
+    default_model = drivers.canonical(config['PRINTER_MODEL'])
 
     SIMULATOR_PRINTER = {
         'errors': [],

@@ -440,7 +440,7 @@ def test_printer_still_being_asked_is_not_shown_as_failing(designer):
 
 def test_labels_of_a_q00_leave_it_turned(designer):
     # Their top comes out first
-    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.tape = 'puqu50x30';
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00' }); S.tape = 'puqu50x30';
         openEditor({ title: 'Q', design: Object.assign(baseDesign('puqu50x30'), { text: [L('Q', 40)] }) }); }""")
     wait_for_preview(designer)
     assert 'turned' in designer.get_attribute('#edStage', 'class').split()
@@ -461,7 +461,7 @@ def test_labels_of_a_q00_leave_it_turned(designer):
 
 def test_receipt_shows_the_blank_paper_before_it(designer):
     # A TM-T20II feeds 12 mm to its cutter after a label, blank before the next
-    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'TM-T20II' }); S.tape = 'escpos80';
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Epson/TM-T20II' }); S.tape = 'escpos80';
         openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { text: [L('R', 40)] }) }); }""")
     wait_for_preview(designer)
     assert 'turned' in designer.get_attribute('#edStage', 'class').split()
@@ -486,7 +486,7 @@ def test_receipt_shows_the_blank_paper_before_it(designer):
 def test_cutting_is_disabled_on_a_printer_without_a_cutter(designer):
     # The labels of a PUQU Q00 are torn off, cutting after each or the last
     # label was offered all the same
-    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'Q00' }); S.settings.cut = 'each'; openPrinterPanel(); }")
+    designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00' }); S.settings.cut = 'each'; openPrinterPanel(); }")
     cuts = designer.locator('.pp [data-c="cut"]')
     assert cuts.count() == 3 and all(cuts.nth(i).is_disabled() for i in range(3))
     assert designer.locator('.pp [data-c="cut"].on').count() == 0
@@ -524,7 +524,7 @@ def test_ql500_labels_are_cut_by_hand(designer):
 
 def test_assumed_tape_is_one_the_printer_takes(designer):
     # A PUQU Q00 does not report its labels, 62 mm endless tape was assumed
-    designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'Q00', media_width: null, media_length: 0 }); detectTape(); }")
+    designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00', media_width: null, media_length: 0 }); detectTape(); }")
     assert designer.evaluate('() => [S.tape, S.tapeAssumed]') == ['puqu50x30', True]
     # The printer panel names it, "the default is assumed" was 62 mm endless
     designer.evaluate('() => openPrinterPanel()')
@@ -563,7 +563,7 @@ def test_printers_are_named_with_their_maker(designer):
     designer.set_viewport_size({'width': 390, 'height': 800})
     assert designer.inner_text('#printerChip b') == 'QL-800'
     # Also a printer of another maker
-    assert designer.evaluate("() => printerName({ model: 'Q00' })") == 'PUQU Q00'
+    assert designer.evaluate("() => printerName({ model: 'PUQU/Q00' })") == 'PUQU Q00'
 
 
 def test_cutting_saved_through_the_api(designer, server):

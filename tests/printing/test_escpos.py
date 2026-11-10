@@ -49,7 +49,7 @@ def fake(monkeypatch):
 def client(tmp_path):
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
-    client.application.config['PRINTER_MODEL'] = 'TM-T20II'
+    client.application.config['PRINTER_MODEL'] = 'Epson/TM-T20II'
     return client
 
 
@@ -129,11 +129,11 @@ def test_paper_is_cut_at_least_after_the_last_label(client, fake):
     fake()
     response = client.post('/labeldesigner/api/print', data={
         'label_size': 'escpos58', 'print_type': 'text', 'text': TEXT, 'cut': 'none'})
-    assert response.get_json() == {'success': False, 'message': 'The TM-T20II cuts the paper at least after the last label'}
+    assert response.get_json() == {'success': False, 'message': 'The Epson TM-T20II cuts the paper at least after the last label'}
 
 
 def test_status_through_the_label_designer(client, fake):
     fake(offline=QUIET | 0x04)
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
-    assert (printer_['model'], printer_['path']) == ('TM-T20II', DEVICE)
+    assert (printer_['model'], printer_['path']) == ('Epson/TM-T20II', DEVICE)
     assert printer_['errors'] == ['The cover of the printer is open']

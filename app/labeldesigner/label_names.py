@@ -5,6 +5,7 @@ from .drivers.labels import Label
 
 from . import drivers
 from .drivers import LABELS, MODELS
+from .drivers.base import shown
 
 
 def label_name(label: Label) -> str:
@@ -50,7 +51,7 @@ def label_size_problem(label_size: str, model: str) -> str:
     if label is None:
         return f'Unknown label size: {label_size}'
     if model in MODELS and not label_fits(label, model):
-        return f'The label size {label_name(label)} cannot be printed on a {model}'
+        return f'The label size {label_name(label)} cannot be printed on a {shown(model)}'
     return ''
 
 

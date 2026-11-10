@@ -28,6 +28,11 @@ def network_status(device: str, model: str, red_support: bool = False) -> dict:
     }
 
 
+def shown(model: str) -> str:
+    """A model as texts name it, PUQU Q00 for PUQU/Q00."""
+    return model.replace('/', ' ')
+
+
 class Driver:
     """The printers of one protocol: their models and label sizes, what a
     label looks like on them, their status, and printing."""
@@ -35,7 +40,8 @@ class Driver:
     # The maker of its printers, which the label designer names before the
     # model
     vendor: str = ''
-    # Printer models, as PRINTER_MODEL, PRINTERS and requests name them
+    # Printer models, as PRINTER_MODEL, PRINTERS and requests name them:
+    # <maker>/<model>, Brother ones without the maker
     models: tuple = ()
     # Label sizes (labels.Label), in the order the label designer
     # lists them, and the names it shows for them

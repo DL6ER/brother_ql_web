@@ -229,3 +229,40 @@ def test_font_settings_from_environment(monkeypatch):
     monkeypatch.setenv('SYSTEM_FONTS', 'maybe')
     with pytest.raises(ValueError, match='SYSTEM_FONTS'):
         create_app()
+
+
+def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
+    # Short model names like D110 or P1 are used by more than one maker
+    monkeypatch.setenv('PRINTERS', 'Brother/QL-700=usb://0x04f9:0x2042, PUQU/Q00=bt://CD:AC:BB:E0:46:4C,'
+                       'Kitchen:Epson/TM-T20II=file:///dev/usb/lp0, Q00=bt://CD:AC:BB:E0:AA:29')
+    assert create_app().config['PRINTERS'] == [
+        ('QL-700', 'usb://0x04f9:0x2042'),
+        ('PUQU/Q00', 'bt://CD:AC:BB:E0:46:4C'),
+        ('Epson/TM-T20II', 'file:///dev/usb/lp0', 'Kitchen'),
+        # Its name before, taken for a while
+        ('PUQU/Q00', 'bt://CD:AC:BB:E0:AA:29'),
+    ]
+    # The maker is required for models other than Brother ones
+    for value in ('TM-T20II=file:///dev/usb/lp0', 'Epson TM-T20II=file:///dev/usb/lp0', 'Brother/Q00=bt://CD:AC:BB:E0:46:4C'):
+        monkeypatch.setenv('PRINTERS', value)
+        with pytest.raises(ValueError, match='PRINTERS'):
+            create_app()
+    monkeypatch.delenv('PRINTERS')
+    monkeypatch.setenv('PRINTER_MODEL', 'Brother/QL-700')
+    app = create_app()
+    assert app.config['PRINTER_MODEL'] == 'QL-700'
+    parse_args(app, ['--model', 'Brother/QL-800'])
+    assert app.config['PRINTER_MODEL'] == 'QL-800'
+
+
+def test_request_names_a_model_with_its_maker(tmp_path):
+    from tests.helpers import make_client
+    client = make_client(tmp_path)
+    image = BytesIO()
+    Image.new('1', (696, 30000), 1).save(image, 'PNG')
+    image.seek(0)
+    response = client.post('/labeldesigner/api/print', data={
+        'printer': 'simulation', 'model': 'Brother/QL-800', 'label_size': '62', 'print_type': 'image',
+        'image': (image, 'long.png')}, content_type='multipart/form-data')
+    # Taken for the QL-800, which refuses labels that long
+    assert response.get_json()['message'] == 'Labels on the QL-800 can be at most 1000 mm long'

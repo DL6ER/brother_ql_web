@@ -197,7 +197,7 @@
                       },
                       "model": {
                         "type": "string",
-                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                        "description": "Printer model, e.g. `QL-800`, other makers than Brother with the maker, e.g. `PUQU/Q00`. Default: `PRINTER_MODEL`."
                       },
                       "print_count": {
                         "type": "integer",
@@ -248,7 +248,7 @@
                       },
                       "model": {
                         "type": "string",
-                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                        "description": "Printer model, e.g. `QL-800`, other makers than Brother with the maker, e.g. `PUQU/Q00`. Default: `PRINTER_MODEL`."
                       },
                       "print_count": {
                         "type": "integer",
@@ -938,7 +938,7 @@
                       },
                       "model": {
                         "type": "string",
-                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                        "description": "Printer model, e.g. `QL-800`, other makers than Brother with the maker, e.g. `PUQU/Q00`. Default: `PRINTER_MODEL`."
                       },
                       "print_count": {
                         "type": "integer",
@@ -1324,7 +1324,7 @@
                       },
                       "model": {
                         "type": "string",
-                        "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+                        "description": "Printer model, e.g. `QL-800`, other makers than Brother with the maker, e.g. `PUQU/Q00`. Default: `PRINTER_MODEL`."
                       },
                       "print_count": {
                         "type": "integer",
@@ -1968,7 +1968,7 @@
           },
           "model": {
             "type": "string",
-            "description": "Model reported by the printer, `Unknown` if it has not answered yet."
+            "description": "Model reported by the printer, `Unknown` if it has not answered yet. Other makers than Brother with the maker, e.g. `PUQU/Q00`."
           },
           "errors": {
             "type": "array",
@@ -2123,7 +2123,7 @@
           },
           "model": {
             "type": "string",
-            "description": "Printer model, e.g. `QL-800`. Default: `PRINTER_MODEL`."
+            "description": "Printer model, e.g. `QL-800`, other makers than Brother with the maker, e.g. `PUQU/Q00`. Default: `PRINTER_MODEL`."
           }
         }
       },

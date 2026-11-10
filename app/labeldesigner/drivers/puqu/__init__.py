@@ -8,14 +8,14 @@ import re
 from PIL import Image
 
 from .. import devices
-from ..base import Driver, network_status
+from ..base import Driver, network_status, shown
 from ..labels import FormFactor, Label
 from ...enums import LabelContent
 from . import protocol
 
 logger = logging.getLogger(__name__)
 
-MODELS = ('Q00',)
+MODELS = ('PUQU/Q00',)
 
 # Width x length in mm, and how far from the left of the printhead the
 # label lies, in mm. Labels narrower than the printhead are held by a slider
@@ -70,7 +70,7 @@ class Puqu(Driver):
         return protocol.DPI
 
     def resolution_problem(self, model, high_res):
-        return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
+        return f'The {shown(model)} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
 
     def capabilities(self, model):
         # The labels are torn off. Their top leaves it first.

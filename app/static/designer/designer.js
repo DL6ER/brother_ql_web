@@ -87,7 +87,9 @@ const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cu
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 // The maker and the model of a printer, as the label designer names it
-const printerName = p => [capsOf(p && p.model).vendor, p && p.model].filter(Boolean).join(' ');
+// Models other than Brother ones are named with their maker, e.g. PUQU/Q00
+const modelOnly = model => (model || '').split('/').pop();
+const printerName = p => [capsOf(p && p.model).vendor, p && modelOnly(p.model)].filter(Boolean).join(' ');
 
 function sizeName(id) {
     const s = SIZES[id];
@@ -853,7 +855,7 @@ function renderPrinterChip() {
     const st = printerState(S.printer);
     // Phones show the model only, a printer named in PRINTERS its name
     const vendor = S.printer && !S.printer.name && capsOf(S.printer.model).vendor;
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || S.printer.model) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || modelOnly(S.printer.model)) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
     // A long name is cut short in the chip
     chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
 }
