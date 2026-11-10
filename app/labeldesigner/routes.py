@@ -972,7 +972,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     try:
         # Of a PDF each selected page is a label of its own
         images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
-        labels = [image for _ in range(print_count) for image in images]
+        collate = _requested('collate')
+        labels = _copies(images, print_count, _whole_or(collate if collate is not None else data.get('collate'), 1) != 0)
         _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
@@ -1034,6 +1035,14 @@ def demo_preview():
 @bp.route('/api/demos/print', methods=['POST'])
 def demo_print():
     return _demo_response(_requested_name('id'), lambda data: _print_stored_label(data, demos.IMAGE_DIR))
+
+
+def _copies(images: list, count: int, collate: bool) -> list:
+    """The labels of count copies of several files or pages: as sets, ABC
+    ABC, collated, else grouped, AA BB CC."""
+    if collate:
+        return [image for _ in range(count) for image in images]
+    return [image for image in images for _ in range(count)]
 
 
 def _check_print_count(print_count: int) -> int:
@@ -1168,9 +1177,9 @@ def print_label():
         # Every uploaded image, not only the first
         files = request.files
         # Decode the image once, all labels of the job share it. Of a PDF
-        # each selected page is a label of its own, the copies are collated.
+        # each selected page is a label of its own.
         images, _ = load_label_images(values, files, copies=print_count)
-        labels = [image for _ in range(print_count) for image in images]
+        labels = _copies(images, print_count, _whole_or(values.get('collate'), 1) != 0)
         _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:

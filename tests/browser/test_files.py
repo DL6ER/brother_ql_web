@@ -145,3 +145,34 @@ def test_shared_text_becomes_the_label(designer, server):
 def test_shared_content_is_only_handed_out_once(designer, server):
     designer.goto(server + '/labeldesigner/?shared=used')
     designer.wait_for_function("() => document.getElementById('toast').innerText.includes('no longer available')")
+
+
+def test_copies_of_several_files_as_sets_or_grouped(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+        {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
+        {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
+    ])
+    wait_for_preview(designer)
+    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    # The first printed on the right, as it leaves the printer
+    assert designer.evaluate(letters) == 'CBA'
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'name="collate"\r\n\r\n1' in request.value.post_data_buffer
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="0"]')
+    assert designer.locator('.pp [data-col="0"].on').count() == 1
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'BAA'
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'name="collate"\r\n\r\n0' in request.value.post_data_buffer
+    # Copies of one file stay all A
+    designer.set_input_files('#edFile', files=[{'name': 'four.png', 'mimeType': 'image/png', 'buffer': png()}])
+    designer.wait_for_selector('#edFileStep', state='hidden')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'AAA'

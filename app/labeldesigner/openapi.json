@@ -212,6 +212,12 @@
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
                       },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
+                      },
                       "cut_once": {
                         "type": "integer",
                         "enum": [
@@ -262,6 +268,12 @@
                         "minimum": 1,
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
                       "cut_once": {
                         "type": "integer",
@@ -952,6 +964,12 @@
                         "minimum": 1,
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
                       "cut_once": {
                         "type": "integer",
