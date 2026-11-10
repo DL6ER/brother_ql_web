@@ -605,6 +605,51 @@ def test_cutting_does_not_render_the_preview_again(designer):
     assert asked == []
 
 
+def test_printer_on_the_stage_follows_its_status(designer):
+    # It kept the status of the last preview, red while the printer list was green
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { status_type: 'Reply to status request', errors: ['The cover of the printer is open'] }); renderPrinterChip(); }""")
+    assert designer.get_attribute('#edStage .printer .led', 'class') == 'led bad'
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { errors: [] }); renderPrinterChip(); }""")
+    assert designer.get_attribute('#edStage .printer .led', 'class') == 'led '
+    assert designer.get_attribute('#edStage .printer .led', 'title') == 'Ready'
+
+
+def test_open_printer_panel_follows_the_status(designer):
+    # It showed the status of when it was opened until "Look for printers"
+    printer = {'path': 'simulation', 'model': 'QL-800', 'status_type': 'Reply to status request', 'errors': []}
+    designer.route('**/api/printer_status*', lambda route: route.fulfill(json={'printers': [printer]}))
+    designer.evaluate("() => refreshPrinters()")
+    designer.evaluate("() => openPrinterPanel()")
+    designer.focus('.pp .prow')
+    designer.evaluate("() => refreshPrinters()")
+    assert designer.evaluate("() => document.activeElement.matches('.pp .prow')")
+    printer.update(errors=['The cover of the printer is open'], media_width=29, media_length=90)
+    designer.evaluate("() => refreshPrinters()")
+    assert 'The cover of the printer is open' in designer.inner_text('.pp .plist')
+    assert designer.locator('.pp .plist .dot.bad').count() == 1
+    assert designer.evaluate("() => $('#setTape').selectedOptions[0].textContent") == 'Automatic: 29 x 90 mm'
+
+
+def test_tape_note_follows_the_tape_the_printer_reports(designer):
+    # It still offered to switch to the tape assumed before the roll was read
+    printer = {'path': 'simulation', 'model': 'QL-800', 'status_type': 'Reply to status request', 'errors': [], 'media_width': 62, 'media_length': 0}
+    designer.route('**/api/printer_status*', lambda route: route.fulfill(json={'printers': [printer]}))
+    in_printer = "() => $$('#edSize option').filter(o => o.textContent.endsWith('(in the printer)')).map(o => o.value)"
+    designer.evaluate("() => refreshPrinters()")
+    assert 'Matches the tape in the printer' in designer.inner_text('.tape-note')
+    assert designer.locator('#edUseTape').count() == 0
+    printer.update(media_width=29, media_length=90)
+    designer.evaluate("() => refreshPrinters()")
+    assert 'has 29 x 90 mm' in designer.inner_text('.tape-note')
+    assert designer.evaluate(in_printer) == ['29x90']
+    designer.focus('#edUseTape')
+    designer.evaluate("() => refreshPrinters()")
+    assert designer.evaluate("() => document.activeElement.id") == 'edUseTape'
+    designer.click('#edUseTape')
+    wait_for_preview(designer)
+    assert designer.input_value('#edSize') == '29x90'
+
+
 def test_sheet_after_printing_on_a_phone_names_the_printer_with_its_maker(designer):
     # It showed "on the PUQU/Q00"
     designer.set_viewport_size({'width': 700, 'height': 900})
