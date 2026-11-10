@@ -21,9 +21,14 @@ MODELS = ('Zebra/ZPL',)
 DOTS_PER_MM = 8
 # A printhead of 104 mm, as on a GK420t, a 105 mm label loses 1 mm
 HEAD = 832
-# Width x length in mm, e.g. 105 x 148 mm (A6) and 102 x 152 mm (4 x 6 in)
-# shipping labels
-SIZES = ((105, 148), (102, 152), (100, 150), (102, 76), (102, 51), (57, 32), (51, 25))
+# Width x length in mm of common labels, metric ones and inch ones, e.g.
+# 105 x 148 mm (A6) and 102 x 152 mm (4 x 6 in) shipping labels. The printer
+# does not tell which are loaded.
+SIZES = ((105, 148),
+         (102, 152), (102, 102), (102, 76), (102, 51), (102, 25),
+         (100, 150), (100, 100), (100, 70), (100, 50), (100, 30),
+         (80, 50), (76, 51), (76, 25), (60, 40), (58, 40), (57, 32),
+         (51, 25), (50, 30), (50, 25), (40, 30), (40, 20), (38, 25), (30, 20))
 
 
 def _label(width: int, length: int) -> Label:
