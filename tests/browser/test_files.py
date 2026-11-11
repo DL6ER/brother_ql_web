@@ -212,3 +212,9 @@ def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
     wait_for_preview(designer)
     assert designer.evaluate("() => fileShown(S.edit)") == 1
     assert designer.evaluate(letters) == 'CBA'
+    # The PDF that is not shown is not previewed again as the text changes
+    asked = []
+    designer.on('request', lambda r: asked.append(r.url) if r.url.endswith('/preview') else None)
+    designer.fill('[data-row="0"] .tx', 'Box')
+    wait_for_preview(designer)
+    assert len(asked) == 1

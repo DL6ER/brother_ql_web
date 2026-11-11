@@ -1344,6 +1344,20 @@ function busyThen(getEl, fn) {
     };
 }
 
+// The number of pages of a PDF that print, by the PDF and its selection:
+// asked once, not again for every change of the text
+const pagesCounted = new Map();
+function selectedPages(design, f, values) {
+    const key = JSON.stringify([imageKey(f), design.pdf_pages || '']);
+    if (!pagesCounted.has(key)) {
+        pagesCounted.set(key, preview(Object.assign({}, design, { image: f }), values).then(q => q.pages || 1, () => {
+            pagesCounted.delete(key);
+            return 1;
+        }));
+    }
+    return pagesCounted.get(key);
+}
+
 async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
     el._seq = (el._seq || 0) + 1;
@@ -1394,7 +1408,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // The selected pages of a PDF print like files, of those not shown as
     // their previews count them
     const labels = (await Promise.all(labelFiles(design).map((f, i) => i === 0 ? p.pages || 1
-        : f.mime === 'application/pdf' ? preview(Object.assign({}, design, { image: f }), values).then(q => q.pages || 1, () => 1) : 1)))
+        : f.mime === 'application/pdf' ? selectedPages(design, f, values) : 1)))
         .reduce((a, b) => a + b, 0);
     if (outdated()) return;
     // Kept to fit the label again when the stage changes its size
