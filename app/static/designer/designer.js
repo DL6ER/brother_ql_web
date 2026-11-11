@@ -1391,6 +1391,12 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
+    // The selected pages of a PDF print like files, of those not shown as
+    // their previews count them
+    const labels = (await Promise.all(labelFiles(design).map((f, i) => i === 0 ? p.pages || 1
+        : f.mime === 'application/pdf' ? preview(Object.assign({}, design, { image: f }), values).then(q => q.pages || 1, () => 1) : 1)))
+        .reduce((a, b) => a + b, 0);
+    if (outdated()) return;
     // Kept to fit the label again when the stage changes its size
     el._view = {
         url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
@@ -1398,8 +1404,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
-        // The selected pages of a PDF print like files
-        cuts: `${cutStrip(cutNow, caps, Math.max(1, labelFiles(design).length) - 1 + (p.pages || 1))}<span>${esc(cutShort(cutNow, caps))}</span>`,
+        cuts: `${cutStrip(cutNow, caps, Math.max(1, labels))}<span>${esc(cutShort(cutNow, caps))}</span>`,
     };
     if ('zoom' in el.dataset && !el._watched) { el._watched = true; stageSizes.observe(el); }
     placeOnStage(el, true);
@@ -2732,7 +2737,7 @@ const drawStage = latest(async () => {
     const empty = isEmptyDesign(E.design);
     const file = fileShown(E);
     const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) })
-        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file] }) : E.design;
+        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file], more_images: labelFiles(E.design).filter((_, i) => i !== file) }) : E.design;
     const gap = $('#edGap');
     await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
         // Where the server put the code or image, its setting shows that

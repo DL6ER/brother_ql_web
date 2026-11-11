@@ -196,3 +196,19 @@ def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
     designer.fill('#edPages', '2')
     wait_for_preview(designer)
     assert designer.evaluate(letters) == 'AAA'
+    # With an image after it the job is the same whichever file is shown
+    designer.fill('#edPages', '1-3')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))},
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+    ])
+    wait_for_preview(designer)
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="1"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'CBA'
+    designer.click('#edFileStep [data-file="1"]')
+    wait_for_preview(designer)
+    assert designer.evaluate("() => fileShown(S.edit)") == 1
+    assert designer.evaluate(letters) == 'CBA'
