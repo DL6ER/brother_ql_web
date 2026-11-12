@@ -394,20 +394,30 @@ function cutShort(c, k) {
 // the last label left in the printer. Not to scale: a PT-E550W fed 22 mm
 // before the first label, 11 mm after a chain print, and gave short labels
 // some more tape.
-function cutStrip(c, k) {
+function cutStrip(c, k, files = 1) {
     const half = halfOf(c, k);
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     // The last label stays in the printer with chain printing, and on QL
     // printers where it is not cut
     const end = noCutter(k) ? 'none' : chainOf(c, k) || c.cut === 'none' ? 'chain' : 'full';
-    // Copies of the same label, all A
-    const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
+    // Copies of one file, all A, of several as the setting orders them: the
+    // first three printed, the first of them on the right
+    const [third, second, first] = printOrder(files).slice(0, 3).reverse().map(i => `<span class="lab">${'ABC'[Math.min(i, 2)]}</span>`);
+    const mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, k));
     const waste = k.feed_waste ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
     // The printer on the left, as on its display: the tape leaves it to the
     // right, the waste first
-    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${lab}${mark(between)}${lab}${mark(between)}${lab}${waste}</span>`;
+    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${third}${mark(between)}${second}${mark(between)}${first}${waste}</span>`;
 }
+
+// The files of copies in the order they are printed: as sets, ABAB, or
+// grouped, AABB, two copies of several files, three of one
+const collated = () => S.settings.collate !== '0';
+const printOrder = files => {
+    const ids = [...Array(files).keys()], copies = files > 1 ? 2 : 3;
+    return collated() ? Array(copies).fill(ids).flat() : ids.flatMap(i => Array(copies).fill(i));
+};
 
 // marks: a preview shows the blanks still to fill in. blanks: those of
 // blankRequest(), e.g. as a cached preview was made for them.
@@ -447,6 +457,7 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
     fd.set('high_res', highRes() ? '1' : '0');
     if (forPrint) {
         fd.set('fast_printing', S.settings.quality === 'fast' ? '1' : '0');
+        fd.set('collate', collated() ? '1' : '0');
         const c = cutOf(design);
         fd.set('cut', c.cut);
         fd.set('half_cut', c.half_cut);
@@ -613,7 +624,8 @@ function preview(design, values, stale, first = false) {
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
-            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1'
+            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1',
+            pages: +(r.headers.get('X-PDF-Selected-Pages') || 1)
         };
     }, stale, first);
     previewCache.set(key, p);
@@ -1332,6 +1344,20 @@ function busyThen(getEl, fn) {
     };
 }
 
+// The number of pages of a PDF that print, by the PDF and its selection:
+// asked once, not again for every change of the text
+const pagesCounted = new Map();
+function selectedPages(design, f, values) {
+    const key = JSON.stringify([imageKey(f), design.pdf_pages || '']);
+    if (!pagesCounted.has(key)) {
+        pagesCounted.set(key, preview(Object.assign({}, design, { image: f }), values).then(q => q.pages || 1, () => {
+            pagesCounted.delete(key);
+            return 1;
+        }));
+    }
+    return pagesCounted.get(key);
+}
+
 async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
     el._seq = (el._seq || 0) + 1;
@@ -1379,6 +1405,12 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
+    // The selected pages of a PDF print like files, of those not shown as
+    // their previews count them
+    const labels = (await Promise.all(labelFiles(design).map((f, i) => i === 0 ? p.pages || 1
+        : f.mime === 'application/pdf' ? selectedPages(design, f, values) : 1)))
+        .reduce((a, b) => a + b, 0);
+    if (outdated()) return;
     // Kept to fit the label again when the stage changes its size
     el._view = {
         url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
@@ -1386,7 +1418,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
-        cuts: `${cutStrip(cutNow, caps)}<span>${esc(cutShort(cutNow, caps))}</span>`,
+        cuts: `${cutStrip(cutNow, caps, Math.max(1, labels))}<span>${esc(cutShort(cutNow, caps))}</span>`,
     };
     if ('zoom' in el.dataset && !el._watched) { el._watched = true; stageSizes.observe(el); }
     placeOnStage(el, true);
@@ -2719,7 +2751,7 @@ const drawStage = latest(async () => {
     const empty = isEmptyDesign(E.design);
     const file = fileShown(E);
     const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) })
-        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file] }) : E.design;
+        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file], more_images: labelFiles(E.design).filter((_, i) => i !== file) }) : E.design;
     const gap = $('#edGap');
     await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
         // Where the server put the code or image, its setting shows that
@@ -3103,6 +3135,7 @@ function bindPrinterPanel() {
         $('#qInfoBtn', box).setAttribute('aria-expanded', String(S.qualityInfo));
     };
     $$('[data-q]', box).forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; saveSettings(); });
+    $$('[data-col]', box).forEach(b => b.onclick = () => { S.settings.collate = b.dataset.col; saveSettings(); });
     $$('[data-c]', box).forEach(b => b.onclick = () => {
         S.settings.cuts = Object.assign({}, S.settings.cuts, { [printerKey()]: Object.assign(printerCut(), { [b.dataset.c]: b.dataset.v }) });
         saveSettings();
@@ -3142,6 +3175,11 @@ function settingsCard() {
                 : `<p>Fast printing is quicker, the print is a little less sharp.</p>
                 <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(without600))} cannot print at 600 dpi.</p>`}
             </div></div>
+        <div><span class="label-s">Copies of several files</span>
+            <div class="seg">
+            <button type="button" data-col="1" class="${collated() ? 'on' : ''}">As sets: ABC ABC</button>
+            <button type="button" data-col="0" class="${collated() ? '' : 'on'}">Grouped: AA BB CC</button></div>
+            <span class="muted small">For several images or PDF pages printed more than once.</span></div>
         <div><label class="label-s" for="setDate">Dates on labels</label>
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>

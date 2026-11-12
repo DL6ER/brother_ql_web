@@ -201,6 +201,34 @@ def test_repository_pdf_pages_are_printed(tmp_path):
     assert len(os.listdir(printer.SIMULATED_LABELS_DIR)) == 2
 
 
+# Saved with the label and requested, the request overrides what is saved
+@pytest.mark.parametrize('saved, collate, order', [
+    (None, None, [0, 1, 0, 1]), (None, '1', [0, 1, 0, 1]), (None, '0', [0, 0, 1, 1]),
+    ('0', None, [0, 0, 1, 1]), ('0', '1', [0, 1, 0, 1]),
+])
+def test_repository_pdf_pages_are_collated_or_grouped(tmp_path, saved, collate, order):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path, empty_repo=True)
+    pages = [Image.new('L', size, 'black') for size in ((300, 200), (200, 300))]
+    pdf = io.BytesIO()
+    pages[0].save(pdf, format='PDF', save_all=True, append_images=pages[1:])
+    label = {'name': 'pages', 'label_size': '62', 'print_type': 'image', 'image_mode': 'grayscale',
+             'image_fit': '1', 'text': [], 'pdf_pages': 'all', 'image_mime': 'application/pdf',
+             'image_data': base64.b64encode(pdf.getvalue()).decode('ascii')}
+    if saved is not None:
+        label['collate'] = saved
+    assert client.post(SAVE_URL, json=label).status_code == 200
+    body = {'name': 'pages.json', 'printer': 'simulation', 'print_count': 2}
+    if collate is not None:
+        body['collate'] = collate
+    resp = client.post('/labeldesigner/api/repository/print', json=body)
+    assert resp.status_code == 200, resp.get_json()
+    names = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
+    heights = [Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).height for name in names]
+    first = heights[0]
+    assert [0 if h == first else 1 for h in heights] == order
+
+
 @pytest.mark.parametrize('request_kwargs', [
     {'json': {'name': 'Freezer.json', 'blanks': {'What': 'Chili', 'Box': 2}}},
     {'data': {'name': 'Freezer.json', 'blanks': json.dumps({'What': 'Chili', 'Box': 2})}},
