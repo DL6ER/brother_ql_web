@@ -1,4 +1,4 @@
-"""Epson receipt printers on ESC/POS: the bytes of a job, against a fake
+"""Receipt printers on ESC/POS: the bytes of a job, against a fake
 printer in place of /dev/usb/lp<N>, and printing and status through the
 label designer."""
 import json
@@ -49,7 +49,7 @@ def fake(monkeypatch):
 def client(tmp_path):
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
-    client.application.config['PRINTER_MODEL'] = 'Epson/TM-T20II'
+    client.application.config['PRINTER_MODEL'] = 'Epson/ESC-POS'
     return client
 
 
@@ -122,13 +122,13 @@ def test_rows_are_packed_black_printed():
         label_content = None
 
         def generate(self):
-            image = Image.new('RGB', (420, 10), 'white')
+            image = Image.new('RGB', (384, 10), 'white')
             image.putpixel((0, 0), (0, 0, 0))
-            image.putpixel((419, 0), (0, 0, 0))
+            image.putpixel((383, 0), (0, 0, 0))
             return image
     _, rows, width = escpos.label_rows(_Label(), 'escpos58')
-    assert (len(rows), width) == (10, 53)
-    assert rows[0][0] == 0x80 and rows[0][-1] == 0x10 and rows[1] == bytes(53)
+    assert (len(rows), width) == (10, 48)
+    assert rows[0][0] == 0x80 and rows[0][-1] == 0x01 and rows[1] == bytes(48)
 
 
 def test_label_is_printed_and_cut(client, fake):
@@ -152,13 +152,13 @@ def test_paper_is_cut_at_least_after_the_last_label(client, fake):
     fake()
     response = client.post('/labeldesigner/api/print', data={
         'label_size': 'escpos58', 'print_type': 'text', 'text': TEXT, 'cut': 'none'})
-    assert response.get_json() == {'success': False, 'message': 'The Epson TM-T20II cuts the paper at least after the last label'}
+    assert response.get_json() == {'success': False, 'message': 'The Epson ESC-POS printer cuts the paper at least after the last label'}
 
 
 def test_status_through_the_label_designer(client, fake):
     fake(offline=QUIET | 0x04)
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
-    assert (printer_['model'], printer_['path']) == ('Epson/TM-T20II', DEVICE)
+    assert (printer_['model'], printer_['path']) == ('Epson/ESC-POS', DEVICE)
     assert printer_['errors'] == ['The cover of the printer is open']
 
 
@@ -166,9 +166,12 @@ def test_found_by_its_device_id(client, monkeypatch):
     from app.labeldesigner import printer
     from app.labeldesigner.drivers import devices, escpos
     told = {'usb://0x04b8:0x0e15/5443': 'MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;CLS:PRINTER;',
-            'usb://0x04b8:0x0202': 'MFG:EPSON;CMD:ESC/P;MDL:LX-350;'}
+            'usb://0x04b8:0x0202': 'MFG:EPSON;CMD:ESC/P;MDL:LX-350;',
+            'usb://0x0416:0x5011': 'MFG:Printer;CMD:ESC/POS,Raster;MDL:POS58;'}
     monkeypatch.setattr(devices, 'usb_device_id', lambda device: told.get(device, ''))
-    assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15/5443') == 'Epson/TM-T20II'
+    assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15/5443') == 'Epson/ESC-POS'
+    # A printer of another maker on ESC/POS is one too
+    assert escpos.DRIVER.model_of('usb://0x0416:0x5011') == 'Epson/ESC-POS'
     # Another Epson is no receipt printer
     assert escpos.DRIVER.model_of('usb://0x04b8:0x0202') is None
     # Found on USB by the label designer, without PRINTERS
@@ -179,4 +182,4 @@ def test_found_by_its_device_id(client, monkeypatch):
     monkeypatch.setattr(escpos.Escpos, 'status', lambda self, device, model, unconfirmed=False: {'path': device, 'model': model, 'errors': []})
     client.application.config['PRINTER_PRINTER'] = '?'
     found = client.get('/labeldesigner/api/printer_status').get_json()['printers']
-    assert [(p['path'], p['model']) for p in found if p['path'].startswith('usb://')] == [('usb://0x04b8:0x0e15/5443', 'Epson/TM-T20II')]
+    assert [(p['path'], p['model']) for p in found if p['path'].startswith('usb://')] == [('usb://0x04b8:0x0e15/5443', 'Epson/ESC-POS'), ('usb://0x0416:0x5011', 'Epson/ESC-POS')]

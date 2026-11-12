@@ -470,7 +470,7 @@ def test_labels_of_a_q00_leave_it_turned(designer):
 
 def test_receipt_shows_the_blank_paper_before_it(designer):
     # A TM-T20II feeds 12 mm to its cutter after a label, blank before the next
-    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Epson/TM-T20II' }); S.tape = 'escpos80';
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Epson/ESC-POS' }); S.tape = 'escpos80';
         openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { text: [L('R', 40)] }) }); }""")
     wait_for_preview(designer)
     assert 'turned' in designer.get_attribute('#edStage', 'class').split()

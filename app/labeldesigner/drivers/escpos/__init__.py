@@ -1,5 +1,7 @@
-"""Epson receipt printers on ESC/POS (protocol.py), e.g. the TM-T20II on
-endless 58 or 80 mm paper, which it cuts. The label is sent as an image."""
+"""Receipt printers on ESC/POS (protocol.py), e.g. an Epson TM-T20II, on
+endless 58 or 80 mm paper, which they cut. ESC/POS is the same on any of
+them, so it is one model and not one per printer. The label is sent as an
+image."""
 
 import logging
 import re
@@ -14,20 +16,22 @@ from . import protocol
 
 logger = logging.getLogger(__name__)
 
-MODELS = ('Epson/TM-T20II',)
-# Paper width in mm and the dots across it the TM-T20II prints, the first
-# one assumed, as the printer does not tell
-WIDTHS = {80: 576, 58: 420}
+MODELS = ('Epson/ESC-POS',)
+# Paper width in mm and the dots across it, the first one assumed, as the
+# printer does not tell. 384 on 58 mm paper as most printers print, a
+# TM-T20II would print 420.
+WIDTHS = {80: 576, 58: 384}
 
 LABELS = tuple(Label(f'escpos{width}', (width, 0), FormFactor.ENDLESS, (dots, 0), (dots, 0), 0, models=MODELS)
                for width, dots in WIDTHS.items())
 # Paper fed to the cutter after each label that is cut, blank before the
 # next one: on a TM-T20II a 15 mm label took 27 mm of paper, two of them
-# not cut between them 42 mm
+# not cut between them 42 mm. Other printers have their head nearer to or
+# further from the cutter.
 LEAD_MM = 12
 # Below the cutter, inside the printer
 NEVER_WHY = 'The paper would stay inside the printer until it is cut'
-NAMES = {label.identifier: f'{label.tape_size[0]} mm receipt paper (Epson)' for label in LABELS}
+NAMES = {label.identifier: f'{label.tape_size[0]} mm receipt paper (ESC/POS)' for label in LABELS}
 
 
 def label_rows(label, label_size: str) -> tuple[Image.Image, list[bytes], int]:
@@ -62,10 +66,10 @@ class Escpos(Driver):
     errors = (OSError, protocol.EscposError)
 
     def model_of(self, device):
-        # By the device ID on USB: MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;...
+        # By the device ID on USB, e.g. MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;...
         fields = devices.device_id_fields(devices.usb_device_id(device)) if isinstance(device, str) else {}
-        model = f"Epson/{fields.get('MDL', '')}"
-        return model if 'ESC/POS' in fields.get('CMD', '').split(',') and model in MODELS else None
+        commands = [command.strip().upper() for command in fields.get('CMD', '').split(',')]
+        return MODELS[0] if 'ESC/POS' in commands else None
 
     def fits(self, label, model):
         return label in LABELS
@@ -74,10 +78,10 @@ class Escpos(Driver):
         return protocol.DPI
 
     def resolution_problem(self, model, high_res):
-        return f'The {shown(model)} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
+        return f'The {shown(model)} printer cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
 
     def cut_problem(self, cut, model):
-        return f'The {shown(model)} cuts the paper at least after the last label' if cut == 'none' else ''
+        return f'The {shown(model)} printer cuts the paper at least after the last label' if cut == 'none' else ''
 
     def capabilities(self, model):
         return dict(super().capabilities(model), qualities=['quality'], never_cut=NEVER_WHY,

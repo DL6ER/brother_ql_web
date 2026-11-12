@@ -238,7 +238,8 @@ def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
     assert create_app().config['PRINTERS'] == [
         ('QL-700', 'usb://0x04f9:0x2042'),
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:46:4C'),
-        ('Epson/TM-T20II', 'file:///dev/usb/lp0', 'Kitchen'),
+        # ESC/POS is one model, its name before is taken
+        ('Epson/ESC-POS', 'file:///dev/usb/lp0', 'Kitchen'),
         # Its name before, taken for a while
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:AA:29'),
     ]
