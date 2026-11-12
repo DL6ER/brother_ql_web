@@ -7,6 +7,7 @@ errors and the length of the labels it measured, which picks their size."""
 import logging
 import os
 import re
+import time
 
 from PIL import Image
 
@@ -37,6 +38,13 @@ def _label(width: int, length: int) -> Label:
     return Label(f'zpl{width}x{length}', (width, length), FormFactor.DIE_CUT, total,
                  (min(total[0], HEAD), total[1]), 0, models=MODELS)
 
+
+# A Datamax-O'Neil E-4204B leaves ~HS unanswered within about 5 s of the one
+# before: a printer is asked at most every ASK_EVERY seconds, told as it was
+# in between
+ASK_EVERY = 10
+_asked: dict[str, float] = {}
+NO_ANSWER = 'The printer does not answer, is its printhead open?'
 
 # A measured length further off than this from all sizes is not taken
 LENGTH_TOLERANCE = 2
@@ -108,14 +116,24 @@ class Zpl(Driver):
         if not device.startswith('tcp://') and not os.path.exists(path):
             raise FileNotFoundError(2, 'No such device', path)
         state = dict(network_status(device, model), media_type='Die-cut labels')
+        cached = devices.status_cache.get(devices.lock_key(device))
+        if cached and time.monotonic() - _asked.get(device, 0) < ASK_EVERY:
+            return dict(cached)
         with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
             if not acquired:
                 state.update(devices.status_cache.get(devices.lock_key(device), {}))
                 state.update({'errors': [], 'status_type': devices.BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
                 return state
             answer = protocol.parse_host_status(protocol.host_status(device))
-        # A printer that does not answer ~HS is told as before, without errors
+            _asked[device] = time.monotonic()
         if answer is None:
+            # A printer that never answered ~HS is told as before, without
+            # errors. A Datamax-O'Neil E-4204B with its printhead open does
+            # not answer.
+            if cached:
+                state.update(cached)
+                state.update({'errors': [NO_ANSWER], 'status_type': 'Error occurred'})
+                devices.status_cache[devices.lock_key(device)] = state
             return state
         state['errors'] = protocol.errors(answer)
         state['status_type'] = 'Error occurred' if state['errors'] else 'Reply to status request'

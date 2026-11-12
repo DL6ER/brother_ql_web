@@ -166,6 +166,13 @@ def _answering(monkeypatch, answer):
     return thread, server
 
 
+@pytest.fixture(autouse=True)
+def asked_afresh(monkeypatch):
+    from app.labeldesigner.drivers import devices
+    monkeypatch.setattr(zpl, '_asked', {})
+    monkeypatch.setattr(devices, 'status_cache', {})
+
+
 def test_status_over_the_network(monkeypatch):
     # The head of a GK420t with 4 x 6 in labels open
     answer = DATAMAX_HS.replace(b'0235', b'1214').replace(b'000,0,0,0,0', b'000,0,1,0,0')
@@ -183,3 +190,19 @@ def test_status_without_an_answer(monkeypatch):
     thread.join(5)
     server.close()
     assert state['errors'] == [] and state['media_width'] is None
+
+
+def test_asked_at_most_every_10_s_then_silence_is_an_error(monkeypatch):
+    thread, server = _answering(monkeypatch, DATAMAX_HS)
+    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 30
+    thread.join(5)
+    server.close()
+    # Not asked again within 10 s, told as it was
+    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 30
+    # A Datamax with its printhead open does not answer
+    monkeypatch.setitem(zpl._asked, 'tcp://127.0.0.1', 0)
+    thread, server = _answering(monkeypatch, b'')
+    state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
+    thread.join(5)
+    server.close()
+    assert state['errors'] == [zpl.NO_ANSWER] and state['media_length'] == 30
