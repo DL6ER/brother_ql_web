@@ -43,16 +43,14 @@ NAMES = {label.identifier: f'{label.tape_size[0]} x {label.tape_size[1]} mm die-
 
 def label_rows(label, label_size: str) -> tuple[Image.Image, list[bytes], int]:
     """A label as the printer prints it: rows of packed dots across the
-    printhead, the first one comes out first, and the bytes of each row."""
+    printhead, the last one comes out first, and the bytes of each row."""
     img = label.generate()
-    # The top of a ZPL label (^PON, the printer's default) leaves first, as on
-    # the other printers. Labels longer than wide, which the label designer
-    # draws lying, are turned as by the other drivers, their end leaves first.
-    # The ZPL emulation of a Datamax-O'Neil E-4204B prints them the other way
-    # round, also with ^PON, and as ZPL says only with ^POI.
+    # The bottom of a ZPL label leaves the printer first, on a Zebra GK420t as
+    # on a Datamax-O'Neil E-4204B. Turned upside down its top does, as on the other
+    # printers. Labels longer than wide, which the label designer draws lying,
+    # are turned as by the other drivers, their end leaves first.
     across = next(size.dots_printable[0] for size in LABELS if size.identifier == label_size)
-    if img.width != across:
-        img = img.rotate(90, expand=True)
+    img = img.rotate(-90 if img.width != across else 180, expand=True)
     dither = label.label_content != LabelContent.IMAGE_BW
     img = img.convert('L').convert('1', dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
     # 1 bit images of PIL are packed MSB first with white 1, ZPL prints 1
