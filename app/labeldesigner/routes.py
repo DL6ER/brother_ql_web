@@ -27,7 +27,7 @@ from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_blank_choices, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_length_problem, label_name, label_palette, label_printers, label_size_problem, length_limits
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -442,18 +442,18 @@ def _as_numbers(value):
 
 
 def _defaults_written(fields):
-    """The settings of blanks of a JSON body, their defaults as they are
-    written, all other numbers as numbers."""
+    """The settings of blanks of a JSON body, their defaults and choices as
+    they are written, all other numbers as numbers."""
     if not isinstance(fields, dict):
         return _as_numbers(fields)
-    return {name: {key: value if key == 'default' else _as_numbers(value) for key, value in field.items()} if isinstance(field, dict) else _as_numbers(field)
+    return {name: {key: value if key in ('default', 'choices') else _as_numbers(value) for key, value in field.items()} if isinstance(field, dict) else _as_numbers(field)
             for name, field in fields.items()}
 
 
 def _json_body() -> dict:
     """The JSON body of the request as object, else empty. Read once. The
-    values of blanks and their defaults keep their numbers as they are
-    written, e.g. 2.50, all other numbers are numbers."""
+    values of blanks, their defaults and choices keep their numbers as they
+    are written, e.g. 2.50, all other numbers are numbers."""
     body = request.environ.get('labeldesigner.json_body')
     if body is None:
         data = None
@@ -1577,24 +1577,30 @@ def _blank_values(value) -> dict[str, str]:
     return {name: str(v) for name, v in values.items()}
 
 
-BLANK_TYPES = ('text', 'number', 'date')
+BLANK_TYPES = ('text', 'number', 'date', 'choice')
 
 
 def _blank_setting(field) -> bool:
     """Whether field is the settings of a blank: an object, its type one of
-    BLANK_TYPES, its format a text and its default a text or number, each
-    where given."""
+    BLANK_TYPES, its format a text, its default a text or number and its
+    choices a list, each where given."""
     if not isinstance(field, dict):
         return False
     default = field.get('default')
     return (field.get('type') in (None, *BLANK_TYPES) and isinstance(field.get('format'), (str, type(None)))
-            and (default is None or (isinstance(default, (str, int, float)) and not isinstance(default, bool))))
+            and (default is None or (isinstance(default, (str, int, float)) and not isinstance(default, bool)))
+            and isinstance(field.get('choices'), (list, type(None))))
 
 
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
     "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    fields = _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    # A blank with a fixed list of choices
+    for name, field in fields.items():
+        if field.get('type') == 'choice':
+            check_blank_choices(name, field)
+    return fields
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:

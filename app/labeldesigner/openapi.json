@@ -2198,7 +2198,7 @@
       "BlankValues": {
         "type": "string",
         "contentMediaType": "application/json",
-        "description": "Values for the blanks (`{{blank:<name>}}`) in the text and the code as JSON object of texts or numbers, e.g. `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default from `fields`, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format from `fields`, else as it is. A blank is a date if `fields` says so, else text.",
+        "description": "Values for the blanks (`{{blank:<name>}}`) in the text and the code as JSON object of texts or numbers, e.g., `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default from `fields`, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format from `fields`, else as it is. A blank is a date if `fields` says so, else text. A blank of the type `choice` takes one of its choices, another value is refused.",
         "examples": [
           "{\"Room\": \"Garage\"}"
         ]
@@ -2206,13 +2206,14 @@
       "BlankSettings": {
         "type": "string",
         "contentMediaType": "application/json",
-        "description": "Settings of the blanks by name as JSON object, as the label designer saves them with a label: `type` (`text`, `number` or `date`), `default`, and for a date its `format` (strftime, e.g. `%d.%m.%Y`). Another type, a format that is no text or a default that is no text or number is refused.",
+        "description": "Settings of the blanks by name as JSON object, as the label designer saves them with a label: `type` (`text`, `number`, `date` or `choice`), `default`, for a date its `format` (strftime, e.g., `%d.%m.%Y`), and for a choice its `choices` (1 to 50 texts of at most 200 characters, none twice; the default is one of them, else the first one). Another type, a format that is no text, a default that is no text or number, or choices that are no such list are refused.",
         "examples": [
-          "{\"Frozen on\": {\"type\": \"date\", \"format\": \"%d.%m.%Y\"}}"
+          "{\"Frozen on\": {\"type\": \"date\", \"format\": \"%d.%m.%Y\"}}",
+          "{\"Room\": {\"type\": \"choice\", \"choices\": [\"Garage\", \"Kitchen\", \"Attic\"]}}"
         ]
       },
       "SavedLabelBlanks": {
-        "description": "Values for the blanks (`{{blank:<name>}}`) of the label as JSON object of texts or numbers, e.g. `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default saved with the label, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format saved with the label, else as it is. A blank is a date if its saved type says so, else text.",
+        "description": "Values for the blanks (`{{blank:<name>}}`) of the label as JSON object of texts or numbers, e.g., `{\"Room\": \"Garage\"}`. They are inserted as given, numbers as they are written, also an empty text. Blanks not given get their default saved with the label, dates today's date in the time zone of the server (environment variable `TZ`), others stay empty. A date like 2026-11-03 is written in the format saved with the label, else as it is. A blank is a date if its saved type says so, else text. A blank of the type `choice` takes one of its choices, another value is refused.",
         "oneOf": [
           {
             "type": "string",

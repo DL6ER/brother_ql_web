@@ -53,6 +53,10 @@ VERTICAL_ALIGNMENTS = ('top', 'center', 'bottom')
 # The date format of a blank, e.g. %d.%m.%Y. A long one would make a long
 # date of every blank.
 MAX_DATE_FORMAT_LENGTH = 100
+# A blank with a fixed list of choices has at most this many, each at most
+# this long
+MAX_BLANK_CHOICES = 50
+MAX_BLANK_CHOICE_LENGTH = 200
 DEFAULT_FONT_SIZE = 12
 
 # Pillow refuses to open images with more than twice this number of pixels,
@@ -231,6 +235,22 @@ def datetime_codes() -> dict:
     when = DATETIME_EXAMPLE
     return {'example': f'{when:%A}, {when.day} {when:%B %Y, %H:%M:%S}',
             'codes': [[code, meaning, when.strftime(code)] for code, meaning in DATETIME_CODES]}
+
+
+def check_blank_choices(name: str, field: dict) -> None:
+    """ValueError unless a choice blank has 1 to MAX_BLANK_CHOICES different
+    choices, texts or numbers (as written) of at most MAX_BLANK_CHOICE_LENGTH
+    characters, and its default, if any, among them."""
+    choices = field.get('choices')
+    if (not isinstance(choices, list) or not 1 <= len(choices) <= MAX_BLANK_CHOICES
+            or not all(isinstance(choice, (str, int, float)) and not isinstance(choice, bool)
+                       and str(choice).strip() and len(str(choice)) <= MAX_BLANK_CHOICE_LENGTH for choice in choices)):
+        raise ValueError(f"The blank {name} needs 1 to {MAX_BLANK_CHOICES} choices, "
+                         f"each a text of at most {MAX_BLANK_CHOICE_LENGTH} characters")
+    if len(set(map(str, choices))) < len(choices):
+        raise ValueError(f"The blank {name} has a choice twice")
+    if field.get('default') not in (None, '') and str(field['default']) not in map(str, choices):
+        raise ValueError(f"The default of the blank {name} is none of its choices")
 
 
 def _iso_date(value: str) -> datetime.date | None:
@@ -688,6 +708,14 @@ class SimpleLabel:
             value = str(self._blanks[name])
         else:
             value = '' if field.get('default') is None else str(field['default'])
+        # One of a fixed list: the default, else the first one
+        if field.get('type') == 'choice':
+            choices = [str(choice) for choice in field.get('choices') or []]
+            if value == '' and not given:
+                return choices[0] if choices else ''
+            if value not in choices:
+                raise ValueError(f'"{value}" is none of the choices of the blank {name}')
+            return value
         # Without a type a blank is text, the label designer saves the type
         if field.get('type') != 'date':
             return value
