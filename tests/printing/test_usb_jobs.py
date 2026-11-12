@@ -6,7 +6,8 @@ import threading
 
 import pytest
 
-from app.labeldesigner.drivers.brother import backends, usb
+from app.labeldesigner.drivers import backends
+from app.labeldesigner.drivers.brother import usb
 from tests.helpers import EXAMPLE_FORMDATA, make_client
 
 REPLY, COMPLETED, PHASE_CHANGE, ERROR = 0x00, 0x01, 0x06, 0x02

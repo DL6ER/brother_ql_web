@@ -1,5 +1,5 @@
 """Brother QL and P-touch printers, which speak Brother's raster protocol
-(commands.py, raster.py), on USB (usb.py, backends.py) and on the network
+(commands.py, raster.py), on USB (usb.py, ../backends.py) and on the network
 (network.py). Based on brother_ql by Philipp Klaus and its fork
 brother_ql-inventree by Matthias Mair, both GPLv3."""
 
