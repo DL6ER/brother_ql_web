@@ -61,6 +61,25 @@ def test_every_demo_label_fits(client, label_id):
     assert preview.convert('L').getextrema()[0] < 64
 
 
+def test_a_blank_without_a_default_shows_its_name(client, monkeypatch):
+    # As the label designer draws saved labels, e.g., the names Grocy sends.
+    # Printed, it stays empty.
+    label_id = 'kitchen/015-grocy-62.json'
+    form = {key: json.dumps(value) if isinstance(value, (list, dict)) else str(value) for key, value in demos.load(label_id).items()}
+    designer = client.post('/labeldesigner/api/preview', data=dict(form, mark_blanks='1'))
+    gallery = client.get('/labeldesigner/api/demos/preview', query_string={'id': label_id})
+    assert designer.status_code == gallery.status_code == 200
+    assert gallery.data == designer.data
+    from app.labeldesigner import printer
+    queued = []
+    monkeypatch.setattr(printer.PrinterQueue, 'add_label_to_queue', lambda self, label, cut=True, high_res=False, fast=False: queued.append(label))
+    monkeypatch.setattr(printer.PrinterQueue, 'process_queue', lambda self, batch_size=0: '')
+    assert client.post('/labeldesigner/api/demos/print', json={'id': label_id}).get_json() == {'success': True}
+    label, = queued
+    label.process_templates()
+    assert [line['text'] for line in label.text] == ['', '']
+
+
 @pytest.mark.parametrize('old, new', sorted(demos.REPLACED.items()))
 def test_replaced_demo_labels_lead_to_those_in_their_place(client, old, new):
     # Links to them, e.g. for printing, answered not found
