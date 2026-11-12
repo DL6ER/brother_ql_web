@@ -1,7 +1,8 @@
 """Label printers on ZPL (protocol.py), e.g. a Zebra GK420t or a
 Datamax-O'Neil E-4204B with its ZPL emulation, tested on the Datamax only.
 Die-cut labels, which the printer finds by their gaps, torn off. The label
-is sent as an image. The printer is not asked for its status."""
+is sent as an image. The printer is asked for its status with ~HS: its
+errors and the length of the labels it measured, which picks their size."""
 
 import logging
 import os
@@ -35,6 +36,19 @@ def _label(width: int, length: int) -> Label:
     total = (width * DOTS_PER_MM, length * DOTS_PER_MM)
     return Label(f'zpl{width}x{length}', (width, length), FormFactor.DIE_CUT, total,
                  (min(total[0], HEAD), total[1]), 0, models=MODELS)
+
+
+# A measured length further off than this from all sizes is not taken
+LENGTH_TOLERANCE = 2
+
+
+def loaded(length: int) -> tuple[int, int] | None:
+    """Width and length in mm of the labels of a length the printer measured
+    in dots, the first size of the nearest length, e.g. 235 dots (29.4 mm)
+    100 x 30 mm. The printer does not tell their width."""
+    mm = length / DOTS_PER_MM
+    size = min(SIZES, key=lambda size: abs(size[1] - mm))
+    return size if abs(size[1] - mm) <= LENGTH_TOLERANCE else None
 
 
 LABELS = tuple(_label(width, length) for width, length in SIZES)
@@ -90,11 +104,28 @@ class Zpl(Driver):
         return dict(super().capabilities(model), qualities=['quality'], cutter=False, leaves_turned=True)
 
     def status(self, device, model, unconfirmed=False):
-        # Not asked: only a printer on USB that is not there is told
         path = device.removeprefix('file://')
         if not device.startswith('tcp://') and not os.path.exists(path):
             raise FileNotFoundError(2, 'No such device', path)
-        return dict(network_status(device, model), media_type='Die-cut labels')
+        state = dict(network_status(device, model), media_type='Die-cut labels')
+        with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
+            if not acquired:
+                state.update(devices.status_cache.get(devices.lock_key(device), {}))
+                state.update({'errors': [], 'status_type': devices.BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
+                return state
+            answer = protocol.parse_host_status(protocol.host_status(device))
+        # A printer that does not answer ~HS is told as before, without errors
+        if answer is None:
+            return state
+        state['errors'] = protocol.errors(answer)
+        state['status_type'] = 'Error occurred' if state['errors'] else 'Reply to status request'
+        state['phase_type'] = 'Waiting to receive'
+        # The label designer then picks the labels
+        size = loaded(answer['length'])
+        if size:
+            state['media_width'], state['media_length'] = size
+        devices.status_cache[devices.lock_key(device)] = state
+        return state
 
     def render(self, queue, entries, keep=None):
         job = []

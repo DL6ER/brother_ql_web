@@ -131,3 +131,55 @@ def test_600_dpi_is_refused(client, sent):
         'label_size': 'zpl57x32', 'print_type': 'text', 'text': TEXT, 'high_res': '1'})
     assert response.get_json() == {'success': False, 'message': 'The Zebra ZPL printer cannot print at 600 dpi, turn off 600 dpi printing'}
     assert sent == []
+
+
+# As a Datamax-O'Neil E-4204B with 100 x 30 mm labels answered ~HS
+DATAMAX_HS = (b'\x02030,0,0,0235,044,0,0,0,000,0,0,0\x03\r\n'
+              b'\x02000,0,0,0,0,1,5,0,00000000,1,000\x03\r\n\x020000,0\x03\r\n')
+
+
+def test_host_status():
+    assert protocol.parse_host_status(DATAMAX_HS) == {
+        'paper_out': False, 'paused': False, 'length': 235, 'under_temperature': False,
+        'over_temperature': False, 'head_up': False, 'ribbon_out': False}
+    assert protocol.parse_host_status(b'') is None
+
+
+@pytest.mark.parametrize('length, size', [(235, (100, 30)), (1214, (102, 152)), (1184, (105, 148)), (500, None)])
+def test_labels_by_their_length(length, size):
+    # 4 x 6 in labels measured 1214 dots on a GK420t
+    assert zpl.loaded(length) == size
+
+
+def _answering(monkeypatch, answer):
+    server = socket.create_server(('127.0.0.1', 0))
+
+    def serve():
+        conn, _ = server.accept()
+        with conn:
+            assert conn.recv(16) == b'~HS'
+            conn.sendall(answer)
+    thread = threading.Thread(target=serve)
+    thread.start()
+    monkeypatch.setattr(protocol, 'PORT', server.getsockname()[1])
+    monkeypatch.setattr(protocol, 'ANSWER_WAIT', 0.5)
+    return thread, server
+
+
+def test_status_over_the_network(monkeypatch):
+    # The head of a GK420t with 4 x 6 in labels open
+    answer = DATAMAX_HS.replace(b'0235', b'1214').replace(b'000,0,0,0,0', b'000,0,1,0,0')
+    thread, server = _answering(monkeypatch, answer)
+    state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
+    thread.join(5)
+    server.close()
+    assert state['errors'] == ['The printhead is open']
+    assert (state['media_width'], state['media_length']) == (102, 152)
+
+
+def test_status_without_an_answer(monkeypatch):
+    thread, server = _answering(monkeypatch, b'')
+    state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
+    thread.join(5)
+    server.close()
+    assert state['errors'] == [] and state['media_width'] is None
