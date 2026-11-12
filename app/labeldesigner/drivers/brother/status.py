@@ -73,6 +73,23 @@ PHASE_TYPES = {
 }
 
 
+# Byte 25 of the status, reserved in Brother's reference: the QL-800 series
+# sets bit 7 for a black and red roll and reports 0x01 for a black one. Seen
+# on two QL-800 and a QL-810W (black only); other values tell nothing.
+RED_ROLL_BYTE = 25
+
+
+def red_roll(data: bytes, model: str, media_width: int, media_category: str) -> bool | None:
+    """Whether the roll in a printer that prints red is a black and red one,
+    None where the status does not tell, e.g., for other printers."""
+    if model not in MODELS or not MODELS[model].two_color or not media_width or media_category == 'TZe':
+        return None
+    color = data[RED_ROLL_BYTE]
+    if color & 0x80:
+        return True
+    return False if color == 0x01 else None
+
+
 class StatusError(ValueError):
     """An answer that is no status the printer could have sent."""
 
@@ -115,4 +132,5 @@ def parse_status(data: bytes) -> dict:
         'media_length': data[17],
         'setting': data[30] if data[18] == 0xF0 else None,
         'errors': errors,
+        'red_roll': red_roll(data, model, data[10], media_category),
     }
