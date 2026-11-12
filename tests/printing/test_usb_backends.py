@@ -106,9 +106,11 @@ def test_usb_printer_that_is_not_connected(pyusb):
 
 
 def test_printers_of_the_same_model_by_their_serial_number(pyusb):
-    first, second = Device(0x2042, serial='L9Z111111'), Device(0x2042, serial='L9Z378866')
+    first, second = Device(0x2042, serial='000L9Z111111'), Device(0x2042, serial='000L9Z378866')
     pyusb.extend([first, second])
+    # As on the sticker of the printer, or as it tells it over USB
     assert backends.open_printer('usb://0x04f9:0x2042/L9Z378866').dev is second
+    assert backends.open_printer('usb://0x04f9:0x2042/000L9Z378866').dev is second
     assert backends.open_printer('usb://0x04f9:0x2042').dev is first
     with pytest.raises(FileNotFoundError):
         backends.open_printer('usb://0x04f9:0x2042/L9Z000000')

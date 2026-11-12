@@ -81,7 +81,7 @@ class UsbPrinter(Printer):
         vendor, _, product = vendor_product.partition(':')
         vendor, product = int(vendor, 16), int(product, 16)
         for printer in _usb_printers(usb, vendor):
-            if printer.idProduct == product and (not serial or _serial_number(usb, printer) == serial):
+            if printer.idProduct == product and (not serial or _same_serial(_serial_number(usb, printer), serial)):
                 self.dev = printer
                 break
         if self.dev is None:
@@ -137,6 +137,13 @@ def _usb_printers(usb, vendor: int):
             return True
         return any(usb.util.find_descriptor(config, bInterfaceClass=7) is not None for config in device)
     return usb.core.find(find_all=True, custom_match=is_printer, idVendor=vendor)
+
+
+def _same_serial(told: str | None, given: str) -> bool:
+    """Whether a printer that tells its serial number is the one given. A
+    QL-700 tells 000L9Z378866, its sticker says L9Z378866: leading zeros do
+    not count."""
+    return told is not None and told.lstrip('0') == given.lstrip('0')
 
 
 def _serial_number(usb, device) -> str | None:
