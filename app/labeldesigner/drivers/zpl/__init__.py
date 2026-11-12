@@ -95,6 +95,7 @@ class Zpl(Driver):
     # /dev/usb/lp_datamax, or the printer on the network on the port of raw
     # printing only, as the other drivers
     device_patterns = (re.compile(r'(file://)?/dev/usb/lp\w+'),
+                       re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
                        re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
                        re.compile(r'tcp://\[[0-9A-Fa-f:.]+\](:9100)?'))
 
@@ -113,7 +114,7 @@ class Zpl(Driver):
 
     def status(self, device, model, unconfirmed=False):
         path = device.removeprefix('file://')
-        if not device.startswith('tcp://') and not os.path.exists(path):
+        if not device.startswith(('tcp://', 'usb://')) and not os.path.exists(path):
             raise FileNotFoundError(2, 'No such device', path)
         state = dict(network_status(device, model), media_type='Die-cut labels')
         cached = devices.status_cache.get(devices.lock_key(device))

@@ -7,6 +7,8 @@ import select
 import socket
 import time
 
+from .. import backends
+
 DPI = 203
 # Port of raw printing on the network, and how long connecting may take
 PORT = 9100
@@ -15,6 +17,9 @@ CONNECT_WAIT = 10
 ANSWER_WAIT = 2
 # The host status request, answered with three lines <STX>...<ETX><CR><LF>
 HOST_STATUS = b'~HS'
+# A label goes to a printer on PyUSB in pieces: PyUSB gives up on a single
+# write after 15 s
+WRITE_CHUNK = 16384
 
 
 def label(rows: list[bytes], width: int) -> bytes:
@@ -36,9 +41,21 @@ def address(device: str) -> tuple[str, int]:
     return host, int(port or PORT)
 
 
+def _usb_write(printer, data: bytes):
+    for start in range(0, len(data), WRITE_CHUNK):
+        printer.write(data[start:start + WRITE_CHUNK])
+
+
 def write(device: str, data: bytes):
-    """Send to tcp://<host>[:<port>] or to a device file, e.g. usblp's."""
-    if device.startswith('tcp://'):
+    """Send to tcp://<host>[:<port>], to usb://<vendor>:<product>[/<serial>]
+    through PyUSB or to a device file, e.g. usblp's."""
+    if device.startswith('usb://'):
+        printer = backends.UsbPrinter(device)
+        try:
+            _usb_write(printer, data)
+        finally:
+            printer.dispose()
+    elif device.startswith('tcp://'):
         with socket.create_connection(address(device), timeout=CONNECT_WAIT) as s:
             s.sendall(data)
     else:
@@ -71,6 +88,15 @@ def host_status(device: str) -> bytes:
                 s.settimeout(left)
                 return s.recv(256) or None
             return _read_answer(read)
+    if device.startswith('usb://'):
+        printer = backends.UsbPrinter(device)
+        try:
+            while printer.read(256):
+                pass
+            printer.write(HOST_STATUS)
+            return _read_answer(lambda left: printer.read(256))
+        finally:
+            printer.dispose()
     fd = os.open(device.removeprefix('file://'), os.O_RDWR)
     try:
         # An answer from before is not taken for this one
