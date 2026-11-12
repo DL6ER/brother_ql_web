@@ -183,3 +183,33 @@ def test_found_by_its_device_id(client, monkeypatch):
     client.application.config['PRINTER_PRINTER'] = '?'
     found = client.get('/labeldesigner/api/printer_status').get_json()['printers']
     assert [(p['path'], p['model']) for p in found if p['path'].startswith('usb://')] == [('usb://0x04b8:0x0e15/5443', 'Epson/ESC-POS'), ('usb://0x0416:0x5011', 'Epson/ESC-POS')]
+
+
+def test_printer_on_the_network(monkeypatch):
+    import socket
+    import threading
+    server = socket.create_server(('127.0.0.1', 0))
+    received = []
+
+    def printer():
+        conn, _ = server.accept()
+        with conn:
+            # An answer kept from before is not taken for the status
+            conn.sendall(bytes([QUIET | 0x20]))
+            data = b''
+            while not data.endswith(protocol.PAPER):
+                data += conn.recv(64)
+            conn.sendall(bytes([QUIET]))
+            while chunk := conn.recv(65536):
+                data += chunk
+            received.append(data)
+    thread = threading.Thread(target=printer)
+    thread.start()
+    import time
+    time.sleep(0.1)
+    with protocol.connect(f'tcp://127.0.0.1:{server.getsockname()[1]}') as c:
+        assert c.ask(protocol.PAPER) == QUIET
+        c.write(b'job')
+    thread.join(5)
+    server.close()
+    assert received == [protocol.PAPER + b'job']

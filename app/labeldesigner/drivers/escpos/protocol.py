@@ -4,6 +4,7 @@ and the status the printer tells at once (DLE EOT)."""
 
 import os
 import select
+import socket
 import time
 
 from .. import backends
@@ -16,6 +17,9 @@ ANSWER_WAIT = 2
 # A job goes to a printer on PyUSB in pieces: PyUSB gives up on a single
 # write after 15 s, a long receipt takes longer to print
 WRITE_CHUNK = 16384
+# Port of raw printing on the network, and how long connecting may take
+PORT = 9100
+CONNECT_WAIT = 10
 
 INIT = b'\x1b@'
 # Feed to the cutter and cut. A TM-T20II leaves one corner uncut, as its
@@ -114,8 +118,51 @@ class UsbConnection(Connection):
         raise EscposError('no answer to the status request')
 
 
+class TcpConnection(Connection):
+    """The printer on the network, tcp://<host>[:<port>], port 9100 if left
+    out, an IPv6 address in brackets."""
+
+    def __init__(self, device: str):
+        rest = device.removeprefix('tcp://')
+        if rest.startswith('['):
+            host, _, port = rest[1:].partition(']')
+            port = port.removeprefix(':')
+        else:
+            host, _, port = rest.partition(':')
+        self.socket = socket.create_connection((host, int(port or PORT)), timeout=CONNECT_WAIT)
+
+    def __exit__(self, *args):
+        self.socket.close()
+
+    def write(self, data: bytes):
+        self.socket.settimeout(None)
+        self.socket.sendall(data)
+
+    def ask(self, request: bytes) -> int:
+        """The status byte the printer answers a DLE EOT request with."""
+        self.socket.setblocking(False)
+        try:
+            while self.socket.recv(64):
+                pass
+        except BlockingIOError:
+            pass
+        self.write(request)
+        self.socket.settimeout(ANSWER_WAIT)
+        try:
+            reply = self.socket.recv(64)
+        except TimeoutError:
+            reply = b''
+        if not reply:
+            raise EscposError('no answer to the status request')
+        return reply[-1]
+
+
 def connect(device: str) -> Connection:
-    return UsbConnection(device) if device.startswith('usb://') else Connection(device)
+    if device.startswith('usb://'):
+        return UsbConnection(device)
+    if device.startswith('tcp://'):
+        return TcpConnection(device)
+    return Connection(device)
 
 
 def get_errors(c: Connection) -> list[str]:
