@@ -290,7 +290,7 @@ def get_ptr_status(config: Config):
                 logger.debug('Auto-detecting printers: scanning local USB and network')
                 found_list = []
                 # usblp's devices on Linux, then the printers PyUSB finds
-                # that usblp does not hold, e.g. all on macOS and Windows,
+                # that usblp does not hold, e.g. all on macOS,
                 # those of a maker without a driver here left out
                 specs = [f"file://{dev}" for dev in USB_PRINTER_DEVICES if os.path.exists(dev)]
                 for spec in devices.found_usb_printers():

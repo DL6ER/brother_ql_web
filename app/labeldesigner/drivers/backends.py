@@ -173,7 +173,7 @@ def device_id(device_specifier: str) -> str:
 def found_printers() -> list[tuple[str, str]]:
     """usb://<vendor>:<product>[/<serial>] and the IEEE 1284 device ID of the
     printers PyUSB finds that no driver of the kernel holds: on Linux usblp
-    holds them as /dev/usb/lp<N>, on macOS and Windows none does."""
+    holds them as /dev/usb/lp<N>, on macOS none does."""
     try:
         import usb.core
         import usb.util
