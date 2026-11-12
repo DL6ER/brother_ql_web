@@ -6,6 +6,7 @@ backends of brother_ql by Philipp Klaus."""
 import errno
 import logging
 import os
+import re
 import select
 import time
 
@@ -76,16 +77,7 @@ class UsbPrinter(Printer):
         import usb.core
         import usb.util
         self._usb = usb
-        self.dev = None
-        vendor_product, _, serial = device_specifier.removeprefix('usb://').partition('/')
-        vendor, _, product = vendor_product.partition(':')
-        vendor, product = int(vendor, 16), int(product, 16)
-        for printer in _usb_printers(usb, vendor):
-            if printer.idProduct == product and (not serial or _same_serial(_serial_number(usb, printer), serial)):
-                self.dev = printer
-                break
-        if self.dev is None:
-            raise FileNotFoundError(errno.ENODEV, 'Device not found', device_specifier)
+        self.dev = _find(usb, device_specifier)
         try:
             assert self.dev.is_kernel_driver_active(0)
             self.dev.detach_kernel_driver(0)
@@ -130,13 +122,78 @@ class UsbPrinter(Printer):
         del self.dev
 
 
-def _usb_printers(usb, vendor: int):
-    """The devices of a maker with a printer interface (class 7)."""
+def _usb_printers(usb, vendor: int | None = None):
+    """The devices with a printer interface (class 7), of a maker or all."""
     def is_printer(device):
         if device.bDeviceClass == 7:
             return True
         return any(usb.util.find_descriptor(config, bInterfaceClass=7) is not None for config in device)
-    return usb.core.find(find_all=True, custom_match=is_printer, idVendor=vendor)
+    maker = {} if vendor is None else {'idVendor': vendor}
+    return usb.core.find(find_all=True, custom_match=is_printer, **maker)
+
+
+def _find(usb, device_specifier: str):
+    """The device of usb://<vendor>:<product>[/<serial>]."""
+    vendor_product, _, serial = device_specifier.removeprefix('usb://').partition('/')
+    vendor, _, product = vendor_product.partition(':')
+    vendor, product = int(vendor, 16), int(product, 16)
+    for printer in _usb_printers(usb, vendor):
+        if printer.idProduct == product and (not serial or _same_serial(_serial_number(usb, printer), serial)):
+            return printer
+    raise FileNotFoundError(errno.ENODEV, 'Device not found', device_specifier)
+
+
+def _device_id(usb, device) -> str:
+    """The IEEE 1284 device ID of a printer, e.g. MFG:EPSON;CMD:ESC/POS;
+    MDL:TM-T20II;..., asked with GET_DEVICE_ID of the printer class, which
+    needs no interface claimed. Empty when it does not tell."""
+    try:
+        interface = usb.util.find_descriptor(device.get_active_configuration(), bInterfaceClass=7)
+        answer = bytes(device.ctrl_transfer(0xA1, 0, 0, interface.bInterfaceNumber << 8 | interface.bAlternateSetting, 1024, 1000))
+    except (AttributeError, NotImplementedError, ValueError, usb.core.USBError):
+        return ''
+    # Its length first, big-endian, the two bytes included
+    return answer[2:int.from_bytes(answer[:2], 'big')].decode('ascii', 'replace')
+
+
+def device_id(device_specifier: str) -> str:
+    """The IEEE 1284 device ID of the printer usb://..., empty when it is not
+    there or does not tell. Asking claims its interface, so a printer that
+    usblp holds on Linux tells it only as /dev/usb/lp<N>."""
+    try:
+        import usb.core
+        import usb.util
+        return _device_id(usb, _find(usb, device_specifier))
+    except Exception:
+        # Also no PyUSB backend, e.g. no libusb
+        logger.debug('No device ID of %s', device_specifier, exc_info=True)
+        return ''
+
+
+def found_printers() -> list[tuple[str, str]]:
+    """usb://<vendor>:<product>[/<serial>] and the IEEE 1284 device ID of the
+    printers PyUSB finds that no driver of the kernel holds: on Linux usblp
+    holds them as /dev/usb/lp<N>, on macOS and Windows none does."""
+    try:
+        import usb.core
+        import usb.util
+        printers = list(_usb_printers(usb))
+    except Exception:
+        logger.debug('No printers through PyUSB', exc_info=True)
+        return []
+    found = []
+    for printer in printers:
+        try:
+            if printer.is_kernel_driver_active(0):
+                continue
+        except (NotImplementedError, usb.core.USBError):
+            pass
+        serial = _serial_number(usb, printer)
+        spec = f'usb://0x{printer.idVendor:04x}:0x{printer.idProduct:04x}'
+        if serial and re.fullmatch(r'[A-Za-z0-9_-]+', serial):
+            spec += f'/{serial}'
+        found.append((spec, _device_id(usb, printer)))
+    return found
 
 
 def _same_serial(told: str | None, given: str) -> bool:

@@ -160,3 +160,23 @@ def test_status_through_the_label_designer(client, fake):
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
     assert (printer_['model'], printer_['path']) == ('Epson/TM-T20II', DEVICE)
     assert printer_['errors'] == ['The cover of the printer is open']
+
+
+def test_found_by_its_device_id(client, monkeypatch):
+    from app.labeldesigner import printer
+    from app.labeldesigner.drivers import devices, escpos
+    told = {'usb://0x04b8:0x0e15/5443': 'MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;CLS:PRINTER;',
+            'usb://0x04b8:0x0202': 'MFG:EPSON;CMD:ESC/P;MDL:LX-350;'}
+    monkeypatch.setattr(devices, 'usb_device_id', lambda device: told.get(device, ''))
+    assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15/5443') == 'Epson/TM-T20II'
+    # Another Epson is no receipt printer
+    assert escpos.DRIVER.model_of('usb://0x04b8:0x0202') is None
+    # Found on USB by the label designer, without PRINTERS
+    monkeypatch.setattr(devices, 'found_usb_printers', lambda: list(told))
+    monkeypatch.setattr(printer, 'USB_PRINTER_DEVICES', [])
+    monkeypatch.setattr(printer, '_last_scan_ts', 0)
+    monkeypatch.setattr(printer, '_cached_printers', [])
+    monkeypatch.setattr(escpos.Escpos, 'status', lambda self, device, model, unconfirmed=False: {'path': device, 'model': model, 'errors': []})
+    client.application.config['PRINTER_PRINTER'] = '?'
+    found = client.get('/labeldesigner/api/printer_status').get_json()['printers']
+    assert [(p['path'], p['model']) for p in found if p['path'].startswith('usb://')] == [('usb://0x04b8:0x0e15/5443', 'Epson/TM-T20II')]

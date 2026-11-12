@@ -110,7 +110,22 @@ def lock_key(device_specifier: str) -> str:
 USB_DEVICE_ID = '/sys/class/usbmisc/{name}/device/ieee1284_id'
 
 
+# The device IDs of printers on usb://, which do not change, asked once
+_usb_device_ids: dict[str, str] = {}
+
+
 def usb_device_id(device_specifier: str) -> str:
+    """The IEEE 1284 device ID of a printer on USB, /dev/usb/lp<N> or
+    usb://..., e.g. MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;..., empty for other
+    printers or when it does not tell."""
+    if device_specifier.startswith('usb://'):
+        if device_specifier not in _usb_device_ids:
+            from . import backends
+            told = backends.device_id(device_specifier)
+            if not told:
+                return ''
+            _usb_device_ids[device_specifier] = told
+        return _usb_device_ids[device_specifier]
     path = os.path.normpath(device_specifier[len('file://'):] if device_specifier.startswith('file://') else device_specifier)
     if not path.startswith('/dev/usb/lp'):
         return ''
@@ -119,6 +134,31 @@ def usb_device_id(device_specifier: str) -> str:
             return file.read()
     except OSError:
         return ''
+
+
+def device_id_fields(device_id: str) -> dict:
+    """The fields of an IEEE 1284 device ID by their short names, MFG, CMD,
+    MDL, also when it spells them out (MANUFACTURER, COMMAND SET, MODEL)."""
+    long_names = {'MANUFACTURER': 'MFG', 'COMMAND SET': 'CMD', 'MODEL': 'MDL'}
+    fields = {}
+    for field in device_id.split(';'):
+        name, colon, value = field.partition(':')
+        if colon:
+            name = name.strip().upper()
+            fields[long_names.get(name, name)] = value.strip()
+    return fields
+
+
+def found_usb_printers() -> list[str]:
+    """The printers PyUSB finds that no driver of the kernel holds, as
+    usb://..., their device IDs kept."""
+    from . import backends
+    found = []
+    for spec, told in backends.found_printers():
+        if told:
+            _usb_device_ids[spec] = told
+        found.append(spec)
+    return found
 
 
 def _private_lock_dir() -> str:

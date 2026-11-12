@@ -61,6 +61,12 @@ class Escpos(Driver):
                        re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'))
     errors = (OSError, protocol.EscposError)
 
+    def model_of(self, device):
+        # By the device ID on USB: MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;...
+        fields = devices.device_id_fields(devices.usb_device_id(device)) if isinstance(device, str) else {}
+        model = f"Epson/{fields.get('MDL', '')}"
+        return model if 'ESC/POS' in fields.get('CMD', '').split(',') and model in MODELS else None
+
     def fits(self, label, model):
         return label in LABELS
 

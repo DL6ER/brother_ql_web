@@ -34,9 +34,10 @@ class USBTimeoutError(USBError):
 
 
 class Device:
-    def __init__(self, product, reads=(), vendor=0x04F9, serial='A1'):
+    def __init__(self, product, reads=(), vendor=0x04F9, serial='A1', device_id='', bound=False):
         self.idVendor, self.idProduct, self.bDeviceClass, self.iSerialNumber = vendor, product, 0, 3
-        self.serial = serial
+        self.serial, self.device_id, self.bound = serial, device_id, bound
+        self.bInterfaceNumber, self.bAlternateSetting = 0, 0
         self.endpoints = [Endpoint(0x81, reads), Endpoint(0x02)]
         self.calls = []
 
@@ -44,7 +45,12 @@ class Device:
         return iter([self])
 
     def is_kernel_driver_active(self, interface):
-        return True
+        return self.bound
+
+    def ctrl_transfer(self, request_type, request, value, index, length, timeout):
+        assert (request_type, request) == (0xA1, 0)
+        told = self.device_id.encode()
+        return (len(told) + 2).to_bytes(2, 'big') + told
 
     def detach_kernel_driver(self, interface):
         self.calls.append('detach')
@@ -65,8 +71,8 @@ def pyusb(monkeypatch):
     configuration with a printer interface."""
     devices = []
     usb = types.ModuleType('usb')
-    usb.core = types.SimpleNamespace(find=lambda find_all, custom_match, idVendor: [
-        device for device in devices if device.idVendor == idVendor and custom_match(device)],
+    usb.core = types.SimpleNamespace(find=lambda find_all, custom_match, idVendor=None: [
+        device for device in devices if idVendor in (None, device.idVendor) and custom_match(device)],
         USBError=USBError, USBTimeoutError=USBTimeoutError)
 
     def find_descriptor(parent, bInterfaceClass=None, custom_match=None):
@@ -86,7 +92,7 @@ def pyusb(monkeypatch):
 
 
 def test_usb_printer_through_pyusb(pyusb):
-    other, printer_ = Device(0x2042), Device(0x209C, reads=[b'', b'status'])
+    other, printer_ = Device(0x2042), Device(0x209C, reads=[b'', b'status'], bound=True)
     pyusb.extend([other, printer_])
     printer = backends.open_printer('usb://0x04f9:0x209c')
     assert isinstance(printer, backends.UsbPrinter) and printer.dev is printer_
@@ -145,3 +151,18 @@ def test_printer_through_the_kernel(tmp_path):
 def test_answers_that_are_no_status(answer):
     with pytest.raises(StatusError):
         parse_status(answer)
+
+
+def test_printers_found_that_usblp_does_not_hold(pyusb):
+    from app.labeldesigner.drivers import devices
+    epson = Device(0x0e15, vendor=0x04b8, serial='544338592994570000',
+                   device_id='MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;CLS:PRINTER;')
+    # On Linux usblp holds it, it is /dev/usb/lp<N>
+    held = Device(0x2042, bound=True)
+    pyusb.extend([epson, held, Device(0x0081, vendor=0x0a5f, serial='with space')])
+    assert backends.found_printers() == [
+        ('usb://0x04b8:0x0e15/544338592994570000', 'MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;CLS:PRINTER;'),
+        ('usb://0x0a5f:0x0081', '')]
+    assert backends.device_id('usb://0x04b8:0x0e15') == epson.device_id
+    assert devices.device_id_fields(epson.device_id)['MDL'] == 'TM-T20II'
+    assert devices.device_id_fields('MANUFACTURER:Zebra Technologies;COMMAND SET:ZPL;MODEL:GK420t;')['CMD'] == 'ZPL'
