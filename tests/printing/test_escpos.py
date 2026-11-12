@@ -2,6 +2,7 @@
 printer in place of /dev/usb/lp<N>, and printing and status through the
 label designer."""
 import json
+import select
 
 import pytest
 
@@ -190,12 +191,14 @@ def test_printer_on_the_network(monkeypatch):
     import threading
     server = socket.create_server(('127.0.0.1', 0))
     received = []
+    stale_sent = threading.Event()
 
     def printer():
         conn, _ = server.accept()
         with conn:
             # An answer kept from before is not taken for the status
             conn.sendall(bytes([QUIET | 0x20]))
+            stale_sent.set()
             data = b''
             while not data.endswith(protocol.PAPER):
                 data += conn.recv(64)
@@ -205,9 +208,9 @@ def test_printer_on_the_network(monkeypatch):
             received.append(data)
     thread = threading.Thread(target=printer)
     thread.start()
-    import time
-    time.sleep(0.1)
     with protocol.connect(f'tcp://127.0.0.1:{server.getsockname()[1]}') as c:
+        assert stale_sent.wait(5)
+        select.select([c.socket], [], [], 5)
         assert c.ask(protocol.PAPER) == QUIET
         c.write(b'job')
     thread.join(5)
