@@ -461,3 +461,54 @@ def test_date_and_time_codes_for_the_label_designer(tmp_path):
     examples = {code: example for code, _, example in codes['codes']}
     assert [examples[code] for code in ('%d', '%-d', '%m', '%-m', '%b', '%V', '%I', '%p', '%%')] == [
         '07', '7', '03', '3', 'Mar', '10', '02', 'PM', '%']
+
+
+@pytest.mark.parametrize('template, values', [
+    ('{{counter}}', ['1', '2', '3']),
+    ('{{counter:5}}', ['5', '6', '7']),
+    # Written as the values should look
+    ('{{counter:001}}', ['001', '002', '003']),
+    ('{{counter:098}}', ['098', '099', '100']),
+    ('{{counter:A}}', ['A', 'B', 'C']),
+    ('{{counter:Y}}', ['Y', 'Z', 'AA']),
+    ('{{counter:z}}', ['z', 'aa', 'ab']),
+    # In steps
+    ('{{counter:10:5}}', ['10', '15', '20']),
+    ('{{counter:0010:250}}', ['0010', '0260', '0510']),
+    ('{{counter:AZ:2}}', ['AZ', 'BB', 'BD']),
+    ('Box {{counter:1:2}}/{{counter:A}}', ['Box 1/A', 'Box 3/B', 'Box 5/C']),
+])
+def test_counters_count_as_their_start_looks(tmp_path, monkeypatch, template, values):
+    # A counter keeps the leading zeros or letters of its start and counts in
+    # its steps. Each copy of a print gets the next value.
+    from app.labeldesigner import label as label_module
+    printed = []
+    original = label_module.SimpleLabel.process_templates
+    monkeypatch.setattr(label_module.SimpleLabel, 'process_templates', lambda self: original(self) or printed.append(self.text[0]['text']))
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, print_count='3', text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': template}]))
+    assert client.post('/labeldesigner/api/print', data=data).get_json() == {'success': True}
+    assert printed == values
+
+
+COUNTER_START = 'A counter starts at a number or at letters, e.g., 001 or A'
+COUNTER_STEP = 'The step of a counter is a whole number from 1 to 1000000'
+
+
+@pytest.mark.parametrize('template, message, logged', [
+    ('{{counter:A1}}', COUNTER_START, COUNTER_START + ', not A1'),
+    ('{{counter:Ab}}', COUNTER_START, COUNTER_START + ', not Ab'),
+    ('{{counter:1234567890123}}', 'A counter starts at 12 digits or letters at most', 'A counter starts at 12 digits or letters at most'),
+    ('{{counter:1:0}}', COUNTER_STEP, COUNTER_STEP + ', not 0'),
+    ('{{counter:1:-1}}', COUNTER_STEP, COUNTER_STEP + ', not -1'),
+    ('{{counter:1:1000001}}', COUNTER_STEP, COUNTER_STEP + ', not 1000001'),
+])
+def test_counters_that_cannot_count_are_refused(tmp_path, caplog, template, message, logged):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': template}]))
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400 and response.get_json()['message'] == message
+    # What was given is named in the log only
+    assert any(logged in record.getMessage() for record in caplog.records)
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': '{{counter:123456789012:1000000}} {{counter:ZZZZZZZZZZZZ}}'}])
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200

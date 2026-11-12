@@ -1622,7 +1622,7 @@
       },
       "TextLine": {
         "type": "object",
-        "description": "One line of text. Templates like `{{datetime:%d.%m.%Y}}`, `{{counter}}`, `{{uuid}}`, `{{short-uuid}}`, `{{env:<var>}}`, `{{random}}` and `{{mdi:<name>}}` (a Material Design Icon, e.g. `{{mdi:printer}}`) are filled in when the label is generated.",
+        "description": "One line of text. Templates like `{{datetime:%d.%m.%Y}}`, `{{counter}}` (or `{{counter:<start>:<step>}}`: the first label gets `<start>`, written as the values should look, e.g., `001` for 001, 002, ... or `A` for A, B, ..., Z, AA, and each next one `<step>` more), `{{uuid}}`, `{{short-uuid}}`, `{{env:<var>}}`, `{{random}}` and `{{mdi:<name>}}` (a Material Design Icon, e.g., `{{mdi:printer}}`) are filled in when the label is generated.",
         "required": [
           "text",
           "size"
