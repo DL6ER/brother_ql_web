@@ -1,6 +1,6 @@
 """The connections to printers on USB, through the printer interface of
 the kernel (/dev/usb/lp<N>, Linux only) or PyUSB
-(usb://<vendor>:<product>[/<serial>], also on macOS and Windows), after the
+(usb://<vendor>:<product>[/<serial>], also on macOS, on Windows untested), after the
 backends of brother_ql by Philipp Klaus."""
 
 import errno
