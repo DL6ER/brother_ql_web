@@ -1096,7 +1096,7 @@ async function loadSaved() {
     try {
         const r = await fetch(API + '/repository/list');
         const data = await r.json();
-        S.saved = (data.files || []).map(f => ({ name: f.name, title: f.title || f.name.replace(/\.json$/i, '').replace(/[-_]/g, ' '), size: f.label_size_id || C.default_label_size, mtime: f.mtime }));
+        S.saved = (data.files || []).map(f => ({ name: f.name, title: f.title || f.name.replace(/\.json$/i, '').replace(/[-_]/g, ' '), size: f.label_size_id || C.default_label_size, mtime: f.mtime, tags: f.tags || [] }));
     } catch (e) { S.saved = []; }
     updateCounts();
 }
@@ -1112,7 +1112,8 @@ function serverName(title) {
     const base = String(title).normalize('NFKD').replace(/[^\x00-\x7F]/g, '').replace(/[^\w\s.-]/g, '').trim().replace(/\s+/g, '_').replace(/^[._]+|[._]+$/g, '');
     return (base || 'label') + '.json';
 }
-async function saveLabel(title, design, overwrite = null) {
+// tags: those to save it with, else the ones of the label it replaces
+async function saveLabel(title, design, overwrite = null, tags = null) {
     let name = overwrite;
     if (!name) {
         name = serverName(title);
@@ -1121,7 +1122,8 @@ async function saveLabel(title, design, overwrite = null) {
     // The name that was checked above, with ".json": the server only adds it
     // when it is missing, "a.json" would replace a.json instead of a.json.json.
     // A new label replaces none saved under the name in the meantime.
-    const body = Object.assign({}, design, { name, title, text: design.text, replace: !!overwrite });
+    const replaced = overwrite && S.saved.find(x => x.name === overwrite);
+    const body = Object.assign({}, design, { name, title, text: design.text, replace: !!overwrite, tags: tags || (replaced ? replaced.tags : []) });
     // Each blank keeps its kind, the server does not guess it, and a date
     // the format it is shown in, like a [today], also when the label is
     // printed through the API: the settings previews send
@@ -1141,19 +1143,74 @@ async function saveLabel(title, design, overwrite = null) {
     await loadSaved();
     return data.name;
 }
-// Asks for the name of a label saved for the first time, then calls
-// save(title, name), name that of the saved label it is to replace. A saved
-// label of the same name is only replaced when asked again.
-function saveDialog(title, save) {
+// All tags of the saved labels, each once, as first written
+function allTags() {
+    const seen = new Map();
+    for (const s of S.saved) for (const t of s.tags) if (!seen.has(t.toLowerCase())) seen.set(t.toLowerCase(), t);
+    return [...seen.values()].sort((a, b) => a.localeCompare(b));
+}
+const tagsOf = text => text.split(',').map(t => t.trim()).filter(Boolean);
+const hasTag = (s, tag) => s.tags.some(t => t.toLowerCase() === tag.toLowerCase());
+// A field for tags with commas between them, the tags already given to
+// saved labels below it to add or take away with a click
+function tagsField(tags) {
+    const known = allTags();
+    return `<label><span class="label-s">Tags</span><input class="field" id="saveTags" value="${esc(tags.join(', '))}" placeholder="e.g. Kitchen, Freezer" autocomplete="off"></label>
+        ${known.length ? `<div class="adds" id="tagChips">${known.map(t => `<button type="button" class="pill${tags.some(x => x.toLowerCase() === t.toLowerCase()) ? ' on' : ''}" data-tag="${esc(t)}"><i class="fa-solid fa-tag"></i>${esc(t)}</button>`).join('')}</div>` : ''}`;
+}
+function bindTagsField() {
+    const input = $('#saveTags');
+    $$('#tagChips [data-tag]').forEach(b => b.onclick = () => {
+        const tags = tagsOf(input.value), t = b.dataset.tag.toLowerCase();
+        const had = tags.some(x => x.toLowerCase() === t);
+        input.value = (had ? tags.filter(x => x.toLowerCase() !== t) : tags.concat(b.dataset.tag)).join(', ');
+        b.classList.toggle('on', !had);
+        input.focus();
+    });
+    return () => tagsOf(input.value);
+}
+// The tags of a saved label are changed, its design stays
+function tagsDialog(item) {
+    const saved = S.saved.find(x => x.name === item.id);
+    openLayer(`<div class="dialog narrow" role="dialog" aria-label="Tags">
+        <div class="dialog-h"><div class="grow"><h2>Tags of "${esc(item.title)}"</h2><p>Your saved labels are grouped by them in the wizard.</p></div>
+            <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
+        <form class="fields" id="tagsForm" novalidate>
+            ${tagsField(saved ? saved.tags : [])}
+            <p class="err small" id="tagsErr" hidden style="padding:0;text-align:left"></p>
+            <div class="acts"><button class="btn-print" type="submit" id="tagsGo">Save</button></div>
+        </form></div>`);
+    const tags = bindTagsField();
+    $('#tagsForm').onsubmit = async e => {
+        e.preventDefault();
+        $('#tagsGo').disabled = true;
+        try {
+            await saveLabel(item.title, await designOf(item), item.id, tags());
+            closeLayer(true);
+            renderLabels();
+        } catch (err) {
+            $('#tagsErr').textContent = err.message;
+            $('#tagsErr').hidden = false;
+        } finally {
+            if ($('#tagsGo')) $('#tagsGo').disabled = false;
+        }
+    };
+}
+// Asks for the name of a label saved for the first time and its tags, then
+// calls save(title, name, tags), name that of the saved label it is to
+// replace. A saved label of the same name is only replaced when asked again.
+function saveDialog(title, save, tags = []) {
     openLayer(`<div class="dialog narrow" role="dialog" aria-label="Save to your labels">
         <div class="dialog-h"><div class="grow"><h2>Save to your labels</h2><p>It is listed under this name in the wizard and the search.</p></div>
             <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
         <form class="fields" id="saveForm" novalidate>
             <label><span class="label-s">Name</span><input class="field" id="saveName" value="${esc(title)}" autocomplete="off"></label>
+            ${tagsField(tags)}
             <p class="err small" id="saveErr" hidden style="padding:0;text-align:left"></p>
             <div class="acts"><button class="btn-print" type="submit" id="saveGo">Save</button></div>
         </form></div>`);
     const name = $('#saveName'), go = $('#saveGo');
+    const chosenTags = bindTagsField();
     let replacing = null;
     const say = text => { $('#saveErr').textContent = text; $('#saveErr').hidden = !text; };
     // Closed or replaced while saving, the dialog is gone
@@ -1176,7 +1233,7 @@ function saveDialog(title, save) {
             }
             go.disabled = true;
             try {
-                await save(t, taken ? taken.name : null);
+                await save(t, taken ? taken.name : null, chosenTags());
                 if (name.isConnected) closeLayer(true);
                 return;
             } catch (err) {
@@ -1219,7 +1276,7 @@ async function itemDesign(item) {
     return item.design;
 }
 const demoItem = d => ({ kind: 'demo', id: d.id, title: d.title, size: d.label_size_id, sub: d.catName });
-const savedItem = s => ({ kind: 'saved', id: s.name, title: s.title, size: s.size, sub: 'Saved label' });
+const savedItem = s => ({ kind: 'saved', id: s.name, title: s.title, size: s.size, sub: s.tags && s.tags.length ? s.tags.join(', ') : 'Saved label', tags: s.tags || [] });
 const histItem = h => ({ kind: 'printed', id: h.id, title: entryName(h), design: h.design, values: h.values, size: h.design.label_size, sub: h.state === 'failed' ? `Failed: ${h.message}` : `${h.copies} x, ${fmtTime(h.time)}`, entry: h });
 
 function thumbSrc(item) {
@@ -1790,6 +1847,7 @@ function libItems(cat) {
     let items;
     const demos = S.demoList.filter(d => d.language === S.lang);
     if (cat === 'saved') items = S.saved.map(savedItem);
+    else if (cat.startsWith('tag:')) items = S.saved.filter(s => hasTag(s, cat.slice(4))).map(savedItem);
     else if (cat === 'printed') items = S.history.slice(0, 40).map(histItem);
     else if (cat === 'all') items = demos.map(demoItem);
     else items = demos.filter(d => d.cat === cat).map(demoItem);
@@ -1801,7 +1859,7 @@ function libItems(cat) {
 }
 
 function renderLabels(arg) {
-    if (arg) S.libCat = arg;
+    if (arg) { try { S.libCat = decodeURIComponent(arg); } catch (e) { S.libCat = arg; } }
     S.libCatChosen = !!arg;
     const cats = S.demos || [];
     const count = id => S.demoList.filter(d => d.language === S.lang && d.cat === id && (!S.fitsOnly || fitsTape(d.label_size_id))).length;
@@ -1809,6 +1867,7 @@ function renderLabels(arg) {
         <nav class="lib-nav" aria-label="Label groups">
             <div class="h">Yours</div>
             ${navBtn('saved', 'server', 'Saved labels', S.saved.length)}
+            ${allTags().map(t => navBtn('tag:' + t, 'tag', t, S.saved.filter(s => hasTag(s, t)).length)).join('')}
             ${navBtn('printed', 'clock-rotate-left', 'Printed', S.history.length)}
             <div class="h">Ready-made</div>
             ${navBtn('all', 'swatchbook', 'All', S.demoList.filter(d => d.language === S.lang && (!S.fitsOnly || fitsTape(d.label_size_id))).length)}
@@ -1829,7 +1888,7 @@ function renderLabels(arg) {
         </section>
         <aside class="detail" id="libDetail"></aside>
     </div>`;
-    $$('.lib-nav button').forEach(b => b.onclick = () => { S.libCatChosen = true; history.replaceState(null, '', '#templates/' + b.dataset.cat); S.libCat = b.dataset.cat; $$('.lib-nav button').forEach(x => x.classList.toggle('on', x === b)); renderLibGrid(); });
+    $$('.lib-nav button').forEach(b => b.onclick = () => { S.libCatChosen = true; history.replaceState(null, '', '#templates/' + encodeURIComponent(b.dataset.cat)); S.libCat = b.dataset.cat; $$('.lib-nav button').forEach(x => x.classList.toggle('on', x === b)); renderLibGrid(); });
     {
         const ta = $('#wzText');
         const grow = () => { ta.rows = Math.min(6, Math.max(1, ta.value.split('\n').length)); };
@@ -1881,7 +1940,7 @@ function textMatches() {
     const scored = [];
     const pool = [].concat(S.saved.map(savedItem), S.demoList.filter(d => d.language === S.lang).map(d => Object.assign(demoItem(d), { _cat: d.catName })));
     for (const it of pool) {
-        const hay = (it.title + ' ' + (it._cat || '') + ' ' + (it.design ? blanksOf(it.design).join(' ') : '')).toLowerCase();
+        const hay = (it.title + ' ' + (it._cat || '') + ' ' + (it.tags || []).join(' ') + ' ' + (it.design ? blanksOf(it.design).join(' ') : '')).toLowerCase();
         let score = 0;
         for (const w of words) if (hay.includes(w) || hay.includes(w.slice(0, Math.max(4, w.length - 2)))) score++;
         if (score) scored.push([score + (fitsTape(it.size) ? .5 : 0) + (it.kind === 'saved' ? .3 : 0), it]);
@@ -1899,7 +1958,7 @@ function renderLibGrid() {
     const items = matches.length ? matches : libItems(S.libCat);
     const cat = (S.demos || []).find(c => c.id === S.libCat);
     $('#libTitle').textContent = matches.length ? `Templates for "${toDisplay(wizardLines()[0])}"` :
-        ({ saved: 'Saved labels', printed: 'Printed', all: 'All ready-made templates' }[S.libCat] || (cat ? cat.name : 'Templates'));
+        ({ saved: 'Saved labels', printed: 'Printed', all: 'All ready-made templates' }[S.libCat] || (cat ? cat.name : S.libCat.startsWith('tag:') ? S.libCat.slice(4) : 'Templates'));
     // What the dimmed ones are
     $('#libOther').hidden = items.slice(0, 240).every(it => fitsTape(it.size));
     $('#libOther').textContent = `Dimmed labels are made for another label size than ${sizeName(S.tape)}.`;
@@ -1910,7 +1969,7 @@ function renderLibGrid() {
     grid.innerHTML = items.slice(0, 240).map((it, i) => {
         const fits = fitsTape(it.size);
         const blanks = it.design ? blanksOf(it.design) : [];
-        const sub = it.kind === 'saved' ? (blanks.length ? 'Fill in: ' + blanks.join(', ') : (fits ? 'Saved label' : 'Needs ' + sizeName(it.size))) : (fits ? (it.sub || '') : 'Needs ' + sizeName(it.size));
+        const sub = it.kind === 'saved' ? (blanks.length ? 'Fill in: ' + blanks.join(', ') : (fits ? (it.tags && it.tags.length ? it.tags.join(', ') : 'Saved label') : 'Needs ' + sizeName(it.size))) : (fits ? (it.sub || '') : 'Needs ' + sizeName(it.size));
         return `<button class="thumb${fits ? '' : ' other'}${S.libSel && S.libSel.kind === it.kind && S.libSel.id === it.id ? ' sel' : ''}" type="button" data-i="${i}">
             <div class="bed">${typedGrid && it.kind !== 'printed' ? lazyTypedTag(it) : thumbSrc(it)}</div><div class="t">${esc(it.title)}</div><div class="s">${esc(sub)}</div></button>`;
     }).join('');
@@ -1952,7 +2011,8 @@ async function showDetail(item) {
             <button class="btn" type="button" id="libEdit"><i class="fa-solid fa-pen-ruler"></i>Change the design</button>
             <div class="more-wrap"><button class="btn" type="button" id="libMore" aria-expanded="false"><i class="fa-solid fa-ellipsis"></i>More</button>
                 <div class="more-menu" id="libMenu" hidden>
-                    ${item.kind === 'saved' ? `<button type="button" id="libLinks"><i class="fa-solid fa-link"></i>Use from anywhere</button>
+                    ${item.kind === 'saved' ? `<button type="button" id="libTags"><i class="fa-solid fa-tags"></i>Tags</button>
+                        <button type="button" id="libLinks"><i class="fa-solid fa-link"></i>Use from anywhere</button>
                         <button type="button" id="libDelete" class="danger"><i class="fa-regular fa-trash-can"></i>Remove from the saved labels</button>`
                         : `<button type="button" id="libKeep"><i class="fa-regular fa-bookmark"></i>Save to your labels</button>`}
                 </div></div>
@@ -1993,11 +2053,12 @@ async function showDetail(item) {
     $('#libEdit').onclick = () => openEditor({ title: item.title, design: work.design, origin: item.kind === 'saved' ? { kind: 'saved', id: item.id } : null });
     if ($('#libKeep')) $('#libKeep').onclick = () => {
         $('#libMenu').hidden = true;
-        saveDialog(item.title, async (title, replacing) => {
-            const name = await saveLabel(title, work.design, replacing);
+        saveDialog(item.title, async (title, replacing, tags) => {
+            const name = await saveLabel(title, work.design, replacing, tags);
             toast(`"${title}" is now one of your saved labels`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
         });
     };
+    if ($('#libTags')) $('#libTags').onclick = () => { $('#libMenu').hidden = true; tagsDialog(item); };
     if ($('#libLinks')) $('#libLinks').onclick = () => { $('#libMenu').hidden = true; linksDialog({ id: item.id, title: item.title, design: work.design }); };
     if ($('#libDelete')) $('#libDelete').onclick = async () => {
         const kept = clone(item.design);
@@ -2958,8 +3019,8 @@ function bindEditor() {
     $('#edPrint').onclick = () => printJob({ title: E.title, design: d, values: valuesNow(E.values, E.blankDefs, editItem(E)), copies: copiesIn(document, '#edCopies'), source: E.origin });
     $('#edSave').onclick = () => {
         const over = E.origin && E.origin.kind === 'saved' ? E.origin.id : null;
-        const save = async (title, replacing) => {
-            const name = await saveLabel(title, d, over || replacing);
+        const save = async (title, replacing, tags) => {
+            const name = await saveLabel(title, d, over || replacing, tags);
             E.title = title;
             E.origin = { kind: 'saved', id: name };
             if (S.edit === E) storeEdit();
@@ -3218,7 +3279,7 @@ function openSearch() {
             groups.push(['Commands', COMMANDS.filter(c => c.name.toLowerCase().includes(t)).map(c => ({ cmd: c }))]);
         } else {
             const m = s => !text || s.toLowerCase().includes(text);
-            groups.push(['Saved labels', S.saved.filter(x => m(x.title)).slice(0, text ? 5 : 6).map(x => ({ item: savedItem(x) }))]);
+            groups.push(['Saved labels', S.saved.filter(x => m(x.title + ' ' + x.tags.join(' '))).slice(0, text ? 5 : 6).map(x => ({ item: savedItem(x) }))]);
             const seen = new Set();
             groups.push(['Printed before', S.history.filter(h => { const n = entryName(h); if (seen.has(n) || !m(n + ' ' + h.title)) return false; seen.add(n); return true; }).slice(0, text ? 3 : 2).map(h => ({ item: histItem(h) }))]);
             if (text) {
@@ -3258,7 +3319,7 @@ function openSearch() {
         if (it.kind === 'saved') { location.hash = 'fill/' + encodeURIComponent(it.id); return; }
         S.libSel = it;
         if (it.kind === 'demo') { const d = S.demoList.find(x => x.id === it.id); if (d) S.libCat = d.cat; }
-        if (location.hash === '#templates/' + S.libCat) renderLabels(); else location.hash = 'templates/' + S.libCat;
+        if (location.hash === '#templates/' + encodeURIComponent(S.libCat)) renderLabels(); else location.hash = 'templates/' + encodeURIComponent(S.libCat);
     };
     q.addEventListener('input', () => { sel = 0; draw(); });
     q.addEventListener('keydown', e => {

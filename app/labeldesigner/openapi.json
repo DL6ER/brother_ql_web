@@ -1960,6 +1960,26 @@
                 "examples": [
                   "image/png"
                 ]
+              },
+              "tags": {
+                "description": "Tags the label designer groups saved labels by, a list or one text with commas between them, at most 20 of at most 40 characters each. They are trimmed, and each is kept once whatever its case.",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "examples": [
+                  [
+                    "Kitchen",
+                    "Freezer"
+                  ]
+                ]
               }
             }
           },
@@ -1987,6 +2007,13 @@
           "mtime": {
             "type": "integer",
             "description": "Time saved, Unix time."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags of the label, empty for none."
           },
           "size": {
             "type": "integer",

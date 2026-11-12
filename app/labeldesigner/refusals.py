@@ -24,6 +24,7 @@ IMAGE_MODE_REFUSED = 'image_mode must be grayscale, black_and_white, red_and_bla
 # A detected printer whose status names no model this server knows
 UNKNOWN_MODEL = 'The printer does not report a model this server knows. Name its model in PRINTERS, e.g. QL-700=file:///dev/usb/lp0'
 BLANKS_MESSAGE = 'blanks must be a JSON object with a text or number for each blank, e.g. {"Room": "Garage"}'
+TAGS_MESSAGE = 'tags must be a list of at most 20 texts of at most 40 characters each, or one text with commas between them'
 FIELDS_MESSAGE = ('fields must be a JSON object with the settings of each blank: a type of text, number or date, '
                   'a format as text and a default as text or number, e.g. {"Frozen on": {"type": "date"}}')
 
@@ -44,6 +45,7 @@ MESSAGES = (
     CABLE_FLAG_REFUSED,
     CABLE_DIAMETER_REFUSED,
     BLANKS_MESSAGE,
+    TAGS_MESSAGE,
     FIELDS_MESSAGE,
     'image_position must be above, below, left or right',
     'label_length must be a length in millimeters or empty',

@@ -493,6 +493,12 @@ def repo_list():
             current_app.logger.warning(f'Skipping repository file {name}: not a label')
             continue
         entry = {'name': name, 'mtime': int(stat.st_mtime), 'size': stat.st_size}
+        # Tags written by hand may be anything, those that are no list of
+        # texts are left out
+        try:
+            entry['tags'] = _tags(data.get('tags', []))
+        except ValueError:
+            entry['tags'] = []
         # The name the label was saved under, the file name lacks e.g. umlauts
         if isinstance(data.get('title'), str) and data['title'].strip():
             entry['title'] = data['title'].strip()
@@ -502,6 +508,29 @@ def repo_list():
         entry['label_size'] = _label_size_name(label_size)
         files.append(entry)
     return {'files': files}
+
+
+# Tags of a saved label: words or a few words each, a handful per label,
+# as refusals.TAGS_MESSAGE says
+MAX_TAGS = 20
+MAX_TAG_LENGTH = 40
+
+
+def _tags(value) -> list[str]:
+    """The tags of a saved label, from a list or from text with commas
+    between them: trimmed, without empty ones, each once whatever its case,
+    in the order given."""
+    if isinstance(value, str):
+        value = value.split(',')
+    if not isinstance(value, list) or not all(isinstance(tag, str) for tag in value):
+        raise ValueError(refusals.TAGS_MESSAGE)
+    tags = []
+    for tag in (' '.join(tag.split()) for tag in value):
+        if tag and tag.casefold() not in (known.casefold() for known in tags):
+            tags.append(tag)
+    if len(tags) > MAX_TAGS or any(len(tag) > MAX_TAG_LENGTH for tag in tags):
+        raise ValueError(refusals.TAGS_MESSAGE)
+    return tags
 
 
 def stored_label_size(value):
@@ -541,6 +570,10 @@ def repo_save():
                     data[key] = value
                 else:
                     del data[key]
+        if 'tags' in data:
+            data['tags'] = _tags(data['tags'])
+            if not data['tags']:
+                del data['tags']
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
         cut = _cutting(data.get)[0]

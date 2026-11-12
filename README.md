@@ -66,7 +66,7 @@ services:
       - PRINTER_PRINTER=file:///dev/usb/lp0
 ```
 
-Then open `http://<host>:8013`. Saved labels are kept in `./labels`.
+Then open `http://<host>:8013`. Saved labels are kept in `./labels`, a JSON file each; the tags given to them (`tags`, e.g. `["Kitchen", "Freezer"]`) group them in the wizard.
 
 To detect printers automatically, also ones plugged in later and network printers, leave out `PRINTER_PRINTER`, `ports` and `devices` and give the container access to USB and the network instead:
 

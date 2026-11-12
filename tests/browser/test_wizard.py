@@ -172,3 +172,42 @@ def test_search_finds_labels_and_commands(designer):
     # Remembered
     designer.reload()
     assert designer.get_attribute('html', 'data-theme') == 'dark'
+
+
+def test_saved_labels_are_grouped_by_their_tags(designer, app):
+    import json
+    import os
+    designer.fill('[data-row="0"] .tx', 'Peas')
+    designer.click('#edSave')
+    designer.fill('#saveName', 'Tagged peas')
+    designer.fill('#saveTags', 'Freezer, Kitchen')
+    designer.press('#saveName', 'Enter')
+    designer.wait_for_function("() => S.saved.some(s => s.title === 'Tagged peas' && s.tags.length === 2)")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Freezer"]')
+    assert designer.inner_text('#libTitle') == 'Freezer'
+    assert designer.locator('#libGrid .thumb .t').all_inner_texts() == ['Tagged peas']
+    # Its tags are changed in the menu of the label, its design stays
+    designer.click('#libGrid .thumb')
+    designer.click('#libMore')
+    designer.click('#libTags')
+    assert designer.input_value('#saveTags') == 'Freezer, Kitchen'
+    designer.click('#tagChips [data-tag="Freezer"]')
+    assert designer.input_value('#saveTags') == 'Kitchen'
+    designer.click('#tagsGo')
+    designer.wait_for_function("() => S.saved.some(s => s.title === 'Tagged peas' && s.tags.join() === 'Kitchen')")
+    assert designer.locator('.lib-nav [data-cat="tag:Freezer"]').count() == 0
+    with open(os.path.join(app.config['LABEL_REPOSITORY_DIR'], 'Tagged_peas.json'), encoding='utf-8') as fh:
+        saved = json.load(fh)
+    assert saved['tags'] == ['Kitchen'] and 'Peas' in json.dumps(saved['text'])
+    # Saved again from the editor, it keeps its tags
+    designer.click('.lib-nav [data-cat="tag:Kitchen"]')
+    designer.click('#libGrid .thumb')
+    designer.click('#libEdit')
+    designer.wait_for_selector('#edStage')
+    designer.fill('[data-row="0"] .tx', 'Beans')
+    designer.click('#edSave')
+    designer.wait_for_function("async () => (await (await fetch(API + '/repository/load?name=Tagged_peas.json')).text()).includes('Beans')")
+    with open(os.path.join(app.config['LABEL_REPOSITORY_DIR'], 'Tagged_peas.json'), encoding='utf-8') as fh:
+        assert json.load(fh)['tags'] == ['Kitchen']
+    designer.evaluate("() => deleteLabel('Tagged_peas.json')")

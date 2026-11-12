@@ -290,6 +290,8 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .lib-nav button { display: flex; align-items: center; gap: .6rem; padding: .38rem .6rem; border-radius: 8px; border: 0; background: none; text-align: left; cursor: pointer; }
 .lib-nav button:hover { background: var(--surface-2); }
 .lib-nav button i { width: 1rem; text-align: center; color: var(--muted); }
+/* The tags of the saved labels, under them */
+.lib-nav button[data-cat^="tag:"] { padding-left: 1.6rem; }
 .lib-nav button .n { margin-left: auto; font-size: .78rem; color: var(--muted); }
 .lib-nav button.on { background: var(--select-soft); color: var(--select); font-weight: 650; }
 .lib-nav button.on i, .lib-nav button.on .n { color: var(--select); }
@@ -543,6 +545,7 @@ select.mini.lsp { max-width: 4rem; }
     .lib-nav { order: 1; flex-direction: row; overflow-x: auto; border-right: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-inline: -1rem; padding: .6rem 1rem; gap: .3rem; }
     .lib-nav .h { display: none; }
     .lib-nav button { white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; flex: none; }
+    .lib-nav button[data-cat^="tag:"] { padding-left: .6rem; }
     .lib-list > .lib-bar, .lib-list > #libTitle, .lib-list > #libOther, .lib-list > .g4 { order: 2; }
     .typer { font-size: 1.1rem; }
     .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
