@@ -171,8 +171,7 @@ def test_print(client, monkeypatch, label_id):
                                                ('events/016-labelburg-sticker-vc50-de.json', ['Etiketten gestalten', 'und drucken', '100 % offline'])])
 def test_sticker_of_this_project(client, label_id, tagline):
     # Made with the layout of image, code and text, editable like any label
-    from qrcode import constants
-    from app.labeldesigner.label import _qr_image
+    from app.labeldesigner.label import _code_image
     url = 'https://github.com/DL6ER/labelburg'
     data = client.get('/labeldesigner/api/demos/load', query_string={'id': label_id}).get_json()
     assert (data['label_size'], data['print_type'], data['code_text'], data['image_name']) == ('vc50', 'image_qrcode_text', url, 'labelburg.png')
@@ -200,7 +199,7 @@ def test_sticker_of_this_project(client, label_id, tagline):
     assert icon.tobytes() == expected.tobytes()
     # The QR code right, as large, its modules whole dots
     code = preview.crop((preview.width - margin_right - high, top, preview.width - margin_right, top + high))
-    assert code.tobytes() == _qr_image(url, constants.ERROR_CORRECT_M, int(data['qrcode_size']), 'black').convert('RGB').tobytes()
+    assert code.tobytes() == _code_image('QR', url, 'M', int(data['qrcode_size']), 'black').convert('RGB').tobytes()
     # The address in red, the tagline in gray
     colors = {color for _, color in preview.getcolors(1 << 20)}
     assert {(0xc8, 0x10, 0x2e), (0x3d, 0x44, 0x4b)} <= colors

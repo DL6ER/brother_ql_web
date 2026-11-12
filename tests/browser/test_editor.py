@@ -233,6 +233,42 @@ def test_a_barcode_of_a_fixed_size_can_be_scaled(designer):
     assert designer.is_enabled('#edQrSize') and designer.locator('#edCodeScale').count() == 0
 
 
+def test_2d_codes_offer_the_size_of_a_dot_and_their_levels_of_error_correction(designer):
+    design = '() => [S.edit.design.barcode_type, S.edit.design.qrcode_correction]'
+    designer.click('[data-lay="codetext"]')
+    designer.fill('#edCode', '4006381333931')
+    type_line(designer, 0, 'Shelf 4')
+    groups = designer.evaluate("() => [...document.querySelectorAll('#edBarcode optgroup')].map(g => [g.label, [...g.children].map(o => o.textContent)])")
+    assert [label for label, _ in groups] == ['2D codes', 'Barcodes']
+    assert groups[0][1] == ['QR', 'DataMatrix', 'Micro QR', 'rMQR', 'Aztec', 'PDF417']
+    assert 'EAN13' in groups[1][1]
+    # A level the next code lacks becomes the next lower one it has
+    designer.select_option('#edQrCorr', 'H')
+    designer.select_option('#edBarcode', 'MICROQR')
+    wait_for_preview(designer)
+    assert designer.evaluate(design) == ['MICROQR', 'Q']
+    assert designer.eval_on_selector_all('#edQrCorr option', 'os => os.map(o => o.value)') == ['L', 'M', 'Q']
+    designer.select_option('#edBarcode', 'RMQR')
+    wait_for_preview(designer)
+    assert designer.evaluate(design) == ['RMQR', 'M']
+    assert designer.eval_on_selector_all('#edQrCorr option', 'os => os.map(o => o.value)') == ['M', 'H']
+    assert 'Everything fits.' in fits_note(designer)
+    # The others choose it themselves, they have the size of a dot as well
+    designer.select_option('#edBarcode', 'DATAMATRIX')
+    wait_for_preview(designer)
+    assert designer.is_disabled('#edQrCorr') and designer.input_value('#edQrCorr') == 'Automatic'
+    assert 'DataMatrix codes set their own error correction. It can be chosen for QR, Micro QR and rMQR codes.' in designer.inner_text('.ed-panel')
+    designer.click('[data-fit="0"]')
+    assert designer.is_enabled('#edQrSize') and designer.locator('#edCodeScale').count() == 0
+    wait_for_preview(designer)
+    assert 'Everything fits.' in fits_note(designer)
+    # Barcodes have none
+    designer.select_option('#edBarcode', 'EAN13')
+    wait_for_preview(designer)
+    assert designer.input_value('#edQrCorr') == 'None'
+    assert 'Error correction can be chosen for QR, Micro QR and rMQR codes.' in designer.inner_text('.ed-panel')
+
+
 def test_a_date_typed_into_a_template_keeps_its_format(designer):
     # Typed into the wizard, [today] got the format of the printer panel
     # unless it was at the same place as the date of the template

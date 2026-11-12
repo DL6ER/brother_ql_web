@@ -456,6 +456,7 @@ def test_a_label_saved_without_a_size_prints_on_the_size_its_preview_shows(tmp_p
     ('QR', 'https://example.com/shelf', ['Hidden', 'Not printed'], 'https://example.com/shelf'),
     ('QR', '', ['BEGIN:VCARD', 'FN:Jane Doe\r\nEND:VCARD'], 'BEGIN:VCARD\nFN:Jane Doe\nEND:VCARD'),
     ('code128', '', ['4006381333931\nShelf', 'Not printed'], '4006381333931'),
+    ('datamatrix', '', ['Shelf 4', 'Box 2'], 'Shelf 4\nBox 2'),
     ('QR', 'https://example.com/shelf', [], 'https://example.com/shelf'),
 ])
 def test_a_code_alone_loads_as_a_code_with_its_text_left_empty(tmp_path, barcode_type, code_text, lines, code):

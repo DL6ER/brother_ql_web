@@ -146,8 +146,8 @@ def test_preview_marks_the_blanks_to_fill_in(tmp_path, monkeypatch):
     # it as printed, with the same random parts as the text.
     from app.labeldesigner import label as label_module
     coded = []
-    original = label_module._qr_image
-    monkeypatch.setattr(label_module, '_qr_image', lambda data, *args: coded.append(data) or original(data, *args))
+    original = label_module._code_image
+    monkeypatch.setattr(label_module, '_code_image', lambda code_type, data, *args: coded.append(data) or original(code_type, data, *args))
     client = make_client(tmp_path)
     data = {'print_type': 'qrcode_text', 'barcode_type': 'QR', 'code_text': '', 'blanks': json.dumps({'Box': '4'}),
             'text': json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': 'Shelf {{blank:Room}} {{blank:Box}} {{short-uuid}}'}])}
@@ -202,9 +202,9 @@ def test_preview_shows_the_blanks_of_a_code_that_has_nothing_else(tmp_path, monk
     # the preview shows what is still to fill in instead of nothing
     from app.labeldesigner import label as label_module
     coded = []
-    for name in ('_qr_image', '_barcode_image'):
+    for name in ('_code_image', '_barcode_image'):
         original = getattr(label_module, name)
-        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[2]) or original(*args))
+        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[1] if name == '_code_image' else args[2]) or original(*args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode', barcode_type=barcode_type, code_text='{{blank:Link}}', text='[]')
     assert client.post('/labeldesigner/api/preview', data=dict(data, mark_blanks='1')).status_code == 200
@@ -225,9 +225,9 @@ def test_preview_shows_the_blanks_of_a_code_that_has_nothing_else(tmp_path, monk
 def test_preview_shows_the_blanks_of_a_code_that_takes_empty_text(tmp_path, monkeypatch, barcode_type, code, lines, qr, barcode):
     from app.labeldesigner import label as label_module
     coded = []
-    for name in ('_qr_image', '_barcode_image'):
+    for name in ('_code_image', '_barcode_image'):
         original = getattr(label_module, name)
-        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[0] if name == '_qr_image' else args[2]) or original(*args))
+        monkeypatch.setattr(label_module, name, lambda *args, original=original, name=name: coded.append(args[1] if name == '_code_image' else args[2]) or original(*args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type=barcode_type, code_text=code, mark_blanks='1',
                 text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': line} for line in lines]))
@@ -283,8 +283,8 @@ def test_image_label_with_many_large_blanks_is_refused_without_putting_them_toge
 def test_code_of_empty_blanks_and_spaces_takes_the_text(tmp_path, monkeypatch):
     from app.labeldesigner import label as label_module
     coded = []
-    original = label_module._qr_image
-    monkeypatch.setattr(label_module, '_qr_image', lambda data, *args: coded.append(data) or original(data, *args))
+    original = label_module._code_image
+    monkeypatch.setattr(label_module, '_code_image', lambda code_type, data, *args: coded.append(data) or original(code_type, data, *args))
     client = make_client(tmp_path)
     data = dict(EXAMPLE_FORMDATA, print_type='qrcode_text', barcode_type='QR', code_text='{{blank:A}} {{blank:B}}',
                 text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': 'Shelf'}]))

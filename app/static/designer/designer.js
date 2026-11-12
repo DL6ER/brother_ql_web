@@ -715,7 +715,7 @@ async function typedThumb(img, job) {
 
 const S = {
     printers: [], printer: null, tape: C.default_label_size, tapeAssumed: true,
-    demos: null, demoList: [], saved: [], barcodes: ['QR'],
+    demos: null, demoList: [], saved: [], codes: [{ type: 'QR', name: 'QR', two_d: true, corrections: ['L', 'M', 'Q', 'H'] }],
     history: load(own('designer_history'), []),
     lang: load('designer_lang', (navigator.language || 'en').toLowerCase().startsWith('de') ? 'de' : 'en'),
     fitsOnly: true,
@@ -1202,8 +1202,19 @@ async function loadBarcodes() {
     try {
         const r = await fetch(API + '/barcodes');
         const data = await r.json();
-        if (Array.isArray(data.barcodes) && data.barcodes.length) S.barcodes = data.barcodes;
+        if (Array.isArray(data.codes) && data.codes.length) S.codes = data.codes;
     } catch (e) { }
+}
+// What the server tells of a kind of code: its name, whether it is a 2D code
+// and the levels of error correction it has
+const codeKind = type => S.codes.find(c => c.type === type) || { type, name: type, two_d: false, corrections: [] };
+const LEVELS = [['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']];
+// The level of error correction kept for another kind of code: the same, else
+// the next lower one it has, else its lowest
+function levelFor(kind, level) {
+    const order = LEVELS.map(([v]) => v), has = kind.corrections || [];
+    if (!has.length || has.includes(level)) return level;
+    return has.filter(v => order.indexOf(v) < order.indexOf(level)).pop() || has[0];
 }
 
 // An "item" is anything that can be printed: one of your labels, a saved
@@ -2287,15 +2298,16 @@ function renderEditor() {
                 ${[['text', 'Text', '<i class="t"></i>'], ['image', 'Image', '<i class="q" style="border-radius:50%"></i><i class="t"></i>'], ['codetext', 'Code', '<i class="q"></i><i class="t"></i>'], ['imagecode', 'Image + Code', '<i class="q s" style="border-radius:50%"></i><i class="t"></i><i class="q s"></i>']]
                     .map(([id, name, sch]) => `<button class="lay${lay === id ? ' on' : ''}" type="button" data-lay="${id}"><span class="sch">${sch}</span>${name}</button>`).join('')}
             </div></div>
-            ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${S.barcodes.map(b => `<option${b === d.barcode_type ? ' selected' : ''}>${esc(b)}</option>`).join('')}</select></div>
+            ${hasCode ? `<div class="block"><div class="block-h"><i class="fa-solid fa-qrcode"></i>Code<select id="edBarcode" aria-label="Kind of code">${[['2D codes', true], ['Barcodes', false]].map(([group, twoD]) => `<optgroup label="${group}">${S.codes.filter(c => !!c.two_d === twoD).map(c => `<option value="${esc(c.type)}"${c.type === d.barcode_type ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>`).join('')}</select></div>
                 <div class="block-b">${codeField('edCode', d.code_text, ' placeholder="Link or text, empty for the text of the label" aria-label="Content of the code"')}
                 ${lay === 'imagecode' ? '<span class="muted small">Fitted to the label when the image is, see Size under Image.</span>'
                     : `<div><span class="label-s">Size</span><div class="seg">${fitButton(d)}<button type="button" data-fit="0" class="${fitted(d) ? '' : 'on'}">Fixed</button></div></div>`}
-                ${((qr, fixed) => `<div class="pair">
-                    ${qr ? `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${fixed ? '' : ' disabled'}></label>`
+                ${((kind, fixed, choosable) => `<div class="pair">
+                    ${kind.two_d ? `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Size of a dot</span><input class="field" type="number" min="1" max="40" id="edQrSize" value="${esc(d.qrcode_size)}"${fixed ? '' : ' disabled'}></label>`
                         : lay === 'imagecode' ? '' : `<label${fixed ? '' : ' title="The code fits the label"'}><span class="label-s${fixed ? '' : ' off'}">Scale in %</span><input class="field" type="number" min="1" max="500" id="edCodeScale" value="${esc(d.image_scaling_factor)}"${fixed ? '' : ' disabled'}></label>`}
-                    <label${qr ? '' : ' title="Only for QR codes"'}><span class="label-s${qr ? '' : ' off'}">Error correction</span><select class="field" id="edQrCorr"${qr ? '' : ' disabled'}>${[['L', 'Low, 7 %'], ['M', 'Medium, 15 %'], ['Q', 'Quartile, 25 %'], ['H', 'High, 30 %']].map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>
-                </div>${qr ? '' : '<span class="muted small">Error correction exists for QR codes only.</span>'}`)(d.barcode_type === 'QR', !fitted(d))}
+                    ${kind.corrections.length ? `<label><span class="label-s">Error correction</span><select class="field" id="edQrCorr">${LEVELS.filter(([v]) => kind.corrections.includes(v)).map(([v, n]) => `<option value="${v}"${d.qrcode_correction === v ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`
+                        : `<label title="Only for ${esc(choosable)} codes"><span class="label-s off">Error correction</span><select class="field" id="edQrCorr" disabled><option>${kind.two_d ? 'Automatic' : 'None'}</option></select></label>`}
+                </div>${kind.corrections.length ? '' : `<span class="muted small">${kind.two_d ? `${esc(kind.name)} codes set their own error correction. It` : 'Error correction'} can be chosen for ${esc(choosable)} codes.</span>`}`)(codeKind(d.barcode_type), !fitted(d), listJoin(S.codes.filter(c => (c.corrections || []).length).map(c => c.name)))}
                 ${isColorTape(d.label_size) ? `<div><span class="label-s">Color</span>${colorField('edCodeColor', d.print_color, 'Color of the code')}</div>` : ''}
                 ${lay === 'codetext' ? sideField(d, 'code') + gapField(d) : ''}</div></div>` : ''}
             ${lay === 'image' || lay === 'imagecode' ? imageBlock(d) : ''}
@@ -2824,8 +2836,10 @@ function bindEditor() {
     if ($('#edCode')) $('#edCode').oninput = e => { e.target.rows = codeRows(e.target.value); d.code_text = fromDisplay(e.target.value, d.code_text, e.target.selectionStart); redrawEditor(); };
     if ($('#edBarcode')) $('#edBarcode').onchange = e => {
         d.barcode_type = e.target.value;
-        // A QR code has the size of a dot instead of a scale
-        if (d.barcode_type === 'QR' && d.print_type !== 'image_qrcode_text') d.image_scaling_factor = '100';
+        const kind = codeKind(d.barcode_type);
+        // A 2D code has the size of a dot instead of a scale
+        if (kind.two_d && d.print_type !== 'image_qrcode_text') d.image_scaling_factor = '100';
+        d.qrcode_correction = levelFor(kind, d.qrcode_correction);
         renderEditor();
     };
     if ($('#edCodeScale')) $('#edCodeScale').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.image_scaling_factor = String(v); redrawEditor(); } });

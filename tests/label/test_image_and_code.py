@@ -7,10 +7,9 @@ import json
 
 import pytest
 from PIL import Image, ImageChops, ImageFilter
-from qrcode import constants
 
 from app.labeldesigner.enums import LabelContent, LabelOrientation
-from app.labeldesigner.label import _qr_image
+from app.labeldesigner.label import _code_image
 from app.labeldesigner.routes import create_label_from_request
 
 from tests.helpers import _upload, make_client, verify_image
@@ -142,7 +141,7 @@ def test_the_code_is_that_of_its_content_and_else_of_the_text(tmp_path):
         return Image.open(io.BytesIO(response.data)).convert('RGB').crop(_boxes(response.data)['code'])
 
     def expected(text):
-        return _qr_image(text, constants.ERROR_CORRECT_M, 4, (0, 0, 255)).convert('RGB')
+        return _code_image('QR', text, 'M', 4, (0, 0, 255)).convert('RGB')
     assert code_of().tobytes() == expected(URL).tobytes()
     # Without content of its own it holds the text, as next to text alone
     assert code_of(code_text='').tobytes() == expected('Pantry').tobytes()
