@@ -46,6 +46,9 @@ ASK_EVERY = 10
 _asked: dict[str, float] = {}
 NO_ANSWER = 'The printer does not answer, is its printhead open?'
 
+# The command set ZPL in a device ID
+ZPL_DEVICE_ID = re.compile(r'(^|;)\s*(CMD|COMMAND SET):[^;]*\bZPL', re.IGNORECASE)
+
 # A measured length further off than this from all sizes is not taken
 LENGTH_TOLERANCE = 2
 
@@ -98,6 +101,13 @@ class Zpl(Driver):
                        re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'),
                        re.compile(r'tcp://[A-Za-z0-9.-]+(:9100)?'),
                        re.compile(r'tcp://\[[0-9A-Fa-f:.]+\](:9100)?'))
+
+    def model_of(self, device):
+        # By the IEEE 1284 device ID on USB, e.g. MFG:Zebra Technologies;
+        # CMD:ZPL;MDL:GK420t;... A Datamax-O'Neil tells CMD:DPL, its ZPL
+        # emulation is configured.
+        told = devices.usb_device_id(device) if isinstance(device, str) else ''
+        return MODELS[0] if ZPL_DEVICE_ID.search(told) else None
 
     def fits(self, label, model):
         return label in LABELS

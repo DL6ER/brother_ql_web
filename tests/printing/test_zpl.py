@@ -233,3 +233,14 @@ def test_printer_through_pyusb(monkeypatch):
     protocol.write(device, b'^XA^XZ\n')
     assert printers[0].written == [b'~HS'] and printers[1].written == [b'^XA^', b'XZ\n']
     assert all(printer.disposed for printer in printers)
+
+
+@pytest.mark.parametrize('device_id, model', [
+    ('MFG:Zebra Technologies;CMD:ZPL;MDL:GK420t;CLS:PRINTER;', 'Zebra/ZPL'),
+    ('MANUFACTURER:Zebra Technologies;COMMAND SET:EPL,ZPL;MODEL:ZD420;', 'Zebra/ZPL'),
+    ("MFG:DatamaxONeil ;CMD:DPL;MDL:E4204B Mark III;CLS:PRINTER;", None),
+    ('MFG:Brother;CMD:PT-CBP;MDL:QL-700;CLS:PRINTER;', None)])
+def test_known_by_its_device_id(monkeypatch, device_id, model):
+    from app.labeldesigner.drivers import devices
+    monkeypatch.setattr(devices, 'usb_device_id', lambda device: device_id)
+    assert zpl.DRIVER.model_of('file:///dev/usb/lp0') == model
