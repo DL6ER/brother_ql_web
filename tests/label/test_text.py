@@ -461,3 +461,48 @@ def test_date_and_time_codes_for_the_label_designer(tmp_path):
     examples = {code: example for code, _, example in codes['codes']}
     assert [examples[code] for code in ('%d', '%-d', '%m', '%-m', '%b', '%V', '%I', '%p', '%%')] == [
         '07', '7', '03', '3', 'Mar', '10', '02', 'PM', '%']
+
+
+@pytest.mark.parametrize('when, template, expected', [
+    # Days and weeks, also into the next year, and the time stays
+    ((2024, 12, 30), '{{datetime+5d:%Y-%m-%d %H:%M}}', '2025-01-04 12:15'),
+    ((2024, 1, 31), '{{datetime-2w:%Y-%m-%d}}', '2024-01-17'),
+    ((2024, 1, 31), '{{datetime+0d:%Y-%m-%d}}', '2024-01-31'),
+    # Months and years keep the day, or take the last one of a shorter month
+    ((2024, 1, 31), '{{datetime+1m:%Y-%m-%d}}', '2024-02-29'),
+    ((2023, 1, 31), '{{datetime+1m:%Y-%m-%d}}', '2023-02-28'),
+    ((2024, 3, 31), '{{datetime-1m:%Y-%m-%d}}', '2024-02-29'),
+    ((2024, 11, 15), '{{datetime+6m:%d.%m.%Y}}', '15.05.2025'),
+    ((2024, 2, 29), '{{datetime+1y:%Y-%m-%d}}', '2025-02-28'),
+    ((2024, 2, 29), '{{datetime-100y:%Y-%m-%d}}', '1924-02-29'),
+    # Several in a line, and one that is no offset stays as it is
+    ((2024, 1, 31), 'Made {{datetime:%d.%m.}}, use by {{datetime+5d:%d.%m.}}', 'Made 31.01., use by 05.02.'),
+    ((2024, 1, 31), '{{datetime+5x:%Y}} {{datetime 5d:%Y}}', '{{datetime+5x:%Y}} {{datetime 5d:%Y}}'),
+])
+def test_dates_moved_from_today(tmp_path, when, template, expected):
+    # A best-before date as a date, not as "Use within 5 days"
+    client = make_client(tmp_path)
+    data = {'timestamp': str(int(datetime(*when, 12, 15).timestamp())),
+            'text': json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': template}])}
+    with client.application.test_request_context():
+        label = create_label_from_request(data)
+        label.process_templates()
+        assert label.text[0]['text'] == expected
+
+
+@pytest.mark.parametrize('template, offset', [
+    ('{{datetime+101y:%Y}}', '+101y'),
+    ('{{datetime-36526d:%Y}}', '-36526d'),
+    ('{{datetime+1201m:%Y}}', '+1201m'),
+    ('{{datetime+999999w:%Y}}', '+999999w'),
+])
+def test_dates_moved_too_far_are_refused(tmp_path, caplog, template, offset):
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, text=json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': template}]))
+    response = client.post('/labeldesigner/api/preview', data=data)
+    assert response.status_code == 400 and response.get_json()['message'] == 'A date offset is at most a hundred years'
+    # The offset is named in the log only
+    assert any(f'A date offset is at most a hundred years, not {offset}' in record.getMessage() for record in caplog.records)
+    # A hundred years are fine
+    data['text'] = json.dumps([{'font': 'DejaVu Sans,Book', 'size': '40', 'text': '{{datetime+36525d:%Y}} {{datetime-100y:%Y}}'}])
+    assert client.post('/labeldesigner/api/preview', data=data).status_code == 200
