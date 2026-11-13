@@ -155,6 +155,7 @@ def test_copies_of_several_files_as_sets_or_grouped(designer):
         {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
         {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
     ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
     wait_for_preview(designer)
     letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
     # The first printed on the right, as it leaves the printer
@@ -202,6 +203,7 @@ def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
         {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))},
         {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
     ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
     wait_for_preview(designer)
     designer.evaluate("() => openPrinterPanel()")
     designer.click('.pp [data-col="1"]')
