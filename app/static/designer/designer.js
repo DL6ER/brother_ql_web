@@ -587,9 +587,9 @@ function release(url) {
 }
 
 function preview(design, values, stale, first = false) {
-    // In the resolution it is printed with: for 600 dpi the server makes the
-    // label twice as large
-    const asked = Object.assign({}, design, { high_res: highRes() ? '1' : '0' });
+    // On the tape it is printed on, in the resolution it is printed with: for
+    // 600 dpi the server makes the label twice as large
+    const asked = Object.assign({}, onTape(design), { high_res: highRes() ? '1' : '0' });
     // Dates the server fills in, e.g. of a [today], change with the time: a
     // preview kept from another minute is not used
     const blanks = blankRequest(asked, values || {});
@@ -786,18 +786,45 @@ function setSize(d, id) {
     if (isDieCut(id)) d.cable_flag = '0';
     return isDieCut(id) ? setWide(d, true) : setRunsAlong(d, along);
 }
-// The same in the editor, which says when it turned a cable flag off
-function changeSize(d, id) {
-    const flag = flagOn(d);
-    setSize(d, id);
-    if (flag && !flagOn(d)) toast('Cable flag turned off, it needs continuous tape', { label: 'Undo', run: () => stepHistory(-1) });
-}
 
 function fitsTape(sizeId) {
     if (sizeId === S.tape) return true;
     const a = SIZES[sizeId], b = SIZES[S.tape];
     return !!(a && b && a.form === b.form && a.tape[0] === b.tape[0] && a.tape[1] === b.tape[1] && (!a.red || S.tapeRedUnknown));
 }
+
+// Labels are shown and printed on the tape in the printer, a label made for
+// another one as setSize() places it, not scaled. Where the printer does not
+// say which tape it has, labels keep their own.
+const tapeKnown = () => !S.tapeAssumed && !!SIZES[S.tape];
+// A label of the size of the tape only takes its name, e.g. that of black
+// and red tape. One for black and red keeps it where the printer cannot
+// tell whether its roll has red.
+const movesTo = sizeId => tapeKnown() && sizeId !== S.tape && !(S.tapeRedUnknown && fitsTape(sizeId));
+// Whether a label is placed on a tape of another size, which is said
+const placed = sizeId => tapeKnown() && !fitsTape(sizeId);
+const putOnTape = d => fitsTape(d.label_size) ? Object.assign(d, { label_size: S.tape }) : setSize(d, S.tape);
+// Both only set these, a shallow copy keeps the images shared
+const onTape = d => movesTo(d.label_size) ? putOnTape(Object.assign({}, d)) : d;
+
+// The label in the editor is placed on the tape in the printer. E.made keeps
+// what placing it changed, a label saved without a change since keeps the
+// tape it was made for, and is that label again on that tape.
+const PLACED_KEYS = ['label_size', 'orientation', 'cable_flag'];
+const designSig = d => snapshot({ title: '', design: d });
+const unchangedSincePlaced = E => !!E.made && designSig(E.design) === E.made.sig;
+function placeEdit(E) {
+    const d = E.design;
+    if (tapeKnown() ? !movesTo(d.label_size) : !E.made) return;
+    if (unchangedSincePlaced(E)) Object.assign(d, E.made.as);
+    E.made = null;
+    if (!movesTo(d.label_size)) return;
+    E.made = { as: Object.fromEntries(PLACED_KEYS.map(k => [k, d[k]])) };
+    putOnTape(d);
+    E.made.sig = designSig(d);
+}
+// The label to save from the editor: as made, unless changed on this tape
+const madeDesign = E => unchangedSincePlaced(E) ? Object.assign({}, E.design, E.made.as) : E.design;
 
 // --- Printer status ----------------------------------------------------------
 
@@ -821,6 +848,7 @@ async function refreshPrinters(look = false) {
         // A single failed poll keeps what is known, the next one corrects it
         if (!S.printers.length) S.printer = null;
     }
+    const tapeBefore = tapeState();
     detectTape();
     renderPrinterChip();
     // An open printer panel shows the new status, drawn again only when it
@@ -831,21 +859,15 @@ async function refreshPrinters(look = false) {
         fresh.innerHTML = printerPanelHTML();
         if (fresh.innerHTML !== box.innerHTML) { box.replaceChildren(...fresh.childNodes); bindPrinterPanel(); }
     }
-    // The note of the editor on the tape and the tape list follow the tape the
-    // printer reports
-    const size = $('#edSize');
-    if (size && S.edit) {
-        const note = document.createElement('div');
-        note.innerHTML = tapeNote(S.edit.design);
-        const old = size.parentElement.querySelector('.tape-note');
-        if ((old ? old.outerHTML : '') !== note.innerHTML) {
-            if (old) old.replaceWith(...note.children);
-            else size.before(...note.children);
-            if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(S.edit.design, S.tape); renderEditor(); };
-        }
-        $$('option', size).forEach(o => { o.textContent = tapeName(o.value); });
+    // The editor follows the tape the printer reports: another tape places
+    // the label anew, the tape left changes the note only
+    const line = $('#edTapeBox');
+    if (line && S.edit && S.editShown === S.edit) {
+        if (tapeState() !== tapeBefore) renderEditor();
+        else if (line.innerHTML !== tapeLine(S.edit.design)) { line.innerHTML = tapeLine(S.edit.design); bindTapeLine(); }
     }
 }
+const tapeState = () => JSON.stringify([S.tape, S.tapeAssumed, S.tapeUnknown, S.tapeRedUnknown]);
 
 const printerKey = () => (S.printer && S.printer.path) || '';
 // A printer is called by its name, given in PRINTERS, else by its model.
@@ -917,7 +939,7 @@ function renderPrinterChip() {
     const st = printerState(S.printer);
     // Phones show the model only, a printer named in PRINTERS its name
     const vendor = S.printer && !S.printer.name && capsOf(S.printer.model).vendor;
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || modelOnly(S.printer.model)) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || modelOnly(S.printer.model)) : 'No printer')}</b>${tapeKnown() ? `<span class="tape">${esc(sizeName(S.tape))}</span>` : ''}`;
     // A long name is cut short in the chip
     chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
     // The printer on the stages shows the same, they are drawn again only
@@ -932,13 +954,6 @@ async function printJob(job) {
     // A copy: printing a job again passes its design, which the history may
     // strip of its image before the request is sent
     job = Object.assign({}, job, { design: clone(job.design) });
-    if (!fitsTape(job.design.label_size)) {
-        const choice = await tapeGuard(job);
-        if (choice === 'cancel') return false;
-        if (choice === 'adapt') {
-            job = Object.assign({}, job, { design: setSize(clone(job.design), S.tape) });
-        }
-    }
     const entry = {
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), time: Date.now(), title: job.title,
         design: clone(job.design), values: Object.assign({}, job.values || {}), copies: job.copies || 1,
@@ -958,7 +973,8 @@ async function printJob(job) {
         } catch (e) { }
     }, 1500);
     try {
-        const r = await post('/print', formFor(job.design, entry.copies, true, job.values));
+        // Printed on the tape in the printer, the history keeps it as made
+        const r = await post('/print', formFor(onTape(job.design), entry.copies, true, job.values));
         let data = {};
         try { data = await r.json(); } catch (e) { }
         if (r.ok && data.success !== false) {
@@ -1013,24 +1029,6 @@ const NO_IMAGE = 'Its image was not kept, open it in the editor to add it again'
 function again(entry) {
     if (entry.noImage) { toast(NO_IMAGE); return; }
     printJob({ title: entry.title, design: entry.design, values: entry.values, copies: entry.copies, source: entry.source });
-}
-
-function tapeGuard(job) {
-    return new Promise(resolve => {
-        const need = sizeName(job.design.label_size);
-        const have = sizeName(S.tape);
-        const flagged = flagOn(job.design) && isDieCut(S.tape);
-        const canAdapt = SIZES[job.design.label_size] && SIZES[S.tape] && !flagged;
-        sheet(`<div class="okc warn"><i class="fa-solid fa-ruler-combined"></i></div>
-            <h2>This label needs ${esc(need)}</h2>
-            <p>${esc(thePrinter(S.printer, true))} has ${esc(have)} loaded${S.tapeManual ? ' (set in the printer settings)' : S.tapeAssumed ? ' (assumed, the printer does not say)' : ''}.</p>
-            ${flagged ? '<p>Cable flags need continuous tape.</p>' : ''}
-            ${canAdapt ? `<button class="btn-print" data-r="adapt"><i class="fa-solid fa-maximize"></i>Print it on ${esc(have)}</button>` : ''}
-            <button class="btn" data-r="anyway">Print anyway</button>
-            <button class="btn quiet" data-r="cancel">Cancel</button>`, () => resolve('cancel'), () => resolve('cancel'));
-        // The answer first, closing would settle it as canceled
-        $$('[data-r]', $('#layer')).forEach(b => b.onclick = () => { resolve(b.dataset.r); closeLayer(true); });
-    });
 }
 
 // --- Overlays ------------------------------------------------------------------
@@ -1155,12 +1153,14 @@ async function saveLabel(title, design, overwrite = null) {
     await loadSaved();
     return data.name;
 }
+// The tape a label is saved for, said wherever it is saved
+const savedAs = d => `as ${sizeName(d.label_size)} label`;
 // Asks for the name of a label saved for the first time, then calls
 // save(title, name), name that of the saved label it is to replace. A saved
 // label of the same name is only replaced when asked again.
-function saveDialog(title, save) {
+function saveDialog(title, save, design) {
     openLayer(`<div class="dialog narrow" role="dialog" aria-label="Save to your labels">
-        <div class="dialog-h"><div class="grow"><h2>Save to your labels</h2><p>It is listed under this name in the wizard and the search.</p></div>
+        <div class="dialog-h"><div class="grow"><h2>Save to your labels</h2><p>It is saved ${esc(savedAs(design))} and listed under this name in the wizard and the search.</p></div>
             <button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
         <form class="fields" id="saveForm" novalidate>
             <label><span class="label-s">Name</span><input class="field" id="saveName" value="${esc(title)}" autocomplete="off"></label>
@@ -1237,7 +1237,9 @@ const savedItem = s => ({ kind: 'saved', id: s.name, title: s.title, size: s.siz
 const histItem = h => ({ kind: 'printed', id: h.id, title: entryName(h), design: h.design, values: h.values, size: h.design.label_size, sub: h.state === 'failed' ? `Failed: ${h.message}` : `${h.copies} x, ${fmtTime(h.time)}`, entry: h });
 
 function thumbSrc(item) {
-    if (item.kind === 'demo') return lazyUrlTag(`${API}/demos/preview?id=${encodeURIComponent(item.id)}`);
+    // The server draws a template on its own tape, on another one it is drawn
+    // here as it prints
+    if (item.kind === 'demo') return placed(item.size) ? lazyTypedTag(item) : lazyUrlTag(`${API}/demos/preview?id=${encodeURIComponent(item.id)}`);
     // Saved labels may have blanks, they are drawn here with the blank's name
     if (item.kind === 'saved') return lazyTypedTag(item);
     return lazyTag(item.design, item.values || defaults(item));
@@ -1403,6 +1405,7 @@ function selectedPages(design, f, values) {
 
 async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
+    design = onTape(design);
     el._seq = (el._seq || 0) + 1;
     const seq = el._seq;
     // A newer preview is shown already, or the stage was replaced meanwhile.
@@ -1554,7 +1557,7 @@ function layoutProblem(d) {
 
 function fitsNote(el, warning, error, design, onShrink) {
     if (!el) return;
-    if (!warning && !error && design) warning = layoutProblem(design);
+    if (!warning && !error && design) warning = layoutProblem(onTape(design));
     if (error) { el.className = 'fits warn'; el.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Fix the label to print it.'; return; }
     el.className = warning ? 'fits warn' : 'fits';
     el.innerHTML = warning ? `<i class="fa-solid fa-triangle-exclamation"></i> ${esc(warning)}` : '<i class="fa-solid fa-circle-check"></i> Everything fits.';
@@ -1842,7 +1845,7 @@ function libItems(cat) {
     else if (cat === 'all') items = demos.map(demoItem);
     else items = demos.filter(d => d.cat === cat).map(demoItem);
     if (S.fitsOnly && !['printed', 'saved'].includes(cat)) {
-        // Labels for other tapes come last, dimmed
+        // Labels made for other tapes come last
         items = items.filter(i => fitsTape(i.size)).concat(items.filter(i => !fitsTape(i.size)));
     }
     return items;
@@ -1868,11 +1871,10 @@ function renderLabels(arg) {
                 ${wizardChips()}
                 <div id="fzLooks"></div>
             <div class="lib-bar">
-                <button class="pill${S.fitsOnly ? ' on' : ''}" type="button" id="libFits"><i class="fa-solid fa-check"></i>Fits ${esc(sizeName(S.tape))}</button>
+                <button class="pill${S.fitsOnly ? ' on' : ''}" type="button" id="libFits"><i class="fa-solid fa-check"></i>Made for ${esc(sizeName(S.tape))}</button>
                 <select id="libLang" aria-label="Language of the ready-made labels"><option value="en"${S.lang === 'en' ? ' selected' : ''}>English</option><option value="de"${S.lang === 'de' ? ' selected' : ''}>Deutsch</option></select>
             </div>
             <h1 id="libTitle"></h1>
-            <p class="muted small" id="libOther" hidden></p>
             <div class="g4" id="libGrid"></div>
         </section>
         <aside class="detail" id="libDetail"></aside>
@@ -1948,18 +1950,15 @@ function renderLibGrid() {
     const cat = (S.demos || []).find(c => c.id === S.libCat);
     $('#libTitle').textContent = matches.length ? `Templates for "${toDisplay(wizardLines()[0])}"` :
         ({ saved: 'Saved labels', printed: 'Printed', all: 'All ready-made templates' }[S.libCat] || (cat ? cat.name : 'Templates'));
-    // What the dimmed ones are
-    $('#libOther').hidden = items.slice(0, 240).every(it => fitsTape(it.size));
-    $('#libOther').textContent = `Dimmed labels are made for another label size than ${sizeName(S.tape)}.`;
     if (!items.length) {
         grid.innerHTML = `<p class="empty">${S.libCat === 'printed' ? 'Nothing printed yet.' : 'No labels here.'}</p>`;
         return;
     }
     grid.innerHTML = items.slice(0, 240).map((it, i) => {
-        const fits = fitsTape(it.size);
+        const other = placed(it.size);
         const blanks = it.design ? blanksOf(it.design) : [];
-        const sub = it.kind === 'saved' ? (blanks.length ? 'Fill in: ' + blanks.join(', ') : (fits ? 'Saved label' : 'Needs ' + sizeName(it.size))) : (fits ? (it.sub || '') : 'Needs ' + sizeName(it.size));
-        return `<button class="thumb${fits ? '' : ' other'}${S.libSel && S.libSel.kind === it.kind && S.libSel.id === it.id ? ' sel' : ''}" type="button" data-i="${i}">
+        const sub = it.kind === 'saved' && blanks.length ? 'Fill in: ' + blanks.join(', ') : other ? 'Made for ' + sizeName(it.size) : it.kind === 'saved' ? 'Saved label' : (it.sub || '');
+        return `<button class="thumb${S.libSel && S.libSel.kind === it.kind && S.libSel.id === it.id ? ' sel' : ''}" type="button" data-i="${i}">
             <div class="bed">${typedGrid && it.kind !== 'printed' ? lazyTypedTag(it) : thumbSrc(it)}</div><div class="t">${esc(it.title)}</div><div class="s">${esc(sub)}</div></button>`;
     }).join('');
     attachLazy(grid);
@@ -1985,12 +1984,11 @@ async function showDetail(item) {
     // Printed before, they are as printed then.
     const starts = item.values ? item.starts : defaults(Object.assign({}, item, { design }));
     const work = { design, values };
-    const fits = fitsTape(design.label_size);
     box.innerHTML = `
         <div class="row"><h2 class="grow">${esc(item.title)}</h2><button class="btn quiet icon close" type="button" title="Close"><i class="fa-solid fa-xmark"></i></button></div>
         ${stageHTML('libStage')}
-        <div>${fits ? `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in ${esc(thePrinter(S.printer))}</span>`
-            : `<span class="badge warn"><i class="fa-solid fa-ruler-combined"></i>Made for ${esc(sizeName(design.label_size))}</span>`}</div>
+        ${!tapeKnown() ? '' : `<div>${placed(design.label_size) ? `<span class="badge warn"><i class="fa-solid fa-ruler-combined"></i>Made for ${esc(sizeName(design.label_size))}</span>`
+            : `<span class="badge ok"><i class="fa-solid fa-check"></i>Fits the tape in ${esc(thePrinter(S.printer))}</span>`}</div>`}
         <div class="fields" id="libFields"></div>
         <div class="fits" id="libFitsNote"></div>
         <div class="acts"><div class="copies"><button type="button" data-step="-1" aria-label="One less"><i class="fa-solid fa-minus"></i></button><input id="libCopies" type="number" min="1" max="100" value="${item.entry ? item.entry.copies : 1}" aria-label="Copies"><button type="button" data-step="1" aria-label="One more"><i class="fa-solid fa-plus"></i></button></div>
@@ -2043,8 +2041,8 @@ async function showDetail(item) {
         $('#libMenu').hidden = true;
         saveDialog(item.title, async (title, replacing) => {
             const name = await saveLabel(title, work.design, replacing);
-            toast(`"${title}" is now one of your saved labels`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
-        });
+            toast(`Saved "${title}" to your labels ${savedAs(work.design)}`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
+        }, work.design);
     };
     if ($('#libLinks')) $('#libLinks').onclick = () => { $('#libMenu').hidden = true; linksDialog({ id: item.id, title: item.title, design: work.design }); };
     if ($('#libDelete')) $('#libDelete').onclick = async () => {
@@ -2317,6 +2315,7 @@ function restoreEditorPlace(place) {
 
 function renderEditor() {
     if (!S.edit) S.edit = loadEdit() || newEdit();
+    placeEdit(S.edit);
     const place = editorPlace();
     S.editShown = S.edit;
     const E = S.edit, d = E.design;
@@ -2361,7 +2360,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => esc(tapeName(s.id)))}</select>${lengthInput(d)}</div>
+                    <div class="tape-row"><span class="label-s">Tape</span>${lengthLabel(d)}<div class="tape-box" id="edTapeBox">${tapeLine(d)}</div>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
@@ -2392,6 +2391,7 @@ function renderEditor() {
                     <button class="btn-print" type="button" id="edPrint"><i class="fa-solid fa-print"></i>Print</button>
                 </div>
             </div>
+            ${E.made && placed(E.made.as.label_size) ? `<div class="fits made" id="edMade"><i class="fa-solid fa-ruler-combined"></i> Made for ${esc(sizeName(E.made.as.label_size))}, shown as it prints on the ${esc(sizeName(d.label_size))} in ${esc(thePrinter(S.printer))}.${flagOn(E.made.as) && !flagOn(d) ? ' Cable flags need continuous tape.' : ''}</div>` : ''}
             <div class="fill-in" id="edFields"></div>
             <div class="file-step" id="edFileStep" hidden>
                 <button class="btn quiet icon" type="button" data-file="-1" title="Previous file" aria-label="Previous file"><i class="fa-solid fa-chevron-left"></i></button>
@@ -2429,18 +2429,16 @@ function flagRow(d) {
         </div>${on ? '<span class="muted small" id="edFlagHint">Place the cable on the triangles, fold both ends together and press them firmly.</span>' : ''}`;
 }
 
-// A tape as the tape list names it
-const tapeName = id => sizeName(id) + (id === S.tape && !S.tapeAssumed ? ' (in the printer)' : '');
-
-function tapeNote(d) {
+// The tape of the label: the one in the printer, set in the printer panel.
+// Where the printer does not say, the label keeps its own.
+function tapeLine(d) {
     const who = esc(thePrinter(S.printer, true));
-    if (S.tapeUnknown) return `<span class="tape-note warn">${who} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`;
-    // An assumed tape matches nothing in the printer
-    if (d.label_size === S.tape) return S.tapeAssumed ? '' : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> Matches the tape in the printer${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
-    if (fitsTape(d.label_size)) return '';
-    const have = S.tapeAssumed ? `does not report its tape, ${esc(sizeName(S.tape))} is assumed` : `has ${esc(sizeName(S.tape))} loaded`;
-    return `<span class="tape-note warn">${who} ${have}. <button type="button" class="link" id="edUseTape">Switch to it</button></span>`;
+    const note = S.tapeUnknown ? `<span class="tape-note warn">${who} reports ${esc(S.tapeUnknown)} tape, which is not offered here.</span>`
+        : !tapeKnown() ? `<span class="tape-note warn">${who} does not say which tape it has.</span>`
+        : `<span class="tape-note ok"><i class="fa-solid fa-check"></i> ${S.tapeManual ? 'Set in the printer settings' : 'In the printer'}${tapeLeft(S.printer) ? ', ' + esc(tapeLeft(S.printer)) : ''}</span>`;
+    return `${note}<div class="field tape-line"><span class="grow">${esc(sizeName(d.label_size))}</span><button type="button" class="link" id="edTapeChange">${tapeKnown() ? 'Change' : 'Set the tape'}</button></div>`;
 }
+const bindTapeLine = () => { $('#edTapeChange').onclick = () => openPrinterPanel(); };
 
 // The length of an endless label as cut, next to the tape, where the server
 // offers one for the tape. Die-cut labels have their own, it shows as the hint.
@@ -2936,8 +2934,7 @@ function bindEditor() {
             renderEditor();
         });
     });
-    if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(d, S.tape); renderEditor(); };
-    $('#edSize').onchange = e => { changeSize(d, e.target.value); renderEditor(); };
+    bindTapeLine();
     $('#edFlag').onchange = e => { d.cable_flag = e.target.checked ? '1' : '0'; renderEditor(); };
     if ($('#edContrast')) $('#edContrast').onchange = e => { d.image_contrast = e.target.checked ? '1' : '0'; renderEditor(); };
     if ($('#edContrastOn')) $('#edContrastOn').onclick = () => { d.image_contrast = '1'; renderEditor(); };
@@ -3015,25 +3012,29 @@ function bindEditor() {
     bindCopies($('.ed-top'));
     // The count stays when the editor is drawn again, e.g. after Bold
     $('#edCopies').addEventListener('input', () => { E.copies = copiesIn(document, '#edCopies'); });
-    $('#edPrint').onclick = () => printJob({ title: E.title, design: d, values: valuesNow(E.values, E.blankDefs, editItem(E)), copies: copiesIn(document, '#edCopies'), source: E.origin });
+    $('#edPrint').onclick = () => printJob({ title: E.title, design: madeDesign(E), values: valuesNow(E.values, E.blankDefs, editItem(E)), copies: copiesIn(document, '#edCopies'), source: E.origin });
     $('#edSave').onclick = () => {
         const over = E.origin && E.origin.kind === 'saved' ? E.origin.id : null;
         const save = async (title, replacing) => {
-            const name = await saveLabel(title, d, over || replacing);
+            const made = madeDesign(E);
+            const name = await saveLabel(title, made, over || replacing);
             E.title = title;
             E.origin = { kind: 'saved', id: name };
+            // Saved for this tape, it is made for it now
+            if (made === E.design) E.made = null;
             if (S.edit === E) storeEdit();
             // The editor may show something else by now
             if (S.editShown === E && $('#edTitle')) {
+                if (!E.made && $('#edMade')) $('#edMade').remove();
                 $('#edTitle').value = title;
                 $('#edSave').innerHTML = '<i class="fa-regular fa-bookmark"></i><span class="lbl">Save</span>';
                 $('#edSave').title = 'Save';
             }
-            toast(over ? `Saved "${title}"` : `"${title}" is now one of your saved labels`, { label: blanksOf(E.design).length ? 'Fill in and print' : 'Open in the wizard', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
+            toast(`Saved "${title}"${over ? '' : ' to your labels'} ${savedAs(made)}`, { label: blanksOf(E.design).length ? 'Fill in and print' : 'Open in the wizard', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
         };
         // A saved label is saved again, a new one is given its name first
         if (over) save(E.title, null).catch(e => toast(e.message));
-        else saveDialog(E.title, save);
+        else saveDialog(E.title, save, madeDesign(E));
     };
 }
 
@@ -3214,13 +3215,13 @@ function settingsCard() {
     const oneQuality = !caps.qualities.includes('fast'), ONE = ' disabled title="This printer prints in one quality only"';
     const q = oneQuality || (!offersHigh && S.settings.quality === 'high') ? 'quality' : S.settings.quality, c = printerCut();
     const without600 = Object.keys(C.models).filter(m => C.models[m].qualities.includes('high') && !C.models[m].high_res).sort();
-    // The assumed tape is named, it is the default only if the printer takes it
-    const assumed = `${esc(sizeName(S.tape))} is assumed.`;
+    // New labels start on the assumed tape, the default only if the printer takes it
+    const assumed = `Labels keep their own size, new ones are ${esc(sizeName(S.tape))}.`;
     const note = S.tapeManual ? 'Set by hand.' : S.tapeUnknown ? `The printer reports ${S.tapeUnknown} tape, which is not offered here. ${assumed}`
-        : S.tapeAssumed ? `The printer does not report its tape, ${assumed}` : 'Read from the printer.';
+        : S.tapeAssumed ? `The printer does not report its tape. ${assumed}` : 'Read from the printer.';
     return `<div class="settings">
         <div><label class="label-s" for="setTape">Tape in the printer</label>
-            <select class="field" id="setTape"><option value="">Automatic${S.tapeManual ? '' : ': ' + esc(sizeName(S.tape))}</option>
+            <select class="field" id="setTape"><option value="">Automatic${S.tapeManual || S.tapeAssumed ? '' : ': ' + esc(sizeName(S.tape))}</option>
             ${sizeOptions(manualTape(), x => esc(sizeName(x.id)))}
             </select><span class="muted small">${note}</span></div>
         <div><div class="row" style="gap:.35rem;margin-bottom:.3rem"><span class="label-s" style="margin:0">Quality</span>
@@ -3297,7 +3298,7 @@ function openSearch() {
                 else {
                     const it = r.item;
                     const blanks = it.design ? blanksOf(it.design) : [];
-                    const sub = (it.sub || '') + (fitsTape(it.size) ? '' : ', needs ' + sizeName(it.size));
+                    const sub = (it.sub || '') + (placed(it.size) ? ', made for ' + sizeName(it.size) : '');
                     html += `<button class="res" type="button" data-r="${i}"><div class="mini-bed">${thumbSrc(it)}</div><span><b>${esc(it.title)}</b><span class="sm">${esc(sub)}</span></span><span class="act">${it.kind === 'printed' ? 'print again' : it.kind === 'saved' ? 'open' : 'use'}</span></button>`;
                 }
             }

@@ -8,7 +8,7 @@ import os
 import pytest
 from PIL import Image
 
-from tests.browser.helpers import fits_note, kept, png, preview_size, save_as, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, png, preview_size, save_as, set_tape, type_line, wait_for_preview
 
 
 def edit_saved_label(page, title):
@@ -31,7 +31,7 @@ def test_new_label_is_empty_and_cannot_be_printed(designer):
 def test_text_that_does_not_fit_can_be_shrunk(designer):
     designer.click('[data-tfit="none"]')
     type_line(designer, 0, 'A very long line that does not fit on the label at all, not even close')
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     wait_for_preview(designer)
     assert 'does not fit' in fits_note(designer)
     designer.click('#edFits [data-fix="shrink"]')
@@ -45,7 +45,7 @@ def test_long_lines_can_wrap(designer, server):
     designer.click('[data-tfit="none"]')
     type_line(designer, 0, 'Store in a cool and dry place away from direct sunlight')
     designer.fill('[data-row="0"] input.mini', '40')
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     wait_for_preview(designer)
     kept(designer)
     assert 'does not fit' in fits_note(designer)
@@ -64,7 +64,7 @@ def test_long_lines_can_wrap(designer, server):
     assert designer.evaluate("() => S.edit.design.text_wrap") == '1'
     # Saved with the label and opened with it
     save_as(designer, 'Wrapped')
-    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Wrapped\" is now one of your saved labels')")
+    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('Saved \"Wrapped\" to your labels')")
     try:
         designer.click('#edNew')
         wait_for_preview(designer)
@@ -100,7 +100,7 @@ def test_lines_wrap_only_where_the_label_limits_them(designer):
     designer.dispatch_event('#edLength', 'change')
     wait_for_preview(designer)
     assert why() == ''
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     wait_for_preview(designer)
     assert why() == ''
 
@@ -112,7 +112,7 @@ def test_text_next_to_a_code_on_a_small_die_cut_label(designer):
     designer.click('[data-lay="codetext"]')
     designer.fill('#edCode', 'https://example.com')
     type_line(designer, 0, 'Chili')
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     designer.click('[data-tfit="shrink"]')
     designer.click('[data-fit="0"]')
     designer.fill('#edQrSize', '4')
@@ -136,7 +136,7 @@ def test_the_code_can_be_on_any_side_of_the_text(designer):
     assert designer.is_disabled('[data-side="left"]')
     assert designer.get_attribute('#edSide', 'title') == 'Only with text on the label'
     type_line(designer, 0, 'Chili')
-    designer.select_option('#edSize', '62')
+    set_tape(designer, '62')
     wait_for_preview(designer)
     side = "() => document.querySelector('[data-side].on').dataset.side"
     # Without a choice above the text across the tape, left of it along
@@ -172,7 +172,7 @@ def test_a_code_fitted_beside_the_text_across_endless_tape_leaves_it_room(design
     # Filling the tape it left the text no room
     designer.click('[data-lay="codetext"]')
     type_line(designer, 0, 'Pantry')
-    designer.select_option('#edSize', '62')
+    set_tape(designer, '62')
     designer.click('[data-along="0"]')
     designer.click('[data-fit="1"]')
     designer.click('[data-side="left"]')
@@ -204,7 +204,7 @@ def test_the_side_the_server_chose_is_shown_without_drawing_the_editor_anew(desi
     # The editor was drawn anew for it, and the preview handled once more
     designer.click('[data-lay="codetext"]')
     type_line(designer, 0, 'Pantry')
-    designer.select_option('#edSize', '62')
+    set_tape(designer, '62')
     designer.click('[data-along="0"]')
     wait_for_preview(designer)
     designer.evaluate("""() => {
@@ -709,7 +709,7 @@ def test_distance_between_code_and_text(designer):
 def test_automatic_orientation_is_explained(designer):
     # kinghat in #103: the direction of the text does nothing to an image
     # fitted to the label
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     wait_for_preview(designer)
     designer.click('[data-lay="image"]')
     designer.set_input_files('#edFile', files=[{'name': 'portrait.png', 'mimeType': 'image/png', 'buffer': png(100, 300)}])
