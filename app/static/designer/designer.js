@@ -136,7 +136,7 @@ function baseDesign(size) {
         margin_top: String(def.margin_top), margin_bottom: String(def.margin_bottom), margin_left: String(def.margin_left), margin_right: String(def.margin_right),
         border_thickness: '0', border_roundness: '0', border_distance_x: '0', border_distance_y: '0', border_color: 'black',
         image_mode: def.image_mode, image_bw_threshold: String(def.image_bw_threshold), image_fit: '1', image_crop: '0', image_contrast: '0',
-        image_scaling_factor: '100', image_rotation: '0', text_fit: 'shrink', print_color: 'black', high_res: '0', pdf_pages: '',
+        image_scaling_factor: '100', image_rotation: '0', text_fit: 'shrink', text_wrap: '0', print_color: 'black', high_res: '0', pdf_pages: '',
         // Empty: the server chooses the distance from the size of the text
         image_text_gap: '',
         // Empty: above the text across the tape, left of it along the tape
@@ -168,6 +168,13 @@ function setTextFit(d, fit) {
     d.text_fit = fit;
     delete d.shrink_text;
 }
+// Lines wider than the label wrap into several lines, where the label limits
+// their length. Why they cannot wrap, empty where they can.
+function wrapWhy(d) {
+    if (!SIZES[d.label_size] || !isEndless(SIZES[d.label_size]) || hasFixedLength(d)) return '';
+    if (runsAlong(d)) return 'Lines along endless tape have room to grow';
+    return textFit(d) === 'fill' ? 'Filled, each line is as wide as the tape' : '';
+}
 
 // Where the content is between the top and bottom margins, as the text
 // reads. An endless label across the tape is as long as its content, unless
@@ -188,7 +195,7 @@ function normalize(raw) {
     // label. One it refuses stays as it is, the preview tells why, until
     // another is chosen.
     const given = v => v !== undefined && v !== null && v !== '';
-    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
+    for (const [k, def] of [['image_fit', '1'], ['image_crop', '0'], ['text_wrap', '0']]) d[k] = given(raw[k]) ? String(raw[k]) : def;
     d.text_fit = given(raw.text_fit) ? String(raw.text_fit) : '';
     // Cutting saved through the API e.g. as half_cut: 0 or chain: true
     for (const k of CUT_KEYS) d[k] = !given(raw[k]) ? '' : raw[k] === true ? '1' : raw[k] === false ? '0' : String(raw[k]);
@@ -1516,8 +1523,12 @@ function fitsNote(el, warning, error, design, onShrink) {
     el.className = warning ? 'fits warn' : 'fits';
     el.innerHTML = warning ? `<i class="fa-solid fa-triangle-exclamation"></i> ${esc(warning)}` : '<i class="fa-solid fa-circle-check"></i> Everything fits.';
     if (warning && /text does not fit/i.test(warning) && design && textFit(design) === 'none' && onShrink) {
-        el.insertAdjacentHTML('beforeend', ' <button class="btn sm" type="button">Shrink it to fit</button>');
-        el.querySelector('button').onclick = () => { setTextFit(design, 'shrink'); onShrink(); };
+        // Long lines are wrapped where they can be, the text keeps its size
+        const wrap = design.text_wrap !== '1' && !wrapWhy(design);
+        el.insertAdjacentHTML('beforeend', (wrap ? ' <button class="btn sm" type="button" data-fix="wrap">Wrap long lines</button>' : '')
+            + ' <button class="btn sm" type="button" data-fix="shrink">Shrink it to fit</button>');
+        el.querySelector('[data-fix="shrink"]').onclick = () => { setTextFit(design, 'shrink'); onShrink(); };
+        if (wrap) el.querySelector('[data-fix="wrap"]').onclick = () => { design.text_wrap = '1'; onShrink(); };
     }
 }
 
@@ -2317,6 +2328,7 @@ function renderEditor() {
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
+                    ${wrapRow(d)}
                     ${(room => `<div title="${room ? 'Where the content is on the label, as the text reads' : NO_ROOM}"><span class="label-s${room ? '' : ' off'}">Vertical position</span><div class="seg">${VERTICAL_ALIGNS.map(([v, n]) => `<button type="button" data-valign="${v}" class="${verticalAlign(d) === v ? 'on' : ''}"${room ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`)(hasRoom(d))}
                     <div class="group">
                         <div><span class="label-s">Frame</span><div class="seg">${[['none', 'None'], ['square', 'Square'], ['rounded', 'Rounded']].map(([v, n]) => `<button type="button" data-frame="${v}" class="${frameOf(d) === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
@@ -2478,6 +2490,12 @@ function resetLook(d) {
     d.image_rotation = '0';
     d.image_crop = '0';
     d.image_scaling_factor = '100';
+}
+
+// Lines wrap where the label limits their length, see wrapWhy()
+function wrapRow(d) {
+    const why = wrapWhy(d);
+    return `<div class="row"${why ? ` title="${esc(why)}"` : ''}><label class="check"><input type="checkbox" id="edWrap"${d.text_wrap === '1' ? ' checked' : ''}${why ? ' disabled' : ''}><span${why ? ' class="off"' : ''}>Wrap long lines</span></label></div>`;
 }
 
 const fitted = d => d.image_fit === '1';
@@ -2907,6 +2925,7 @@ function bindEditor() {
     };
     $$('[data-lcut]').forEach(b => b.onclick = () => { d[b.dataset.lcut] = b.dataset.v; renderEditor(); });
     $$('[data-valign]').forEach(b => b.onclick = () => { d.vertical_align = b.dataset.valign; renderEditor(); });
+    $('#edWrap').onchange = e => { d.text_wrap = e.target.checked ? '1' : '0'; renderEditor(); };
     // Code
     if ($('#edQrSize')) $('#edQrSize').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.qrcode_size = String(v); redrawEditor(); } });
     if ($('#edQrCorr')) $('#edQrCorr').onchange = e => { d.qrcode_correction = e.target.value; redrawEditor(); };

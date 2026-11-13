@@ -539,7 +539,7 @@
         ],
         "responses": {
           "200": {
-            "description": "The saved label, its image as base64 in `image_data`. `image_fit` and `image_crop` come as `1` or `0` and `text_fit` also for a label saved with `shrink_text` only, as the label is printed. A value that is refused stays as it is.",
+            "description": "The saved label, its image as base64 in `image_data`. `image_fit`, `image_crop` and `text_wrap` come as `1` or `0` and `text_fit` also for a label saved with `shrink_text` only, as the label is printed. A value that is refused stays as it is.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1739,6 +1739,15 @@
               "fill"
             ],
             "description": "How the text is sized: `none` as set, `shrink` all lines smaller by the same factor where it does not fit, `fill` all lines by the same factor as large as fits within the margins: as wide as endless tape, as high as tape it runs along, both ways on die-cut labels. Left out, `shrink_text` decides between `shrink` and `none`."
+          },
+          "text_wrap": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "1 wraps lines wider than the room for the text at spaces into several lines with the same settings, before `text_fit` shrinks or fills the text. A word longer than a line is broken only where the text keeps its size. Lines do not wrap along endless tape (`orientation` `rotated`), which grows with them, nor filled on endless tape, where each line fills the width of the tape."
           },
           "image_text_gap": {
             "type": "integer",

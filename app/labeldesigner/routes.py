@@ -544,6 +544,7 @@ def repo_save():
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
         cut = _cutting(data.get)[0]
+        _text_wrap(data)
         check_image_position(data.get('image_position'))
         check_vertical_align(data.get('vertical_align'))
         check_image_mode(data.get('image_mode'))
@@ -693,7 +694,7 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
-    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0)):
+    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0), ('text_wrap', 0)):
         try:
             data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
         except (TypeError, ValueError):
@@ -1348,6 +1349,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'text_fit': _text_fit(d),
         # Empty: an endless label grows with its content
         'label_length': _label_length(d.get('label_length')),
+        'text_wrap': _text_wrap(d),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
@@ -1468,6 +1470,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         warnings=warnings,
         shrink_text=context['text_fit'] == 'shrink',
         fill_text=context['text_fit'] == 'fill',
+        text_wrap=context['text_wrap'],
         image_text_gap=context['image_text_gap'],
         image_position=context['image_position'],
         blanks=context['blanks'],
@@ -1532,6 +1535,15 @@ def _printed_length(length: float | None, label, diameter: float | None, high_re
     if problem:
         raise ValueError(problem)
     return round((length - 2 * limits[2]) / 25.4 * label_dpi(label.identifier, high_res))
+
+
+def _text_wrap(d: dict) -> bool:
+    """Whether lines wider than the label wrap into several lines: text_wrap
+    1, also true. Left out or empty they do not."""
+    try:
+        return _whole_or(d.get('text_wrap'), 0) != 0
+    except (TypeError, ValueError):
+        raise ValueError("text_wrap must be 0 or 1") from None
 
 
 def _image_text_gap(value) -> int | None:

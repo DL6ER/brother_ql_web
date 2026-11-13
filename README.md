@@ -24,7 +24,7 @@ USB printers are detected automatically, also one on another computer through [U
 
 ## Features
 
-- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits, placed at the top, in the middle or at the bottom of die-cut labels
+- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, long lines wrapped, optionally shrunk to fit the label or made as large as fits, placed at the top, in the middle or at the bottom of die-cut labels
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
 - **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once and stepped through in the preview, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red, on the VC-500W stronger contrast for light drawings (suggested when an image looks faint)
 - **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes

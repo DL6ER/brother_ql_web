@@ -39,6 +39,7 @@ MESSAGES = (
     'shrink_text must be 0 or 1',
     'text_fit must be none, shrink or fill',
     'cut must be each, last or none',
+    'text_wrap must be 0 or 1',
     'image_text_gap must be a whole number of dots or empty',
     'image_text_gap must not be negative',
     CABLE_FLAG_REFUSED,
