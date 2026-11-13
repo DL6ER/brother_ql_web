@@ -142,16 +142,19 @@ def find_printer(printers: list[dict], wanted: str) -> dict | None:
     return None
 
 
-def label_size_for(model: str, label_size: str) -> str:
-    """The label size of a printer of model that label_size names, also
-    without the prefix of its driver and written as "100 x 30 mm", e.g.
-    zpl100x30 for 100x30 on a ZPL printer."""
+def label_size_for(model: str | None, label_size: str) -> str:
+    """The label size of a printer of model, of any printer without model,
+    that label_size names, also without the prefix of its driver and written
+    as "100 x 30 mm", e.g. zpl100x30 for 100x30 on a ZPL printer."""
     from mcp.server.mcpserver.exceptions import ToolError
-    takes = [label.identifier for label in LABELS if model in label_printers(label)]
+    takes = [label.identifier for label in LABELS if model is None or model in label_printers(label)]
     if not takes or label_size in takes:
         return label_size
     plain = re.sub(r'\s|mm', '', str(label_size).lower()).replace('×', 'x')
     found = [size for size in takes if size == plain or (size.endswith(plain) and size[:-len(plain)].isalpha())]
+    if len(found) != 1 and model is None:
+        raise ToolError(f'Label size {label_size} is one of {", ".join(found)}, give the printer' if found
+                        else f'No label size {label_size}, give the printer to find out its sizes')
     if len(found) != 1:
         raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
     return found[0]
@@ -282,8 +285,8 @@ class Tools:
         from mcp.server.mcpserver.exceptions import ToolError
         found = self._printer(printer) if printer else None
         printer = found['path'] if found else None
-        if found and label_size:
-            label_size = label_size_for(found.get('model'), label_size)
+        if label_size:
+            label_size = label_size_for(found.get('model') if found else None, label_size)
         if name:
             body = {'name': name, 'blanks': blanks or {}}
             if printer:

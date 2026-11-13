@@ -214,3 +214,15 @@ def test_only_previews_by_address(client):
     assert client.get(f'/mcp/preview.png?r={spec}').status_code == 400
     assert client.get('/mcp/preview.png?r=nonsense').status_code == 400
     assert client.get('/mcp/preview.png', headers={'Host': 'evil.example'}).status_code == 403
+
+
+def test_label_sizes_of_any_printer_without_one(monkeypatch):
+    from mcp.server.mcpserver.exceptions import ToolError
+    sizes = [type('Label', (), {'identifier': i}) for i in ('62', 'zpl100x30', 'zpl50x30', 'puqu50x30')]
+    monkeypatch.setattr(mcp_tools, 'LABELS', sizes)
+    assert mcp_tools.label_size_for(None, '100x30') == 'zpl100x30'
+    assert mcp_tools.label_size_for(None, '62') == '62'
+    with pytest.raises(ToolError, match='one of zpl50x30, puqu50x30, give the printer'):
+        mcp_tools.label_size_for(None, '50x30')
+    with pytest.raises(ToolError, match='No label size 7x7, give the printer'):
+        mcp_tools.label_size_for(None, '7x7')
