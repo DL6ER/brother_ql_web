@@ -123,5 +123,13 @@ def test_network_printer_at_an_ipv6_address(device, offered):
 
 
 def test_model_names_are_unique():
-    # Configurations and requests name a model without its maker
     assert len(drivers.MODELS) == len(set(drivers.MODELS))
+
+
+def test_models_of_other_makers_are_named_with_their_maker():
+    for driver in drivers.DRIVERS:
+        for model in driver.models:
+            if driver.vendor == 'Brother':
+                assert '/' not in model and drivers.canonical(f'Brother/{model}') == model
+            else:
+                assert model.startswith(f'{driver.vendor}/') and drivers.canonical(model) == model

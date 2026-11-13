@@ -87,7 +87,9 @@ const ANY_PRINTER = { qualities: ['fast', 'quality', 'high'], high_res: true, cu
 const capsOf = model => (C.models || {})[model] || ANY_PRINTER;
 const printerCaps = () => capsOf(S.printer && S.printer.model);
 // The maker and the model of a printer, as the label designer names it
-const printerName = p => [capsOf(p && p.model).vendor, p && p.model].filter(Boolean).join(' ');
+// Models other than Brother ones are named with their maker, e.g. PUQU/Q00
+const modelOnly = model => (model || '').split('/').pop();
+const printerName = p => [capsOf(p && p.model).vendor, p && modelOnly(p.model)].filter(Boolean).join(' ');
 
 function sizeName(id) {
     const s = SIZES[id];
@@ -399,20 +401,30 @@ function cutShort(c, k) {
 // the last label left in the printer. Not to scale: a PT-E550W fed 22 mm
 // before the first label, 11 mm after a chain print, and gave short labels
 // some more tape.
-function cutStrip(c, k) {
+function cutStrip(c, k, files = 1) {
     const half = halfOf(c, k);
     const between = c.cut === 'each' ? 'full' : half ? 'half' : 'none';
     // The last label stays in the printer with chain printing, and on QL
     // printers where it is not cut
     const end = noCutter(k) ? 'none' : chainOf(c, k) || c.cut === 'none' ? 'chain' : 'full';
-    // Copies of the same label, all A
-    const lab = '<span class="lab">A</span>', mark = k => `<span class="cm ${k}"></span>`;
+    // Copies of one file, all A, of several as the setting orders them: the
+    // first three printed, the first of them on the right
+    const [third, second, first] = printOrder(files).slice(0, 3).reverse().map(i => `<span class="lab">${'ABC'[Math.min(i, 2)]}</span>`);
+    const mark = k => `<span class="cm ${k}"></span>`;
     const text = esc(cutText(c, k));
     const waste = k.feed_waste ? `${mark(half || c.cut === 'each' ? 'half' : 'full')}<span class="waste"></span>` : '';
     // The printer on the left, as on its display: the tape leaves it to the
     // right, the waste first
-    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${lab}${mark(between)}${lab}${mark(between)}${lab}${waste}</span>`;
+    return `<span class="cut-strip" title="${text}" role="img" aria-label="${text}"><span class="out"></span>${mark(end)}${third}${mark(between)}${second}${mark(between)}${first}${waste}</span>`;
 }
+
+// The files of copies in the order they are printed: as sets, ABAB, or
+// grouped, AABB, two copies of several files, three of one
+const collated = () => S.settings.collate !== '0';
+const printOrder = files => {
+    const ids = [...Array(files).keys()], copies = files > 1 ? 2 : 3;
+    return collated() ? Array(copies).fill(ids).flat() : ids.flatMap(i => Array(copies).fill(i));
+};
 
 // marks: a preview shows the blanks still to fill in. blanks: those of
 // blankRequest(), e.g. as a cached preview was made for them.
@@ -452,6 +464,7 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
     fd.set('high_res', highRes() ? '1' : '0');
     if (forPrint) {
         fd.set('fast_printing', S.settings.quality === 'fast' ? '1' : '0');
+        fd.set('collate', collated() ? '1' : '0');
         const c = cutOf(design);
         fd.set('cut', c.cut);
         fd.set('half_cut', c.half_cut);
@@ -618,7 +631,8 @@ function preview(design, values, stale, first = false) {
         return {
             url: URL.createObjectURL(blob), highRes: d.high_res === '1', warning: r.headers.get('X-Label-Warning') || '',
             auto: r.headers.get('X-Label-Orientation') === 'auto', gap: +(r.headers.get('X-Label-Image-Text-Gap') || 0),
-            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1'
+            side: r.headers.get('X-Label-Image-Position') || '', faint: r.headers.get('X-Image-Faint') === '1',
+            pages: +(r.headers.get('X-PDF-Selected-Pages') || 1)
         };
     }, stale, first);
     previewCache.set(key, p);
@@ -802,6 +816,28 @@ async function refreshPrinters(look = false) {
     }
     detectTape();
     renderPrinterChip();
+    // An open printer panel shows the new status, drawn again only when it
+    // changed so that what is focused in it stays focused
+    const box = $('.pp');
+    if (box) {
+        const fresh = document.createElement('div');
+        fresh.innerHTML = printerPanelHTML();
+        if (fresh.innerHTML !== box.innerHTML) { box.replaceChildren(...fresh.childNodes); bindPrinterPanel(); }
+    }
+    // The note of the editor on the tape and the tape list follow the tape the
+    // printer reports
+    const size = $('#edSize');
+    if (size && S.edit) {
+        const note = document.createElement('div');
+        note.innerHTML = tapeNote(S.edit.design);
+        const old = size.parentElement.querySelector('.tape-note');
+        if ((old ? old.outerHTML : '') !== note.innerHTML) {
+            if (old) old.replaceWith(...note.children);
+            else size.before(...note.children);
+            if ($('#edUseTape')) $('#edUseTape').onclick = () => { changeSize(S.edit.design, S.tape); renderEditor(); };
+        }
+        $$('option', size).forEach(o => { o.textContent = tapeName(o.value); });
+    }
 }
 
 const printerKey = () => (S.printer && S.printer.path) || '';
@@ -874,9 +910,12 @@ function renderPrinterChip() {
     const st = printerState(S.printer);
     // Phones show the model only, a printer named in PRINTERS its name
     const vendor = S.printer && !S.printer.name && capsOf(S.printer.model).vendor;
-    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || S.printer.model) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
+    chip.innerHTML = `<span class="dot ${st.cls}"></span><b>${vendor ? `<span class="vendor">${esc(vendor)} </span>` : ''}${esc(S.printer ? (S.printer.name || modelOnly(S.printer.model)) : 'No printer')}</b><span class="tape">${esc(sizeName(S.tape))}</span>`;
     // A long name is cut short in the chip
     chip.title = S.printer && S.printer.name ? `${S.printer.name}: ${st.text}` : st.text;
+    // The printer on the stages shows the same, they are drawn again only
+    // with another preview
+    $$('.stage .printer .led').forEach(led => { led.className = `led ${st.cls}`; led.title = st.text; });
 }
 
 // --- Printing ------------------------------------------------------------------
@@ -941,7 +980,7 @@ function announce(entry) {
     if (entry.state === 'printed') {
         if (window.matchMedia('(max-width: 760px)').matches) {
             sheet(`<div class="okc"><i class="fa-solid fa-check"></i></div><h2>${what} printed</h2>
-                <p>${esc(entryName(entry))} on ${esc(entry.printerName || 'the ' + (entry.printer || 'printer'))}</p>
+                <p>${esc(entryName(entry))} on ${esc(entry.printerName || thePrinter({ model: entry.printer }))}</p>
                 <button class="btn-print" data-close><i class="fa-solid fa-check"></i>Done</button>`);
         } else {
             toast(`Printed ${what}: ${entryName(entry)}`, { label: 'Print again', run: () => again(entry) });
@@ -1341,6 +1380,20 @@ function busyThen(getEl, fn) {
     };
 }
 
+// The number of pages of a PDF that print, by the PDF and its selection:
+// asked once, not again for every change of the text
+const pagesCounted = new Map();
+function selectedPages(design, f, values) {
+    const key = JSON.stringify([imageKey(f), design.pdf_pages || '']);
+    if (!pagesCounted.has(key)) {
+        pagesCounted.set(key, preview(Object.assign({}, design, { image: f }), values).then(q => q.pages || 1, () => {
+            pagesCounted.delete(key);
+            return 1;
+        }));
+    }
+    return pagesCounted.get(key);
+}
+
 async function showOnStage(el, design, values, onWarning, blank = false) {
     if (!el) return;
     el._seq = (el._seq || 0) + 1;
@@ -1388,6 +1441,12 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     const turned = !side && sizeCaps(design.label_size).leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
+    // The selected pages of a PDF print like files, of those not shown as
+    // their previews count them
+    const labels = (await Promise.all(labelFiles(design).map((f, i) => i === 0 ? p.pages || 1
+        : f.mime === 'application/pdf' ? selectedPages(design, f, values) : 1)))
+        .reduce((a, b) => a + b, 0);
+    if (outdated()) return;
     // Kept to fit the label again when the stage changes its size
     el._view = {
         url: p.url, w, h, side, turned, dpi, blank, color: isColorTape(design.label_size),
@@ -1395,7 +1454,7 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
         form: (isEndless(size) ? '' : ' diecut') + (size.form === 'round_die_cut' ? ' round' : ''),
         dims: [side ? lengthMm : size.tape[0], side ? size.tape[0] : lengthMm],
         cutEnd: chainOf(cutNow, caps) ? 'chain' : cutNow.cut === 'none' ? 'none' : 'full',
-        cuts: `${cutStrip(cutNow, caps)}<span>${esc(cutShort(cutNow, caps))}</span>`,
+        cuts: `${cutStrip(cutNow, caps, Math.max(1, labels))}<span>${esc(cutShort(cutNow, caps))}</span>`,
     };
     if ('zoom' in el.dataset && !el._watched) { el._watched = true; stageSizes.observe(el); }
     placeOnStage(el, true);
@@ -2291,7 +2350,7 @@ function renderEditor() {
                 <div class="info-box" id="tplInfo" style="margin:0 .8rem .7rem"${S.tplInfo ? '' : ' hidden'}>${varsHelpHTML()}</div></div>
             <div class="block"><div class="block-h"><i class="fa-solid fa-ruler-combined"></i>Label</div>
                 <div class="block-b">
-                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => `${esc(sizeName(s.id))}${s.id === S.tape && !S.tapeAssumed ? ' (in the printer)' : ''}`)}</select>${lengthInput(d)}</div>
+                    <div class="tape-row"><label class="label-s" for="edSize">Tape</label>${lengthLabel(d)}${tapeNote(d)}<select class="field" id="edSize">${sizeOptions(d.label_size, s => esc(tapeName(s.id)))}</select>${lengthInput(d)}</div>
                     ${flagRow(d)}
                     <div><span class="label-s">Text runs</span><div class="seg"><button type="button" data-along="0" class="${runsAlong(d) ? '' : 'on'}">Across the tape</button><button type="button" data-along="1" class="${runsAlong(d) ? 'on' : ''}">Along</button></div></div>
                     <div><span class="label-s">Text size</span><div class="seg">${TEXT_FITS.map(([v, n]) => `<button type="button" data-tfit="${v}" class="${textFit(d) === v ? 'on' : ''}"${v === 'fill' ? ' title="As large as fits on the label, the lines keep the ratio of their sizes"' : ''}>${n}</button>`).join('')}</div></div>
@@ -2357,6 +2416,9 @@ function flagRow(d) {
             ${on ? `<input class="field rot" type="number" min="1" max="50" step="0.5" id="edCable" value="${esc(d.cable_diameter)}" placeholder="6.5" aria-label="Diameter of the cable in mm"><span>mm cable</span>` : ''}
         </div>${on ? '<span class="muted small" id="edFlagHint">Place the cable on the triangles, fold both ends together and press them firmly.</span>' : ''}`;
 }
+
+// A tape as the tape list names it
+const tapeName = id => sizeName(id) + (id === S.tape && !S.tapeAssumed ? ' (in the printer)' : '');
 
 function tapeNote(d) {
     const who = esc(thePrinter(S.printer, true));
@@ -2465,7 +2527,8 @@ const imageSide = d => d.image_position || (S.edit && S.edit.placedSide) || '';
 function sideField(d, what) {
     const on = paired(d);
     const other = d.print_type === 'image_qrcode_text' ? ', the code is on the other side' : '';
-    return `<div title="${on ? `Where the ${what} is next to the text${other}` : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
+    const why = `Where the ${what} is next to the text${other}`;
+    return `<div id="edSide" data-why="${why}" title="${on ? why : 'Only with text on the label'}"><span class="label-s${on ? '' : ' off'}">Position</span><div class="seg">${SIDES.map(([v, n]) =>
         `<button type="button" data-side="${v}" class="${imageSide(d) === v ? 'on' : ''}"${on ? '' : ' disabled'}>${n}</button>`).join('')}</div></div>`;
 }
 
@@ -2702,13 +2765,19 @@ function drawEditor() {
     const empty = isEmptyDesign(E.design);
     printable(empty);
     $('#edSave').disabled = empty;
-    const gap = $('#edGap');
+    // Typing the first line of text, or deleting the last, changes whether
+    // the position and the distance to the text apply
+    const on = paired(E.design), gap = $('#edGap'), side = $('#edSide');
     if (gap) {
-        const on = paired(E.design);
         gap.disabled = !on;
         gap.previousElementSibling.classList.toggle('off', !on);
         gap.parentElement.title = on ? GAP_TITLE : 'Only with text on the label';
         if (!on) gap.placeholder = 'Only with text';
+    }
+    if (side) {
+        $$('[data-side]', side).forEach(b => b.disabled = !on);
+        $('.label-s', side).classList.toggle('off', !on);
+        side.title = on ? side.dataset.why : 'Only with text on the label';
     }
     const files = labelFiles(E.design);
     $('#edFileStep').hidden = files.length < 2;
@@ -2723,7 +2792,7 @@ const drawStage = latest(async () => {
     const empty = isEmptyDesign(E.design);
     const file = fileShown(E);
     const shown = empty ? Object.assign(clone(E.design), { text: E.design.text.slice(0, 1).map(l => Object.assign({}, l, { text: 'Ag' })) })
-        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file] }) : E.design;
+        : file ? Object.assign({}, E.design, { image: labelFiles(E.design)[file], more_images: labelFiles(E.design).filter((_, i) => i !== file) }) : E.design;
     const gap = $('#edGap');
     await showOnStage(stage, shown, E.values, (w, err, p, refused) => {
         // Where the server put the code or image, its setting shows that
@@ -3071,7 +3140,8 @@ function printerPanelHTML() {
         const on = S.printer && p.path === S.printer.path;
         return `<button class="prow${on ? ' on' : ''}" type="button" data-printer="${esc(p.path)}"><span class="dot ${st.cls}"></span>
             <span class="grow"><b>${esc(printerLabel(p))}</b><span class="sm">${esc([p.name ? printerName(p) : '', st.text, (p.path || '').replace('file://', ''), tapeLeft(p)].filter(Boolean).join(', '))}</span>
-                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}</span>
+                ${p.weak_connection ? '<span class="sm warn">The Wi-Fi connection seems weak, try moving the printer closer to the Wi-Fi router.</span>' : ''}
+                ${p.battery_low ? '<span class="sm warn">The battery is low, charge the printer.</span>' : ''}</span>
             ${on ? '<i class="fa-solid fa-check"></i>' : ''}</button>`;
     }).join('') || '<p class="empty">No printer answered.</p>';
     return `<div class="row"><h2 class="grow">Printer</h2><button class="btn quiet icon" type="button" data-close title="Close"><i class="fa-solid fa-xmark"></i></button></div>
@@ -3107,6 +3177,7 @@ function bindPrinterPanel() {
         $('#qInfoBtn', box).setAttribute('aria-expanded', String(S.qualityInfo));
     };
     $$('[data-q]', box).forEach(b => b.onclick = () => { S.settings.quality = b.dataset.q; saveSettings(); });
+    $$('[data-col]', box).forEach(b => b.onclick = () => { S.settings.collate = b.dataset.col; saveSettings(); });
     $$('[data-c]', box).forEach(b => b.onclick = () => {
         S.settings.cuts = Object.assign({}, S.settings.cuts, { [printerKey()]: Object.assign(printerCut(), { [b.dataset.c]: b.dataset.v }) });
         saveSettings();
@@ -3146,6 +3217,11 @@ function settingsCard() {
                 : `<p>Fast printing is quicker, the print is a little less sharp.</p>
                 <p>600 dpi prints twice as many lines along the label. Labels usually come out much darker, printing is slower, and the result is often worse than at 300 dpi. It is only confirmed for the QL-800. The ${esc(listJoin(without600))} cannot print at 600 dpi.</p>`}
             </div></div>
+        <div><span class="label-s">Copies of several files</span>
+            <div class="seg">
+            <button type="button" data-col="1" class="${collated() ? 'on' : ''}">As sets: ABC ABC</button>
+            <button type="button" data-col="0" class="${collated() ? '' : 'on'}">Grouped: AA BB CC</button></div>
+            <span class="muted small">For several images or PDF pages printed more than once.</span></div>
         <div><label class="label-s" for="setDate">Dates on labels</label>
             <select class="field" id="setDate">${[['', 'Like the browser: ' + formatDate('2026-11-01', browserDateFormat())], ['%Y-%m-%d', '2026-11-01'], ['%d.%m.%Y', '01.11.2026'], ['%d/%m/%Y', '01/11/2026'], ['%m/%d/%Y', '11/01/2026']]
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
