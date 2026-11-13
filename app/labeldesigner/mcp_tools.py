@@ -137,6 +137,21 @@ def find_printer(printers: list[dict], wanted: str) -> dict | None:
     return None
 
 
+def label_size_for(model: str, label_size: str) -> str:
+    """The label size of a printer of model that label_size names, also
+    without the prefix of its driver and written as "100 x 30 mm", e.g.
+    zpl100x30 for 100x30 on a ZPL printer."""
+    from mcp.server.mcpserver.exceptions import ToolError
+    takes = [label.identifier for label in LABELS if model in label_printers(label)]
+    if not takes or label_size in takes:
+        return label_size
+    plain = re.sub(r'\s|mm', '', str(label_size).lower()).replace('×', 'x')
+    found = [size for size in takes if size == plain or (size.endswith(plain) and size[:-len(plain)].isalpha())]
+    if len(found) != 1:
+        raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
+    return found[0]
+
+
 def _blank_names(data: dict) -> list[str]:
     texts = [line.get('text', '') for line in data.get('text', []) if isinstance(line, dict)]
     texts.append(str(data.get('code_text') or ''))
@@ -182,21 +197,19 @@ class Tools:
         if count > cap:
             raise ToolError(f'At most {cap} labels per call (MCP_MAX_COUNT)')
 
-    def _expected(self, printer: str, label_size: str) -> dict:
-        """The status of printer, refused if it has another label size loaded
-        than label_size, or reports an error."""
+    def _expected(self, printer: str, label_size: str) -> tuple[dict, str]:
+        """The status of printer and its label size label_size names, refused
+        if it has another one loaded, or reports an error."""
         from mcp.server.mcpserver.exceptions import ToolError
         found = self._printer(printer)
         if found.get('errors'):
             raise ToolError(' '.join(found['errors']))
-        takes = [label.identifier for label in LABELS if found.get('model') in label_printers(label)]
-        if takes and label_size not in takes:
-            raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
+        label_size = label_size_for(found.get('model'), label_size)
         loaded = loaded_label_sizes(found)
         if loaded and label_size not in loaded:
             on = loaded[0] if len(loaded) == 1 else 'the one loaded'
             raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {on}.')
-        return found
+        return found, label_size
 
     def _printers(self) -> list[dict]:
         status = self._call('GET', '/printer_status')
@@ -248,7 +261,10 @@ class Tools:
     def preview_label(self, name: str | None, blanks: dict | None, lines: list[str] | None, label_size: str | None,
                       font_size: int, code: str | None, code_type: str, printer: str | None) -> bytes:
         from mcp.server.mcpserver.exceptions import ToolError
-        printer = self._printer(printer)['path'] if printer else None
+        found = self._printer(printer) if printer else None
+        printer = found['path'] if found else None
+        if found and label_size:
+            label_size = label_size_for(found.get('model'), label_size)
         if name:
             body = {'name': name, 'blanks': blanks or {}}
             if printer:
@@ -268,9 +284,9 @@ class Tools:
         saved = next((label for label in self.list_labels() if label['name'] == name), None)
         if saved is None:
             raise ToolError(f'No saved label {name}, list_labels names them')
+        found, label_size = self._expected(printer, label_size)
         if saved['label_size'] != label_size:
             raise ToolError(f'{name} is for {saved["label_size"]}, not {label_size}')
-        found = self._expected(printer, label_size)
         printer, device = found.get('name') or found['path'], found['path']
         images = []
         for done, blanks in enumerate(fillings):
@@ -288,7 +304,7 @@ class Tools:
         if not (lines or code):
             raise ToolError('Give lines or a code to print')
         self._cap(count)
-        found = self._expected(printer, label_size)
+        found, label_size = self._expected(printer, label_size)
         printer = found.get('name') or found['path']
         form = dict(self._text_label(lines, label_size, font_size, code, code_type), printer=found['path'])
         image = self._call('POST', '/preview', data=form)

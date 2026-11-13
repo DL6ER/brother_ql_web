@@ -171,3 +171,19 @@ def test_print_by_alias_prints_on_its_device(client, tmp_path):
     result = tool(client, 'print_text', printer='kitchen', label_size='62', count=1, lines=['x'])
     assert result['content'][0]['text'] == 'Printed 1 label on Kitchen'
     assert printed(tmp_path) == 1
+
+
+@pytest.mark.parametrize('label_size, size', [('62', '62'), ('29x90', '29x90'), ('29 x 90 mm', '29x90'), ('29×90', '29x90')])
+def test_label_sizes_as_written(label_size, size):
+    assert mcp_tools.label_size_for('QL-800', label_size) == size
+
+
+def test_label_sizes_without_the_prefix_of_their_driver(monkeypatch):
+    sizes = [type('Label', (), {'identifier': i}) for i in ('zpl100x30', 'zpl50x30', 'zpl100x50')]
+    monkeypatch.setattr(mcp_tools, 'LABELS', sizes)
+    monkeypatch.setattr(mcp_tools, 'label_printers', lambda label: ['Zebra/ZPL'])
+    assert mcp_tools.label_size_for('Zebra/ZPL', '100x30') == 'zpl100x30'
+    assert mcp_tools.label_size_for('Zebra/ZPL', '100x30mm') == 'zpl100x30'
+    from mcp.server.mcpserver.exceptions import ToolError
+    with pytest.raises(ToolError, match='it takes zpl100x30'):
+        mcp_tools.label_size_for('Zebra/ZPL', '30')
