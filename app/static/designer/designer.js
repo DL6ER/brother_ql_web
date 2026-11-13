@@ -2461,10 +2461,12 @@ function imageBlock(d) {
     const needsRed = v => (v === 'red_and_black' || v === 'colored') && !red && d.image_mode !== v;
     const bw = d.image_mode === 'black_and_white';
     const fit = fitted(d), crop = d.image_crop === '1';
-    const pdf = d.image && /pdf/i.test(d.image.mime);
+    const files = labelFiles(d);
+    const pdf = files.some(f => /pdf/i.test(f.mime));
     return `<div class="block"><div class="block-h"><i class="fa-regular fa-image"></i>Image</div>
         <div class="block-b">
-            <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${d.image ? esc(d.image.name) + (d.more_images ? ` and ${d.more_images.length} more` : '') + ', choose others' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
+            ${files.length ? `<ul class="files">${files.map((f, i) => `<li><i class="fa-regular fa-file-${/pdf/i.test(f.mime) ? 'pdf' : 'image'}"></i><span>${esc(f.name)}</span><button class="btn quiet icon" type="button" data-unfile="${i}" title="Remove ${esc(f.name)}" aria-label="Remove ${esc(f.name)}"><i class="fa-solid fa-xmark"></i></button></li>`).join('')}</ul>` : ''}
+            <label class="drop" for="edFile"><i class="fa-solid fa-upload"></i> ${files.length ? 'Choose others, drop or paste them' : 'Choose images or PDFs, drop or paste them'}</label><input type="file" id="edFile" accept="image/*,application/pdf" multiple hidden>
             ${d.more_images ? `<span class="muted small">${d.more_images.length + 1} files, each prints as a label of its own with these settings. Step through them above the preview, saving the label keeps only the first.</span>` : ''}
             <label title="${pdf ? '' : 'Only for PDF files'}"><span class="label-s${pdf ? '' : ' off'}">PDF pages</span><input class="field" id="edPages" placeholder="${pdf ? '1' : 'Only for PDF files'}" value="${esc(d.pdf_pages || '')}"${pdf ? '' : ' disabled'}>${pdf ? '<span class="muted small" id="edPagesHelp">For example 1-3, 5. Each page prints as a label of its own.</span>' : ''}</label>
             ${color ? `<div><span class="label-s">Colors</span><span class="muted small">Images print in full color on this tape.</span></div>
@@ -2887,6 +2889,7 @@ function bindEditor() {
     };
     if ($('#edCodeScale')) $('#edCodeScale').addEventListener('input', e => { const v = Math.round(+e.target.value); if (v > 0) { d.image_scaling_factor = String(v); redrawEditor(); } });
     if ($('#edFile')) $('#edFile').onchange = e => readImages(e.target.files);
+    $$('[data-unfile]').forEach(b => b.onclick = () => removeFile(+b.dataset.unfile));
     if ($('#edFamily')) $('#edFamily').onchange = e => {
         if (!e.target.value) return;
         d.text.forEach(l => { l.bold = wantsBold(l); l.font = fontOf(e.target.value, l.bold); });
@@ -3105,6 +3108,16 @@ function readImages(files) {
         S.edit.fileShown = 0;
         renderEditor();
     }).catch(() => toast('The file could not be read'));
+}
+
+// The file shown in the preview stays shown when another one is removed
+function removeFile(i) {
+    const E = S.edit, d = E.design, files = labelFiles(d), shown = fileShown(E);
+    files.splice(i, 1);
+    if (files.length) d.image = files[0]; else delete d.image;
+    if (files.length > 1) d.more_images = files.slice(1); else delete d.more_images;
+    if (i < shown) E.fileShown = shown - 1;
+    renderEditor();
 }
 
 // A blank stays marked until something is typed into it
