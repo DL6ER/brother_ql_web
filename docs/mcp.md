@@ -10,6 +10,8 @@ It needs the packages of `requirements-mcp.txt`, which the Docker image comes wi
 pip install -r requirements-mcp.txt
 ```
 
+`MCP_ENABLED=false` turns the endpoint off.
+
 ## Tools
 
 | Tool | What it does |

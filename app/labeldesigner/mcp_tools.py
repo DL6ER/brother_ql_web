@@ -509,7 +509,9 @@ class Endpoint:
 
 
 def install(app):
-    """Serve /mcp if the mcp package is installed."""
+    """Serve /mcp if the mcp package is installed and MCP_ENABLED."""
+    if not app.config.get('MCP_ENABLED', True):
+        return
     try:
         import a2wsgi  # noqa: F401
         import mcp  # noqa: F401

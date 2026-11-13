@@ -251,3 +251,10 @@ def test_a_saved_label_asks_whether_its_size_is_loaded(client, tmp_path, monkeyp
     assert printed(tmp_path) == 0
     result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', count=1, label_size='62')
     assert not result.get('isError') and printed(tmp_path) == 1
+
+
+def test_turned_off_with_mcp_enabled_false(tmp_path, monkeypatch):
+    monkeypatch.setenv('MCP_ENABLED', 'false')
+    client = make_client(tmp_path)
+    assert call(client, 'tools/list')[0] == 404
+    assert client.get('/mcp/preview.png').status_code == 404

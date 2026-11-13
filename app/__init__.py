@@ -121,6 +121,7 @@ ENV_OVERRIDES = {
     'TRUSTED_HOSTS': _host_list,
     'LABEL_TEMPLATE_ENV_VARS': str,
     'PRINT_MAX_COUNT': _positive_int,
+    'MCP_ENABLED': _bool,
     'MCP_MAX_COUNT': _positive_int,
     'MCP_HOSTS': _host_list,
     'MAX_CONTENT_LENGTH': _positive_int,

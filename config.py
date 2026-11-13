@@ -68,6 +68,10 @@ class Config(object):
     # Maximum number of labels a single print request may produce
     PRINT_MAX_COUNT = 100
 
+    # The MCP endpoint /mcp for AI assistants, where its packages are
+    # installed (requirements-mcp.txt)
+    MCP_ENABLED = True
+
     # Most labels an AI assistant may print with one call to the MCP endpoint
     MCP_MAX_COUNT = 10
 
