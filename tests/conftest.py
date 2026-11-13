@@ -18,4 +18,6 @@ def printer_output(tmp_path, monkeypatch):
     monkeypatch.setattr(printer, 'ARP_TABLE', os.devnull)
     # Nor are the device IDs of its USB printers read
     monkeypatch.setattr(devices, 'USB_DEVICE_ID', str(tmp_path / 'no-usb-device-id-{name}'))
+    # Nor its printers on PyUSB
+    monkeypatch.setattr(devices, 'found_usb_printers', lambda: [])
     monkeypatch.setattr(printer, 'NETWORK_DISCOVERY', False)

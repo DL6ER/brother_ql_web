@@ -18,6 +18,7 @@ from werkzeug.serving import make_server  # noqa: E402
 
 from app import create_app  # noqa: E402
 from app.labeldesigner import printer  # noqa: E402
+from app.labeldesigner.drivers import devices  # noqa: E402
 from tests.browser.helpers import wait_for_preview  # noqa: E402
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -38,6 +39,7 @@ def app(tmp_path_factory):
     app.config['LABEL_REPOSITORY_DIR'] = str(repo)
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(printer, 'USB_PRINTER_DEVICES', [])
+        patch.setattr(devices, 'found_usb_printers', lambda: [])
         patch.setattr(printer, 'ARP_TABLE', os.devnull)
         patch.setattr(printer, 'NETWORK_DISCOVERY', False)
         yield app
