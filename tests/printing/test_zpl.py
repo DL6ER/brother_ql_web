@@ -145,7 +145,7 @@ def test_host_status():
     assert protocol.parse_host_status(b'') is None
 
 
-@pytest.mark.parametrize('length, size', [(235, (100, 30)), (1214, (102, 152)), (1184, (105, 148)), (500, None)])
+@pytest.mark.parametrize('length, size', [(235, None), (1214, (102, 152)), (1184, (105, 148)), (500, None)])
 def test_labels_by_their_length(length, size):
     # 4 x 6 in labels measured 1214 dots on a GK420t
     assert zpl.loaded(length) == size
@@ -193,19 +193,29 @@ def test_status_without_an_answer(monkeypatch):
 
 
 def test_asked_at_most_every_10_s_then_silence_is_an_error(monkeypatch):
-    thread, server = _answering(monkeypatch, DATAMAX_HS)
-    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 30
+    thread, server = _answering(monkeypatch, DATAMAX_HS.replace(b'0235', b'1214'))
+    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 152
     thread.join(5)
     server.close()
     # Not asked again within 10 s, told as it was
-    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 30
+    assert zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')['media_length'] == 152
     # A Datamax with its printhead open does not answer
     monkeypatch.setitem(zpl._asked, 'tcp://127.0.0.1', 0)
     thread, server = _answering(monkeypatch, b'')
     state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
     thread.join(5)
     server.close()
-    assert state['errors'] == [zpl.NO_ANSWER] and state['media_length'] == 30
+    assert state['errors'] == [zpl.NO_ANSWER] and state['media_length'] == 152
+
+
+def test_a_printer_that_never_answered_is_asked_at_most_every_10_s(monkeypatch, tmp_path):
+    device = tmp_path / 'lp0'
+    device.write_bytes(b'')
+    asked = []
+    monkeypatch.setattr(protocol, 'host_status', lambda device: asked.append(device) or b'')
+    for _ in range(3):
+        zpl.DRIVER.status(f'file://{device}', 'Zebra/ZPL')
+    assert len(asked) == 1
 
 
 def test_printer_through_pyusb(monkeypatch):

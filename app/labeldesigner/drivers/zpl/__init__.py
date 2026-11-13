@@ -55,11 +55,12 @@ LENGTH_TOLERANCE = 2
 
 def loaded(length: int) -> tuple[int, int] | None:
     """Width and length in mm of the labels of a length the printer measured
-    in dots, the first size of the nearest length, e.g. 235 dots (29.4 mm)
-    100 x 30 mm. The printer does not tell their width."""
+    in dots, e.g. 1214 dots (152 mm) 102 x 152 mm. None if labels of another
+    width have that length too, the printer does not tell their width."""
     mm = length / DOTS_PER_MM
-    size = min(SIZES, key=lambda size: abs(size[1] - mm))
-    return size if abs(size[1] - mm) <= LENGTH_TOLERANCE else None
+    nearest = min(abs(size[1] - mm) for size in SIZES)
+    sizes = [size for size in SIZES if abs(size[1] - mm) == nearest]
+    return sizes[0] if nearest <= LENGTH_TOLERANCE and len(sizes) == 1 else None
 
 
 LABELS = tuple(_label(width, length) for width, length in SIZES)
@@ -128,8 +129,8 @@ class Zpl(Driver):
             raise FileNotFoundError(2, 'No such device', path)
         state = dict(network_status(device, model), media_type='Die-cut labels')
         cached = devices.status_cache.get(devices.lock_key(device))
-        if cached and time.monotonic() - _asked.get(device, 0) < ASK_EVERY:
-            return dict(cached)
+        if time.monotonic() - _asked.get(device, 0) < ASK_EVERY:
+            return dict(cached) if cached else state
         with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
             if not acquired:
                 state.update(devices.status_cache.get(devices.lock_key(device), {}))
