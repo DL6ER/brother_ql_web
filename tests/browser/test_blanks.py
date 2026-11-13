@@ -88,7 +88,7 @@ def test_values_of_blanks_saved_through_the_api_are_shown_and_replaced_by_settin
         designer.dispatch_event(default, 'change')
         designer.wait_for_function("() => !('Box' in (S.edit.design.blanks || {})) && document.querySelector('[data-bname=\"Box\"] [data-default]').value === '5'")
         designer.click('[data-bname="Frozen on"] [data-today]')
-        designer.wait_for_function("() => document.querySelector('[data-bname=\"Frozen on\"]').innerText.endsWith('Starts at today')")
+        designer.wait_for_function("() => document.querySelector('[data-bname=\"Frozen on\"] [data-offset-n]').value === ''")
         designer.click('#blankSet')
         designer.wait_for_selector(field)
         assert designer.input_value(field) == '5'
@@ -119,10 +119,81 @@ def test_a_date_saved_with_a_default_through_the_api_starts_at_it(designer, serv
         designer.click('#blankSet')
         assert 'Starts at 2026-12-24' in designer.inner_text('[data-bname="Due"]')
         designer.click('[data-bname="Due"] [data-today]')
-        designer.wait_for_function("() => document.querySelector('[data-bname=\"Due\"]').innerText.endsWith('Starts at today')")
+        designer.wait_for_function("() => document.querySelector('[data-bname=\"Due\"] [data-offset-n]').value === ''")
         assert designer.evaluate("() => [S.edit.values.Due === today(), 'default' in S.edit.design.fields.Due]") == [True, False]
     finally:
         designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Due.json'})
+
+
+@pytest.mark.parametrize('day, offset, moved', [
+    ('2024-01-31', '+1m', '2024-02-29'), ('2023-01-31', '+1m', '2023-02-28'), ('2024-03-31', '-1m', '2024-02-29'),
+    ('2024-02-29', '+1y', '2025-02-28'), ('2024-12-30', '+5d', '2025-01-04'), ('2024-01-31', '-2w', '2024-01-17'),
+    ('2024-11-15', '+14m', '2026-01-15'), ('2024-01-15', '-13m', '2022-12-15'),
+])
+def test_a_date_blank_moves_from_today_as_the_server_moves_dates(designer, day, offset, moved):
+    # The field starts at the browser's date, the server moves the others
+    import datetime
+    from app.labeldesigner.label import shift_date
+    assert shift_date(datetime.date.fromisoformat(day), offset).isoformat() == moved
+    assert designer.evaluate('([day, offset]) => shiftDate(day, offset)', [day, offset]) == moved
+
+
+def test_a_date_blank_starts_at_a_day_moved_from_today(designer, server, app):
+    # A best-before date started at today, the label said "Use within 5 days"
+    type_line(designer, 0, 'Use by [Use by]')
+    designer.click('#blankSet')
+    row = '[data-bname="Use by"]'
+    designer.click(f'{row} [data-kind="date"]')
+    designer.fill(f'{row} [data-offset-n]', '5')
+    designer.dispatch_event(f'{row} [data-offset-n]', 'change')
+    designer.wait_for_function("() => (S.edit.design.fields['Use by'] || {}).default === '+5d'")
+    designer.select_option(f'{row} [data-offset-unit]', 'm')
+    designer.wait_for_function("() => S.edit.design.fields['Use by'].default === '+5m'")
+    assert designer.evaluate('() => S.edit.values["Use by"] === shiftDate(today(), "+5m")')
+    # Back at today
+    designer.fill(f'{row} [data-offset-n]', '0')
+    designer.dispatch_event(f'{row} [data-offset-n]', 'change')
+    designer.wait_for_function("() => !('default' in S.edit.design.fields['Use by']) && S.edit.values['Use by'] === today()")
+    designer.fill(f'{row} [data-offset-n]', '2')
+    designer.dispatch_event(f'{row} [data-offset-n]', 'change')
+    designer.wait_for_function("() => S.edit.design.fields['Use by'].default === '+2m'")
+    designer.click('#blankSet')
+    field = '#edFields input[data-blank="Use by"]'
+    designer.wait_for_selector(field)
+    assert designer.input_value(field) == designer.evaluate('() => shiftDate(today(), "+2m")')
+    # Saved with it, the API prints that day as well
+    save_as(designer, 'Pesto')
+    designer.wait_for_selector('#saveForm', state='detached')
+    try:
+        with open(os.path.join(app.config['LABEL_REPOSITORY_DIR'], 'Pesto.json'), encoding='utf-8') as f:
+            assert json.load(f)['fields']['Use by']['default'] == '+2m'
+        # Opened again, it starts there
+        designer.evaluate("""async () => {
+            await loadSaved();
+            const item = { kind: 'saved', id: 'Pesto.json' };
+            openEditor({ title: 'Pesto', design: await itemDesign(item), origin: item });
+        }""")
+        designer.wait_for_selector(field)
+        assert designer.input_value(field) == designer.evaluate('() => shiftDate(today(), "+2m")')
+        designer.click('#blankSet')
+        assert [designer.input_value(f'{row} [data-offset-n]'), designer.input_value(f'{row} [data-offset-unit]')] == ['2', 'm']
+    finally:
+        designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Pesto.json'})
+
+
+def test_a_new_date_blank_can_start_at_a_day_moved_from_today(designer):
+    designer.click('#edBlank')
+    designer.fill('#bName', 'today+5d')
+    designer.click('[data-bkind="date"]')
+    designer.click('#bInsert')
+    assert designer.inner_text('#bErr') == '[today+5d] is a variable already, choose another name.'
+    designer.fill('#bName', 'Use by')
+    designer.fill('#bDateStart [data-offset-n]', '2')
+    designer.select_option('#bDateStart [data-offset-unit]', 'w')
+    designer.click('#bInsert')
+    designer.wait_for_selector('#edFields input[data-blank="Use by"]')
+    assert designer.evaluate("() => S.edit.design.fields['Use by']") == {'type': 'date', 'default': '+2w'}
+    assert designer.evaluate('() => S.edit.values["Use by"] === shiftDate(today(), "+2w")')
 
 
 def test_a_date_at_today_follows_the_day(designer):

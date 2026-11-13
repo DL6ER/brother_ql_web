@@ -8,7 +8,7 @@ import os
 import pytest
 from PIL import Image
 
-from tests.browser.helpers import fits_note, kept, png, preview_size, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, png, preview_size, save_as, type_line, wait_for_preview
 
 
 def edit_saved_label(page, title):
@@ -34,10 +34,75 @@ def test_text_that_does_not_fit_can_be_shrunk(designer):
     designer.select_option('#edSize', '62x29')
     wait_for_preview(designer)
     assert 'does not fit' in fits_note(designer)
-    designer.click('#edFits button')
+    designer.click('#edFits [data-fix="shrink"]')
     wait_for_preview(designer)
     assert 'Everything fits.' in fits_note(designer)
     assert 'on' in designer.get_attribute('[data-tfit="shrink"]', 'class')
+
+
+def test_long_lines_can_wrap(designer, server):
+    # Offered where the text does not fit, it keeps its size
+    designer.click('[data-tfit="none"]')
+    type_line(designer, 0, 'Store in a cool and dry place away from direct sunlight')
+    designer.fill('[data-row="0"] input.mini', '40')
+    designer.select_option('#edSize', '62x29')
+    wait_for_preview(designer)
+    kept(designer)
+    assert 'does not fit' in fits_note(designer)
+    designer.click('#edFits [data-fix="wrap"]')
+    wait_for_preview(designer)
+    assert 'Everything fits.' in fits_note(designer)
+    assert designer.is_checked('#edWrap')
+    assert designer.evaluate("() => [formFor(S.edit.design).get('text_wrap'), formFor(S.edit.design).get('text_fit')]") == ['1', 'none']
+    # A step to undo
+    kept(designer)
+    designer.click('#edUndo')
+    wait_for_preview(designer)
+    assert not designer.is_checked('#edWrap') and 'does not fit' in fits_note(designer)
+    designer.click('#edWrap')
+    wait_for_preview(designer)
+    assert designer.evaluate("() => S.edit.design.text_wrap") == '1'
+    # Saved with the label and opened with it
+    save_as(designer, 'Wrapped')
+    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Wrapped\" is now one of your saved labels')")
+    try:
+        designer.click('#edNew')
+        wait_for_preview(designer)
+        assert not designer.is_checked('#edWrap')
+        edit_saved_label(designer, 'Wrapped')
+        assert designer.is_checked('#edWrap')
+    finally:
+        designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Wrapped.json'})
+    assert designer.evaluate("() => [normalize({ text_wrap: '1' }).text_wrap, normalize({}).text_wrap]") == ['1', '0']
+
+
+def test_lines_wrap_only_where_the_label_limits_them(designer):
+    # Disabled with the reason
+    def why():
+        return designer.get_attribute('.row:has(#edWrap)', 'title') if designer.is_disabled('#edWrap') else ''
+    type_line(designer, 0, 'Pantry')
+    assert why() == ''
+    designer.click('[data-along="1"]')
+    wait_for_preview(designer)
+    assert why() == 'Lines along endless tape have room to grow'
+    # A label of a fixed length does not grow
+    designer.fill('#edLength', '60')
+    designer.dispatch_event('#edLength', 'change')
+    wait_for_preview(designer)
+    assert why() == ''
+    designer.fill('#edLength', '')
+    designer.dispatch_event('#edLength', 'change')
+    designer.click('[data-along="0"]')
+    designer.click('[data-tfit="fill"]')
+    wait_for_preview(designer)
+    assert why() == 'Filled, each line is as wide as the tape'
+    designer.fill('#edLength', '60')
+    designer.dispatch_event('#edLength', 'change')
+    wait_for_preview(designer)
+    assert why() == ''
+    designer.select_option('#edSize', '62x29')
+    wait_for_preview(designer)
+    assert why() == ''
 
 
 def test_text_next_to_a_code_on_a_small_die_cut_label(designer):
@@ -878,3 +943,18 @@ def test_image_code_and_text_keep_the_settings_of_the_image(designer):
     designer.evaluate('() => renderEditor()')
     wait_for_preview(designer)
     assert designer.is_enabled('[data-side="right"]') and designer.is_enabled('#edGap')
+
+
+def test_dates_moved_from_today_are_typed_and_shown(designer):
+    # Written [today+5d], [today + 2 weeks] or [Today-1Y], they are dates of
+    # the server moved from today, shown as typed in the short form
+    fmt = designer.evaluate('() => dateFormat()')
+    type_line(designer, 0, 'Use by [today+5d], [today + 2 weeks], [Today-1Y]')
+    assert designer.evaluate('() => S.edit.design.text[0].text') == f'Use by {{{{datetime+5d:{fmt}}}}}, {{{{datetime+2w:{fmt}}}}}, {{{{datetime-1y:{fmt}}}}}'
+    assert 'Everything fits.' in fits_note(designer)
+    designer.evaluate('() => renderEditor()')
+    assert designer.input_value('[data-row="0"] .tx') == 'Use by [today+5d], [today+2w], [today-1y]'
+    # Each keeps its format, also where the wizard puts in its lines
+    assert designer.evaluate("() => fromDisplay('[today+6m] x', '{{datetime+5d:%d.%m.}} x', null, true)") == '{{datetime+6m:%d.%m.}} x'
+    # Not a blank of that name
+    assert designer.evaluate("() => ['today+5d', 'Today - 1 month', 'counter:3', 'id', 'today 5d'].map(isVariable)") == [True, True, True, True, False]

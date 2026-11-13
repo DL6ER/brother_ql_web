@@ -9,7 +9,7 @@ from PIL import Image
 from app.labeldesigner import printer
 from app.labeldesigner.enums import LabelContent, LabelOrientation, LabelType
 from app.labeldesigner.drivers import devices
-from app.labeldesigner.drivers.brother import backends
+from app.labeldesigner.drivers import backends
 from app.labeldesigner.drivers.brother import network
 from app.labeldesigner.drivers.brother import raster
 from app.labeldesigner.drivers.brother import usb
