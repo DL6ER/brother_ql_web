@@ -3161,12 +3161,11 @@ function settingsCard() {
                 .map(([v, n]) => `<option value="${esc(v)}"${(S.settings.dateFmt || '') === v ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>
             <span class="muted small">For "Today's date" and date blanks. Labels that already contain a date keep its format.</span></div>
         <div><span class="label-s">Leaves the printer first</span>
-            <div class="seg">
+            <div class="row" style="gap:.5rem;align-items:center"><div class="seg">
             <button type="button" data-lf="top" class="${leavesFirst() === 'top' ? 'on' : ''}">Top</button>
             <button type="button" data-lf="bottom" class="${leavesFirst() === 'bottom' ? 'on' : ''}">Bottom</button></div>
-            <div class="muted small">Bottom turns the labels, e.g. to stick them on as they come out.</div>
-            <div class="row" style="gap:.5rem;margin-top:.3rem"><button type="button" class="btn quiet" id="setLfTest"${S.printer ? '' : ' disabled'}><i class="fa-solid fa-print"></i>Print a test label</button>
-            <span class="muted small">TOP and BOTTOM at its ends</span></div></div>
+            <button type="button" class="btn quiet" id="setLfTest"${S.printer ? '' : ' disabled'}><i class="fa-solid fa-print"></i>Print a test label</button></div>
+            <div class="muted small">Bottom turns the labels, e.g. to stick them on as they come out. The test label has TOP and BOTTOM at its ends.</div></div>
         <div class="cutting">${cutSettings('c', c, caps)}
             <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))}${noCutter(caps) ? '' : ' Labels saved with their own cutting keep it.'}</span></div></div>
     </div>`;
