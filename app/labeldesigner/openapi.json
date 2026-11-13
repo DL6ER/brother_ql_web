@@ -109,6 +109,12 @@
                   "type": "integer"
                 }
               },
+              "X-PDF-Selected-Pages": {
+                "description": "Number of the pages of an uploaded PDF `pdf_pages` selects, each printed as a label of its own.",
+                "schema": {
+                  "type": "integer"
+                }
+              },
               "X-Image-Faint": {
                 "description": "`1` when the image of a label on a tape of the VC-500W is light all over, like a drawing in light washes, and would print better with `image_contrast`. Not set with `image_contrast` on.",
                 "schema": {
@@ -212,6 +218,12 @@
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
                       },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
+                      },
                       "cut_once": {
                         "type": "integer",
                         "enum": [
@@ -262,6 +274,12 @@
                         "minimum": 1,
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
                       "cut_once": {
                         "type": "integer",
@@ -961,6 +979,12 @@
                         "minimum": 1,
                         "default": 1,
                         "description": "Number of labels, at most `PRINT_MAX_COUNT` (default 100). `{{counter}}` counts up from label to label."
+                      },
+                      "collate": {
+                        "type": "integer",
+                        "enum": [0, 1],
+                        "default": 1,
+                        "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
                       "cut_once": {
                         "type": "integer",
