@@ -69,6 +69,72 @@ def loaded_label_sizes(printer: dict) -> list[str]:
             and (unknown or (label.color == 1) == red)]
 
 
+# The USB devices as the kernel tells them, with the maker, model and serial
+# number the printer reports
+USB_DEVICES = '/sys/bus/usb/devices'
+USB_SPECIFIER = re.compile(r'usb://(?:0x)?([0-9a-f]{1,4}):(?:0x)?([0-9a-f]{1,4})(?:/(.+))?', re.IGNORECASE)
+
+
+def _read(folder: str, name: str) -> str:
+    try:
+        with open(os.path.join(folder, name), encoding='utf-8', errors='replace') as fh:
+            return fh.read().strip()
+    except OSError:
+        return ''
+
+
+def usb_info(device: str) -> dict:
+    """What a printer on USB reports of itself: maker, model and serial
+    number, for usb://vendor:product/serial and file:///dev/usb/lpN. Empty
+    for others, or where the kernel does not tell (not on Linux)."""
+    folder = None
+    if device.startswith(('file:///dev/usb/lp', '/dev/usb/lp')):
+        folder = os.path.dirname(os.path.realpath(f'/sys/class/usbmisc/{os.path.basename(device)}/device'))
+    elif match := USB_SPECIFIER.fullmatch(device):
+        vendor, product, serial = match.group(1).lower().zfill(4), match.group(2).lower().zfill(4), match.group(3)
+        try:
+            names = os.listdir(USB_DEVICES)
+        except OSError:
+            names = []
+        folder = next((os.path.join(USB_DEVICES, name) for name in sorted(names)
+                       if _read(os.path.join(USB_DEVICES, name), 'idVendor') == vendor
+                       and _read(os.path.join(USB_DEVICES, name), 'idProduct') == product
+                       and (not serial or _read(os.path.join(USB_DEVICES, name), 'serial').lstrip('0') == serial.lstrip('0'))),
+                      None)
+    if not folder or not _read(folder, 'idVendor'):
+        return {}
+    info = {'maker': _read(folder, 'manufacturer'), 'model': _read(folder, 'product'), 'serial': _read(folder, 'serial')}
+    return {key: value for key, value in info.items() if value}
+
+
+def _describe(printer: dict) -> dict:
+    """How a printer is told to the assistant, by all it may be called."""
+    return {'printer': printer.get('name') or printer.get('path'), 'alias': printer.get('name') or None,
+            'device': printer.get('path'), 'driver': printer.get('model'), **usb_info(printer.get('path') or '')}
+
+
+def find_printer(printers: list[dict], wanted: str) -> dict | None:
+    """The printer wanted names by its alias, device, driver, maker, model or
+    serial number, the same or a part of it, e.g. "Datamax" or "L9Z378866".
+    Refused where it names several."""
+    from mcp.server.mcpserver.exceptions import ToolError
+    wanted = (wanted or '').strip().casefold()
+    if not wanted:
+        return None
+    described = [(_describe(p), p) for p in printers]
+
+    def names(described: dict) -> list[str]:
+        return [str(described.get(k) or '').casefold() for k in ('alias', 'device', 'driver', 'maker', 'model', 'serial')]
+
+    for same in (lambda n: n == wanted or n.lstrip('0') == wanted.lstrip('0') != '', lambda n: wanted in n):
+        found = [(d, p) for d, p in described if any(same(n) for n in names(d) if n)]
+        if len(found) == 1:
+            return found[0][1]
+        if found:
+            raise ToolError(f'{wanted} names several printers: {", ".join(d["printer"] for d, _ in found)}')
+    return None
+
+
 def _blank_names(data: dict) -> list[str]:
     texts = [line.get('text', '') for line in data.get('text', []) if isinstance(line, dict)]
     texts.append(str(data.get('code_text') or ''))
@@ -118,11 +184,7 @@ class Tools:
         """The status of printer, refused if it has another label size loaded
         than label_size, or reports an error."""
         from mcp.server.mcpserver.exceptions import ToolError
-        status = self._call('GET', '/printer_status')
-        printers = status.get('printers') or [status]
-        found = next((p for p in printers if printer in (p.get('path'), p.get('name'))), None)
-        if found is None:
-            raise ToolError(f'Unknown printer {printer}, list_printers names them')
+        found = self._printer(printer)
         if found.get('errors'):
             raise ToolError(' '.join(found['errors']))
         takes = [label.identifier for label in LABELS if found.get('model') in label_printers(label)]
@@ -133,12 +195,21 @@ class Tools:
             raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {loaded[0]}.')
         return found
 
-    def list_printers(self) -> list[dict]:
+    def _printers(self) -> list[dict]:
         status = self._call('GET', '/printer_status')
-        return [{'printer': p.get('name') or p.get('path'), 'device': p.get('path'), 'model': p.get('model'),
-                 'status': p.get('status_type'), 'errors': p.get('errors') or [],
+        return status.get('printers') or [status]
+
+    def _printer(self, printer: str) -> dict:
+        from mcp.server.mcpserver.exceptions import ToolError
+        found = find_printer(self._printers(), printer)
+        if found is None:
+            raise ToolError(f'Unknown printer {printer}, list_printers names them')
+        return found
+
+    def list_printers(self) -> list[dict]:
+        return [{**_describe(p), 'status': p.get('status_type'), 'errors': p.get('errors') or [],
                  'loaded_label_sizes': loaded_label_sizes(p)}
-                for p in status.get('printers') or [status]]
+                for p in self._printers()]
 
     def list_labels(self) -> list[dict]:
         from .routes import _get_repo_dir
@@ -174,6 +245,7 @@ class Tools:
     def preview_label(self, name: str | None, blanks: dict | None, lines: list[str] | None, label_size: str | None,
                       font_size: int, code: str | None, code_type: str, printer: str | None) -> bytes:
         from mcp.server.mcpserver.exceptions import ToolError
+        printer = self._printer(printer)['path'] if printer else None
         if name:
             body = {'name': name, 'blanks': blanks or {}}
             if printer:
@@ -195,10 +267,11 @@ class Tools:
             raise ToolError(f'No saved label {name}, list_labels names them')
         if saved['label_size'] != label_size:
             raise ToolError(f'{name} is for {saved["label_size"]}, not {label_size}')
-        self._expected(printer, label_size)
+        found = self._expected(printer, label_size)
+        printer, device = found.get('name') or found['path'], found['path']
         images = []
         for done, blanks in enumerate(fillings):
-            body = {'name': name, 'printer': printer, 'blanks': blanks, 'print_count': count}
+            body = {'name': name, 'printer': device, 'blanks': blanks, 'print_count': count}
             images.append(self._call('POST', '/repository/preview', json=body))
             try:
                 self._call('POST', '/repository/print', json=body)
@@ -212,8 +285,9 @@ class Tools:
         if not (lines or code):
             raise ToolError('Give lines or a code to print')
         self._cap(count)
-        self._expected(printer, label_size)
-        form = dict(self._text_label(lines, label_size, font_size, code, code_type), printer=printer)
+        found = self._expected(printer, label_size)
+        printer = found.get('name') or found['path']
+        form = dict(self._text_label(lines, label_size, font_size, code, code_type), printer=found['path'])
         image = self._call('POST', '/preview', data=form)
         self._call('POST', '/print', data=dict(form, print_count=count))
         return f'Printed {_labels(count)} on {printer}', [image]
@@ -229,7 +303,8 @@ def _server(app):
     confirm = {'anthropic/requiresUserInteraction': True}
     server = MCPServer('labelburg', instructions=(
         'Prints labels on the label printers of this home. list_printers tells the printers and the label '
-        'size loaded in each, list_labels the saved labels and their blanks. Where a printer tells no label '
+        'size loaded in each, list_labels the saved labels and their blanks. A printer is named by its alias, '
+        'device, driver, maker, model or serial number, or a part of one. Where a printer tells no label '
         'size loaded, ask which one is, never guess. Show a preview_label before printing something new. '
         'Printing makes paper: print only what was asked for.'))
 
@@ -238,8 +313,9 @@ def _server(app):
 
     @server.tool(annotations=reading)
     def list_printers() -> list[dict]:
-        """The printers, by the name or device to print on, with their model,
-        status, errors and the label sizes they may have loaded (empty if the
+        """The printers: alias, device, driver, and on USB the maker, model
+        and serial number they report, with their status, errors and the
+        label sizes they may have loaded (empty if the
         printer does not tell: ask which one, both 62 and 62red where it
         cannot tell)."""
         return tools.list_printers()

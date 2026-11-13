@@ -135,3 +135,38 @@ def test_other_hosts_and_origins_are_refused(client):
     assert call(client, 'tools/list', Origin='http://labels.local')[0] == 200
     response = client.post('/mcp', json={}, headers={**HEADERS, 'Host': 'evil.example'})
     assert response.status_code == 403
+
+
+def test_printers_with_what_they_report_on_usb(tmp_path, monkeypatch):
+    device = tmp_path / '1-1.3'
+    device.mkdir()
+    for name, value in (('idVendor', '0b0b'), ('idProduct', '106e'), ('serial', '0024624'),
+                        ('manufacturer', "Datamax-O`Neil"), ('product', "Datamax-O'Neil E-Class MarkIII")):
+        (device / name).write_text(value + '\n')
+    monkeypatch.setattr(mcp_tools, 'USB_DEVICES', str(tmp_path))
+    assert mcp_tools.usb_info('usb://0x0b0b:0x106e/24624') == {
+        'maker': 'Datamax-O`Neil', 'model': "Datamax-O'Neil E-Class MarkIII", 'serial': '0024624'}
+    assert mcp_tools.usb_info('usb://0x0b0b:0x106e/1') == {}
+    assert mcp_tools.usb_info('tcp://printer') == {}
+
+
+@pytest.mark.parametrize('wanted', ['Kitchen', 'kitchen', 'QL-800', 'simulation', 'kitch'])
+def test_a_printer_by_alias_device_driver_or_part(wanted):
+    printers = [{'path': 'simulation', 'name': 'Kitchen', 'model': 'QL-800'},
+                {'path': 'usb://0x04f9:0x2042/L9Z378866', 'name': '', 'model': 'QL-700'}]
+    assert mcp_tools.find_printer(printers, wanted) is printers[0]
+
+
+def test_a_name_of_several_printers_is_refused():
+    from mcp.server.mcpserver.exceptions import ToolError
+    printers = [{'path': 'simulation', 'name': 'Kitchen', 'model': 'QL-800'},
+                {'path': 'usb://0x04f9:0x2042/L9Z378866', 'name': '', 'model': 'QL-700'}]
+    with pytest.raises(ToolError, match='names several printers'):
+        mcp_tools.find_printer(printers, 'QL')
+    assert mcp_tools.find_printer(printers, 'Zebra') is None
+
+
+def test_print_by_alias_prints_on_its_device(client, tmp_path):
+    result = tool(client, 'print_text', printer='kitchen', label_size='62', count=1, lines=['x'])
+    assert result['content'][0]['text'] == 'Printed 1 label on Kitchen'
+    assert printed(tmp_path) == 1
