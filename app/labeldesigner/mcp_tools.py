@@ -363,7 +363,8 @@ def _server(app):
         request = ctx.request_context.request
         images = [tools.preview(spec) for spec in previews]
         if request is not None:
-            text = '\n'.join([text, *(f'![Label]({preview_address(str(request.base_url), spec)})' for spec in previews)])
+            text = '\n'.join([text, 'Where you cannot show the images, put these Markdown images as they are into your answer:',
+                              *(f'![Label]({preview_address(str(request.base_url), spec)})' for spec in previews)])
         return [text, *(Image(data=image, format='png') for image in images)]
 
     @server.tool(annotations=reading)
