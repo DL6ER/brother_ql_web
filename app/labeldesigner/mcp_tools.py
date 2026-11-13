@@ -125,6 +125,9 @@ class Tools:
             raise ToolError(f'Unknown printer {printer}, list_printers names them')
         if found.get('errors'):
             raise ToolError(' '.join(found['errors']))
+        takes = [label.identifier for label in LABELS if found.get('model') in label_printers(label)]
+        if takes and label_size not in takes:
+            raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
         loaded = loaded_label_sizes(found)
         if loaded and label_size not in loaded:
             raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {loaded[0]}.')
@@ -226,8 +229,9 @@ def _server(app):
     confirm = {'anthropic/requiresUserInteraction': True}
     server = MCPServer('labelburg', instructions=(
         'Prints labels on the label printers of this home. list_printers tells the printers and the label '
-        'size loaded in each, list_labels the saved labels and their blanks. Show a preview_label before '
-        'printing something new. Printing makes paper: print only what was asked for.'))
+        'size loaded in each, list_labels the saved labels and their blanks. Where a printer tells no label '
+        'size loaded, ask which one is, never guess. Show a preview_label before printing something new. '
+        'Printing makes paper: print only what was asked for.'))
 
     def pngs(text, images):
         return [text, *(Image(data=image, format='png') for image in images)]
@@ -236,7 +240,8 @@ def _server(app):
     def list_printers() -> list[dict]:
         """The printers, by the name or device to print on, with their model,
         status, errors and the label sizes they may have loaded (empty if the
-        printer does not tell, both 62 and 62red where it cannot tell)."""
+        printer does not tell: ask which one, both 62 and 62red where it
+        cannot tell)."""
         return tools.list_printers()
 
     @server.tool(annotations=reading)

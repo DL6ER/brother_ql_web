@@ -62,7 +62,7 @@ In `~/.cursor/mcp.json`:
 
 ### Home Assistant
 
-Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here.
+Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here. It does not ask before printing, `MCP_MAX_COUNT` limits how many labels a call prints.
 
 ### claude.ai and Claude Desktop
 

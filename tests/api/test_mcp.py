@@ -82,6 +82,13 @@ def test_refused_on_another_label_size_than_loaded(client, tmp_path, monkeypatch
     assert printed(tmp_path) == 0
 
 
+def test_an_unknown_label_size_tells_those_the_printer_takes(client, tmp_path):
+    result = tool(client, 'print_text', printer='Kitchen', label_size='100x30', count=1, lines=['x'])
+    text = result['content'][0]['text']
+    assert result['isError'] and 'No label size 100x30 for this printer, it takes ' in text and '29x90' in text
+    assert printed(tmp_path) == 0
+
+
 def test_errors_are_those_of_the_api(client):
     result = tool(client, 'preview_label', lines=['x'], label_size='62', code='abc', code_type='EAN13')
     assert result['isError'] and 'EAN-13 takes 12 digits' in result['content'][0]['text']
