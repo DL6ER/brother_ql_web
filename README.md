@@ -75,8 +75,11 @@ To detect printers automatically, also ones plugged in later and network printer
     network_mode: host
     volumes:
       - /dev/usb:/dev/usb
+      - /dev/bus/usb:/dev/bus/usb
       - ./labels:/app/labels
 ```
+
+`/dev/usb` holds the printers as `/dev/usb/lp<N>`, `/dev/bus/usb` the USB devices that `usb://<vendor>:<product>` printers are reached through. A printer gets a new device there each time it is plugged in or switched on, so the folder is mounted rather than single devices given. Without `privileged`, the container may use them with `device_cgroup_rules: ['c 189:* rmw']` next to the volume.
 
 ### Image tags
 
