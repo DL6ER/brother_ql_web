@@ -35,6 +35,16 @@ def png(width=200, height=100) -> bytes:
     return out.getvalue()
 
 
+def set_tape(page, size):
+    """Set the tape in the printer by hand in the printer panel, from the
+    editor. Its label is placed on that tape."""
+    page.click('#edTapeChange')
+    page.select_option('#setTape', size)
+    page.keyboard.press('Escape')
+    page.wait_for_selector('.pp', state='detached')
+    wait_for_preview(page)
+
+
 def save_as(page, name):
     page.click('#edSave')
     page.fill('#saveName', name)

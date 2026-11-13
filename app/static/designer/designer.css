@@ -277,7 +277,6 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .thumb .t { font-weight: 600; font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thumb .s { font-size: .78rem; color: var(--muted); margin-top: -.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .thumb.sel .bed { border-color: var(--select); box-shadow: 0 0 0 2px var(--select); }
-.thumb.other { opacity: .55; }
 .mini-bed { height: 38px; background: var(--surface-2); border-radius: 6px; position: relative; flex: none; }
 .mini-bed img { position: absolute; inset: 0; margin: auto; max-width: 88%; max-height: 74%; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08); }
 img[data-lazy]:not([src]) { visibility: hidden; }
@@ -374,6 +373,9 @@ img[data-lazy]:not([src]) { visibility: hidden; }
 .frame-details { display: flex; flex-direction: column; gap: .2rem; padding: .6rem .7rem; background: var(--surface-2); border-radius: 9px; }
 .tape-row { display: grid; grid-template-columns: minmax(0, 1fr) 7.5rem; column-gap: .5rem; align-items: end; }
 .tape-row .tape-note { grid-column: 1 / -1; }
+.tape-box { display: contents; }
+.tape-line { display: flex; align-items: center; gap: .5rem; background: var(--surface-2); }
+.fits.made i { color: var(--warn); }
 .tape-note { display: block; font-size: .8rem; margin: -.15rem 0 .35rem; }
 .tape-note.ok { color: var(--ok); }
 .tape-note.warn { color: var(--warn); }
@@ -543,7 +545,7 @@ select.mini.lsp { max-width: 4rem; }
     .lib-nav { order: 1; flex-direction: row; overflow-x: auto; border-right: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin-inline: -1rem; padding: .6rem 1rem; gap: .3rem; }
     .lib-nav .h { display: none; }
     .lib-nav button { white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; flex: none; }
-    .lib-list > .lib-bar, .lib-list > #libTitle, .lib-list > #libOther, .lib-list > .g4 { order: 2; }
+    .lib-list > .lib-bar, .lib-list > #libTitle, .lib-list > .g4 { order: 2; }
     .typer { font-size: 1.1rem; }
     .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .7rem; }
     .g4 { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .9rem .7rem; }
