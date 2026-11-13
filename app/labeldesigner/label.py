@@ -9,6 +9,7 @@ import logging
 import barcode
 from barcode.errors import BarcodeError
 from barcode.writer import ImageWriter
+import calendar
 import collections
 import datetime
 import functools
@@ -231,6 +232,29 @@ def datetime_codes() -> dict:
     when = DATETIME_EXAMPLE
     return {'example': f'{when:%A}, {when.day} {when:%B %Y, %H:%M:%S}',
             'codes': [[code, meaning, when.strftime(code)] for code, meaning in DATETIME_CODES]}
+
+
+# A date moved from today, e.g., +5d (days), -1w (weeks), +6m (months) or +1y
+# (years), at most a hundred years
+DATE_OFFSET = re.compile(r"([+-])(\d{1,6})([dwmy])", re.ASCII)
+MAX_DATE_OFFSET = {'d': 36525, 'w': 5218, 'm': 1200, 'y': 100}
+
+
+def shift_date(when, offset: str):
+    """when, a date or a date and time, moved by offset, e.g., +5d. Months and
+    years are calendar months: the day stays, or becomes the last day of a
+    shorter month (January 31 + 1m is the last day of February)."""
+    match = DATE_OFFSET.fullmatch(offset)
+    if match is None:
+        raise ValueError(f"A date offset is a sign, a number and d, w, m or y, e.g., +5d, not {offset}")
+    sign, amount, unit = match.groups()
+    if int(amount) > MAX_DATE_OFFSET[unit]:
+        raise ValueError(f"A date offset is at most a hundred years, not {offset}")
+    amount = int(amount) if sign == '+' else -int(amount)
+    if unit in 'dw':
+        return when + datetime.timedelta(days=amount * 7 if unit == 'w' else amount)
+    year, month = divmod(when.year * 12 + when.month - 1 + (amount * 12 if unit == 'y' else amount), 12)
+    return when.replace(year=year, month=month + 1, day=min(when.day, calendar.monthrange(year, month + 1)[1]))
 
 
 def _iso_date(value: str) -> datetime.date | None:
@@ -561,10 +585,13 @@ class SimpleLabel:
             return str(self._counter + offset)
         substitute(r"\{\{counter(?:\:(\d+))?\}\}", counter_replacer)
 
-        # Replace {{datetime:<format>}} with current datetime formatted as <format>
+        # Replace {{datetime:<format>}} with current datetime formatted as
+        # <format>, {{datetime+5d:<format>}} with the one 5 days later (see
+        # shift_date)
         def datetime_replacer(match):
-            return self._now().strftime(match.group(1))
-        substitute(r"\{\{datetime:([^}]+)\}\}", datetime_replacer)
+            when = self._now()
+            return (shift_date(when, match.group(1)) if match.group(1) else when).strftime(match.group(2))
+        substitute(r"\{\{datetime([+-]\d{1,6}[dwmy])?:([^}]+)\}\}", datetime_replacer)
 
         # Replace {{uuid}} with a new UUID, the same one in the whole text
         if any("{{uuid}}" in piece for piece in pieces):
@@ -680,8 +707,9 @@ class SimpleLabel:
     def _blank_value(self, name: str) -> str:
         """The value of the blank name: as given, else its default saved with
         the label, else today's date for a date and nothing for others. A
-        date like 2026-11-03 is written in the format of the blank, e.g.
-        %d.%m.%Y, else as it is."""
+        date like 2026-11-03, or one moved from today like +5d (see
+        shift_date), is written in the format of the blank, e.g., %d.%m.%Y,
+        else as it is."""
         if name not in self._blank_cache:
             self._blank_cache[name] = self._fill_blank(name)
         return self._blank_cache[name]
@@ -701,7 +729,12 @@ class SimpleLabel:
         if value == '' and given:
             return ''
         # Without a value the same date as the other templates
-        date = self._now().date() if value == '' else _iso_date(value)
+        if value == '':
+            date = self._now().date()
+        elif DATE_OFFSET.fullmatch(value.strip()):
+            date = shift_date(self._now().date(), value.strip())
+        else:
+            date = _iso_date(value)
         if date is None:
             return value
         date_format = str(field.get('format') or '%Y-%m-%d')

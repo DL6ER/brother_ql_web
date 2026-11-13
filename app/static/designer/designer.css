@@ -447,6 +447,11 @@ select.mini.lsp { max-width: 4rem; }
 .bset { display: flex; flex-direction: column; gap: .5rem; }
 .bset-row { display: grid; grid-template-columns: minmax(6rem, auto) auto minmax(0, 1fr); gap: .6rem; align-items: center; }
 .bset-row .field { padding: .4rem .6rem; font-size: .9rem; }
+.date-start { display: flex; align-items: center; gap: .45rem; flex-wrap: wrap; }
+.date-start input.field { width: 5rem; }
+.date-start select.field { width: auto; }
+.bset-row .date-start .field { padding: .4rem .6rem; font-size: .9rem; }
+.bset-row .date-start select.field { padding-right: 2rem; }
 
 /* Overlays: search, dialogs, the sheet after printing, the printer panel */
 .layer { position: fixed; inset: 0; background: var(--scrim); z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: 1rem; overflow: auto; }
