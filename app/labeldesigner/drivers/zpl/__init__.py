@@ -53,14 +53,20 @@ ZPL_DEVICE_ID = re.compile(r'(^|;)\s*(CMD|COMMAND SET):[^;]*\bZPL', re.IGNORECAS
 LENGTH_TOLERANCE = 2
 
 
+def measured(length: int) -> int | None:
+    """The length in mm of the labels of a length the printer measured in
+    dots, e.g. 235 dots 30 mm, None if no labels have about that length."""
+    mm = length / DOTS_PER_MM
+    nearest = min(SIZES, key=lambda size: abs(size[1] - mm))[1]
+    return nearest if abs(nearest - mm) <= LENGTH_TOLERANCE else None
+
+
 def loaded(length: int) -> tuple[int, int] | None:
     """Width and length in mm of the labels of a length the printer measured
     in dots, e.g. 1214 dots (152 mm) 102 x 152 mm. None if labels of another
     width have that length too, the printer does not tell their width."""
-    mm = length / DOTS_PER_MM
-    nearest = min(abs(size[1] - mm) for size in SIZES)
-    sizes = [size for size in SIZES if abs(size[1] - mm) == nearest]
-    return sizes[0] if nearest <= LENGTH_TOLERANCE and len(sizes) == 1 else None
+    sizes = [size for size in SIZES if size[1] == measured(length)]
+    return sizes[0] if len(sizes) == 1 else None
 
 
 LABELS = tuple(_label(width, length) for width, length in SIZES)
@@ -150,10 +156,13 @@ class Zpl(Driver):
         state['errors'] = protocol.errors(answer)
         state['status_type'] = 'Error occurred' if state['errors'] else 'Reply to status request'
         state['phase_type'] = 'Waiting to receive'
-        # The label designer then picks the labels
+        # The label designer then picks the labels. Of a length that labels
+        # of several widths have, only the length is told.
         size = loaded(answer['length'])
         if size:
             state['media_width'], state['media_length'] = size
+        elif measured(answer['length']):
+            state['media_length'] = measured(answer['length'])
         devices.status_cache[devices.lock_key(device)] = state
         return state
 

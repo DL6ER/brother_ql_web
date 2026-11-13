@@ -184,6 +184,15 @@ def test_status_over_the_network(monkeypatch):
     assert (state['media_width'], state['media_length']) == (102, 152)
 
 
+def test_only_the_length_of_labels_of_several_widths(monkeypatch):
+    # 235 dots are 30 mm, which labels 100, 50 and 40 mm wide are long
+    thread, server = _answering(monkeypatch, DATAMAX_HS)
+    state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
+    thread.join(5)
+    server.close()
+    assert (state['media_width'], state['media_length']) == (None, 30)
+
+
 def test_status_without_an_answer(monkeypatch):
     thread, server = _answering(monkeypatch, b'')
     state = zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
