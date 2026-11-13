@@ -57,15 +57,17 @@ def _origin_host(origin: str) -> str:
 def loaded_label_sizes(printer: dict) -> list[str]:
     """The label sizes a printer may have loaded as its status tells, as the
     label designer finds them: both 62 and 62red where a QL printer does not
-    tell whether its roll is black and red. Empty if it tells none."""
+    tell whether its roll is black and red, all widths of the length a ZPL
+    printer measured. Empty if it tells none."""
     width, length = printer.get('media_width'), printer.get('media_length') or 0
-    if not width:
+    if not width and not length:
         return []
     told = f"{printer.get('text_color') or ''} {printer.get('media_type') or ''}"
     red = bool(re.search('red', told, re.IGNORECASE))
     unknown = not red and not printer.get('text_color')
     return [label.identifier for label in LABELS
-            if tuple(label.tape_size) == (width, length) and printer.get('model') in label_printers(label)
+            if label.tape_size[1] == length and (not width or label.tape_size[0] == width)
+            and printer.get('model') in label_printers(label)
             and (unknown or (label.color == 1) == red)]
 
 
@@ -192,7 +194,8 @@ class Tools:
             raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
         loaded = loaded_label_sizes(found)
         if loaded and label_size not in loaded:
-            raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {loaded[0]}.')
+            on = loaded[0] if len(loaded) == 1 else 'the one loaded'
+            raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {on}.')
         return found
 
     def _printers(self) -> list[dict]:
@@ -305,7 +308,8 @@ def _server(app):
         'Prints labels on the label printers of this home. list_printers tells the printers and the label '
         'size loaded in each, list_labels the saved labels and their blanks. A printer is named by its alias, '
         'device, driver, maker, model or serial number, or a part of one. Where a printer tells no label '
-        'size loaded, ask which one is, never guess. Show a preview_label before printing something new. '
+        'size loaded, ask which one is, never guess. Where it tells several, take the one that was asked for, '
+        'else ask. Show a preview_label before printing something new. '
         'Printing makes paper: print only what was asked for.'))
 
     def pngs(text, images):
@@ -315,9 +319,9 @@ def _server(app):
     def list_printers() -> list[dict]:
         """The printers: alias, device, driver, and on USB the maker, model
         and serial number they report, with their status, errors and the
-        label sizes they may have loaded (empty if the
-        printer does not tell: ask which one, both 62 and 62red where it
-        cannot tell)."""
+        label sizes they may have loaded: empty if the printer does not
+        tell, ask which one; both 62 and 62red where a QL printer cannot
+        tell; all widths of the length a ZPL printer measured."""
         return tools.list_printers()
 
     @server.tool(annotations=reading)

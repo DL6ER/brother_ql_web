@@ -109,7 +109,8 @@ def test_list_labels_with_their_blanks(client, tmp_path):
     ({'model': 'QL-800', 'media_width': 62, 'media_length': 0, 'text_color': ''}, ['62', '62red']),
     ({'model': 'QL-800', 'media_width': 62, 'media_length': 0, 'text_color': 'Red'}, ['62red']),
     ({'model': 'QL-800', 'media_width': 29, 'media_length': 90, 'text_color': ''}, ['29x90']),
-    ({'model': 'QL-800', 'media_width': None}, [])])
+    ({'model': 'QL-800', 'media_width': None}, []),
+    ({'model': 'QL-800', 'media_width': None, 'media_length': 90}, ['29x90', '39x90'])])
 def test_label_sizes_loaded(status, sizes):
     assert mcp_tools.loaded_label_sizes(status) == sizes
 
