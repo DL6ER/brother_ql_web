@@ -142,6 +142,10 @@ def find_printer(printers: list[dict], wanted: str) -> dict | None:
     return None
 
 
+class AskUser(Exception):
+    """Nothing done yet: the user is to be asked, e.g. which label is loaded."""
+
+
 def label_size_for(model: str | None, label_size: str) -> str:
     """The label size of a printer of model, of any printer without model,
     that label_size names, also without the prefix of its driver and written
@@ -156,7 +160,7 @@ def label_size_for(model: str | None, label_size: str) -> str:
         raise ToolError(f'Label size {label_size} is one of {", ".join(found)}, give the printer' if found
                         else f'No label size {label_size}, give the printer to find out its sizes')
     if len(found) != 1:
-        raise ToolError(f'No label size {label_size} for this printer, it takes {", ".join(takes)}')
+        raise ToolError(f'No label size {label_size} for this printer. Ask the user which of its sizes is loaded: {", ".join(takes)}')
     return found[0]
 
 
@@ -219,19 +223,40 @@ class Tools:
         if count > cap:
             raise ToolError(f'At most {cap} labels per call (MCP_MAX_COUNT)')
 
-    def _expected(self, printer: str, label_size: str) -> tuple[dict, str]:
+    def _expected(self, printer: str, label_size: str | None, saved: str | None = None) -> tuple[dict, str]:
         """The status of printer and its label size label_size names, refused
-        if it has another one loaded, or reports an error."""
+        if it has another one loaded, or reports an error. Without
+        label_size the one loaded, else the user is to be asked."""
         from mcp.server.mcpserver.exceptions import ToolError
         found = self._printer(printer)
         if found.get('errors'):
             raise ToolError(' '.join(found['errors']))
-        label_size = label_size_for(found.get('model'), label_size)
+        label_size = label_size_for(found.get('model'), label_size) if label_size else self._loaded(found, saved)
         loaded = loaded_label_sizes(found)
         if loaded and label_size not in loaded:
             on = loaded[0] if len(loaded) == 1 else 'the one loaded'
             raise ToolError(f'The printer has {" or ".join(loaded)} loaded, not {label_size}. Load {label_size} or print on {on}.')
         return found, label_size
+
+    @staticmethod
+    def _loaded(found: dict, saved: str | None = None) -> str:
+        """The label size loaded in the printer found, saved where it is
+        one of those it may have loaded, else the user is to be asked."""
+        loaded = loaded_label_sizes(found)
+        black = [size for size in loaded if not size.endswith('red')]
+        # A QL printer that cannot tell a black and red roll: black
+        if len(black) == 1 and all(size in (black[0], black[0] + 'red') for size in loaded):
+            loaded = black if saved != black[0] + 'red' else loaded
+        if saved and saved in loaded:
+            return saved
+        if len(loaded) == 1:
+            return loaded[0]
+        name = found.get('name') or found.get('path')
+        if saved:
+            raise AskUser(f'Nothing printed yet. Ask the user whether {saved} is loaded in {name}, then call again with label_size.')
+        takes = loaded or [label.identifier for label in LABELS if found.get('model') in label_printers(label)]
+        told = 'may have one of these loaded' if loaded else 'does not tell which label is loaded, it takes'
+        raise AskUser(f'Nothing done yet. {name} {told}: {", ".join(takes)}. Ask the user which one, then call again with label_size.')
 
     def _printers(self) -> list[dict]:
         status = self._call('GET', '/printer_status')
@@ -287,6 +312,8 @@ class Tools:
         printer = found['path'] if found else None
         if label_size:
             label_size = label_size_for(found.get('model') if found else None, label_size)
+        elif found and not name:
+            label_size = self._loaded(found)
         if name:
             body = {'name': name, 'blanks': blanks or {}}
             if printer:
@@ -304,14 +331,14 @@ class Tools:
         to the API."""
         return self._call('POST', spec['path'], **{k: v for k, v in spec.items() if k in ('json', 'data')})
 
-    def print_label(self, name: str, printer: str, label_size: str, fillings: list[dict], count: int) -> tuple[str, list[dict]]:
+    def print_label(self, name: str, printer: str, label_size: str | None, fillings: list[dict], count: int) -> tuple[str, list[dict]]:
         from mcp.server.mcpserver.exceptions import ToolError
         fillings = fillings or [{}]
         self._cap(count * len(fillings))
         saved = next((label for label in self.list_labels() if label['name'] == name), None)
         if saved is None:
             raise ToolError(f'No saved label {name}, list_labels names them')
-        found, label_size = self._expected(printer, label_size)
+        found, label_size = self._expected(printer, label_size, saved['label_size'])
         if saved['label_size'] != label_size:
             raise ToolError(f'{name} is for {saved["label_size"]}, not {label_size}')
         printer, device = found.get('name') or found['path'], found['path']
@@ -326,7 +353,7 @@ class Tools:
                 raise ToolError(f'{e} ({done * count} of {_labels(len(fillings) * count)} printed)') from None
         return f'Printed {_labels(count * len(fillings))} of {name} on {printer}', previews
 
-    def print_text(self, lines: list[str], printer: str, label_size: str, count: int, font_size: int,
+    def print_text(self, lines: list[str], printer: str, label_size: str | None, count: int, font_size: int,
                    code: str | None, code_type: str) -> tuple[str, list[dict]]:
         from mcp.server.mcpserver.exceptions import ToolError
         if not (lines or code):
@@ -352,14 +379,19 @@ def _server(app):
     server = MCPServer('labelburg', instructions=(
         'Prints labels on the label printers of this home. list_printers tells the printers and the label '
         'size loaded in each, list_labels the saved labels and their blanks. A printer is named by its alias, '
-        'device, driver, maker, model or serial number, or a part of one. Where a printer tells no label '
-        'size loaded, ask which one is, never guess. Where it tells several, take the one that was asked for, '
-        'else ask. Show a preview_label before printing something new. Where you cannot show the image of a '
+        'device, driver, maker, model or serial number, or a part of one. Give label_size only as the user '
+        'told it, never guess one: without it the tools take the one the printer has loaded, or tell to ask '
+        'the user. Show a preview_label before printing something new. Where you cannot show the image of a '
         'preview, show the Markdown image of its address in the result, never an image of your own. '
         'Printing makes paper: print only what was asked for.'))
 
-    def shown(ctx, text, previews):
-        """text, the address of each preview and its image."""
+    def shown(ctx, call):
+        """The text of call, the address of each of its previews and their
+        images, or what to ask the user."""
+        try:
+            text, previews = call()
+        except AskUser as e:
+            return [str(e)]
         request = ctx.request_context.request
         images = [tools.preview(spec) for spec in previews]
         if request is not None:
@@ -390,28 +422,31 @@ def _server(app):
                       code_type: str = 'QR', printer: str | None = None, ctx: Context = None) -> list:
         """The image of a label: of a saved label by name with its blanks
         filled in, or of lines of text and/or a code (QR, or a barcode type
-        like EAN13 or CODE128) on label_size, e.g. 62 or 29x90. Font size
+        like EAN13 or CODE128) on label_size, e.g. 62 or 29x90, without it on
+        the one loaded in printer. Font size
         in dots at 300 dpi, the text shrinks to fit. Returns its address and
         its image."""
-        return shown(ctx, 'Preview', [tools.preview_label(name, blanks, lines, label_size, font_size, code, code_type, printer)])
+        return shown(ctx, lambda: ('Preview', [tools.preview_label(name, blanks, lines, label_size, font_size, code, code_type, printer)]))
 
     @server.tool(annotations=printing, meta=confirm)
-    def print_label(name: str, printer: str, label_size: str, count: int,
+    def print_label(name: str, printer: str, count: int, label_size: str | None = None,
                     fillings: list[dict[str, str]] | None = None, ctx: Context = None) -> list:
         """Print a saved label on printer, count labels of each filling of
         its blanks, e.g. [{"Name": "Anna"}, {"Name": "Ben"}] prints a badge
-        for each. label_size is the one the label is saved for, refused if
-        the printer has another one loaded. Returns the image of each."""
-        return shown(ctx, *tools.print_label(name, printer, label_size, fillings or [], count))
+        for each, on the label size it is saved for. label_size only as the
+        user told it, refused if the printer has another one loaded. Returns
+        the image of each."""
+        return shown(ctx, lambda: tools.print_label(name, printer, label_size, fillings or [], count))
 
     @server.tool(annotations=printing, meta=confirm)
-    def print_text(printer: str, label_size: str, count: int, lines: list[str] | None = None,
+    def print_text(printer: str, count: int, label_size: str | None = None, lines: list[str] | None = None,
                    font_size: int = 60, code: str | None = None, code_type: str = 'QR', ctx: Context = None) -> list:
         """Print lines of text and/or a code (QR, e.g. a URL or
         WIFI:T:WPA;S:<name>;P:<password>;;, or a barcode type like EAN13 or
-        CODE128) on printer, count labels. label_size, e.g. 62 or 29x90, is
-        refused if the printer has another one loaded. Returns the image."""
-        return shown(ctx, *tools.print_text(lines or [], printer, label_size, count, font_size, code, code_type))
+        CODE128) on printer, count labels. label_size, e.g. 62 or 100x30,
+        only as the user told it, else the one loaded; refused if the printer
+        has another one loaded. Returns the image."""
+        return shown(ctx, lambda: tools.print_text(lines or [], printer, label_size, count, font_size, code, code_type))
 
     return server
 

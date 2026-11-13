@@ -86,7 +86,7 @@ def test_refused_on_another_label_size_than_loaded(client, tmp_path, monkeypatch
 def test_an_unknown_label_size_tells_those_the_printer_takes(client, tmp_path):
     result = tool(client, 'print_text', printer='Kitchen', label_size='100x30', count=1, lines=['x'])
     text = result['content'][0]['text']
-    assert result['isError'] and 'No label size 100x30 for this printer, it takes ' in text and '29x90' in text
+    assert result['isError'] and 'No label size 100x30 for this printer. Ask the user which of its sizes is loaded: ' in text and '29x90' in text
     assert printed(tmp_path) == 0
 
 
@@ -186,7 +186,7 @@ def test_label_sizes_without_the_prefix_of_their_driver(monkeypatch):
     assert mcp_tools.label_size_for('Zebra/ZPL', '100x30') == 'zpl100x30'
     assert mcp_tools.label_size_for('Zebra/ZPL', '100x30mm') == 'zpl100x30'
     from mcp.server.mcpserver.exceptions import ToolError
-    with pytest.raises(ToolError, match='it takes zpl100x30'):
+    with pytest.raises(ToolError, match='Ask the user which of its sizes is loaded: zpl100x30'):
         mcp_tools.label_size_for('Zebra/ZPL', '30')
 
 
@@ -226,3 +226,28 @@ def test_label_sizes_of_any_printer_without_one(monkeypatch):
         mcp_tools.label_size_for(None, '50x30')
     with pytest.raises(ToolError, match='No label size 7x7, give the printer'):
         mcp_tools.label_size_for(None, '7x7')
+
+
+def test_without_a_label_size_the_one_loaded(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: ['62', '62red'])
+    result = tool(client, 'print_text', printer='Kitchen', count=1, lines=['x'])
+    assert not result.get('isError') and printed(tmp_path) == 1
+
+
+@pytest.mark.parametrize('loaded, told', [([], 'does not tell which label is loaded, it takes: 12'),
+                                          (['29x90', '39x90'], 'may have one of these loaded: 29x90, 39x90')])
+def test_without_a_label_size_the_user_is_asked(client, tmp_path, monkeypatch, loaded, told):
+    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: loaded)
+    result = tool(client, 'print_text', printer='Kitchen', count=1, lines=['x'])
+    text = result['content'][0]['text']
+    assert not result.get('isError') and f'Kitchen {told}' in text and 'Ask the user which one' in text
+    assert printed(tmp_path) == 0
+
+
+def test_a_saved_label_asks_whether_its_size_is_loaded(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: [])
+    result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', count=1)
+    assert result['content'][0]['text'].startswith('Nothing printed yet. Ask the user whether 62 is loaded in Kitchen')
+    assert printed(tmp_path) == 0
+    result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', count=1, label_size='62')
+    assert not result.get('isError') and printed(tmp_path) == 1

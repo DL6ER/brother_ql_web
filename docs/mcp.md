@@ -25,7 +25,7 @@ The tools take a printer by any of these names or a part of one, e.g. "Datamax" 
 Printing makes paper, so both print tools:
 
 - need the number of labels and print at most `MCP_MAX_COUNT` (default 10) per call, counting each label, not the calls,
-- need the printer and the label size the assistant expects, and are refused if the printer has another one loaded,
+- need the printer, and take the label size it has loaded. Where it does not tell or may have several loaded, they print nothing and tell the assistant to ask the user. A label size given is refused if the printer has another one loaded,
 - return the image of what they printed, and its address.
 
 Errors are those of the API, e.g. "EAN-13 takes 12 digits, or 13 with the check digit". Claude Code asks before each print, also in its auto mode, other clients as they are set up.
