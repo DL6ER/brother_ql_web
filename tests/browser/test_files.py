@@ -197,8 +197,9 @@ def test_copies_of_several_files_as_sets_or_grouped(designer):
         {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
         {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
     ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
     wait_for_preview(designer)
-    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    letters ="() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
     # The first printed on the right, as it leaves the printer
     assert designer.evaluate(letters) == 'CBA'
     with designer.expect_request('**/api/print') as request:
