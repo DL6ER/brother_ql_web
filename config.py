@@ -71,6 +71,10 @@ class Config(object):
     # Most labels an AI assistant may print with one call to the MCP endpoint
     MCP_MAX_COUNT = 10
 
+    # Host names the MCP endpoint answers besides IP addresses, single-label
+    # names and those ending in .local, .lan or .home.arpa
+    MCP_HOSTS = None
+
     # Maximum size of a request (uploaded images, JSON payloads) in bytes
     MAX_CONTENT_LENGTH = 32 * 1024 * 1024
 

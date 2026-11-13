@@ -122,6 +122,7 @@ ENV_OVERRIDES = {
     'LABEL_TEMPLATE_ENV_VARS': str,
     'PRINT_MAX_COUNT': _positive_int,
     'MCP_MAX_COUNT': _positive_int,
+    'MCP_HOSTS': _host_list,
     'MAX_CONTENT_LENGTH': _positive_int,
     'WEBHOOK_PASSWORD': str,
     'PROXY_COUNT': _non_negative_int,

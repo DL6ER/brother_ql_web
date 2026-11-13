@@ -115,9 +115,12 @@ def test_host_names_of_the_home_network(host, allowed):
     assert mcp_tools.host_allowed(host, None) is allowed
 
 
-def test_trusted_hosts_take_the_place_of_the_home_network():
+def test_further_names_with_mcp_hosts_and_only_trusted_ones():
     assert mcp_tools.host_allowed('labels.example.com', ['labels.example.com'])
-    assert not mcp_tools.host_allowed('labels.local', ['labels.example.com'])
+    assert mcp_tools.host_allowed('a.example.com:8013', ['.example.com'])
+    assert not mcp_tools.host_allowed('example.org', ['.example.com'])
+    assert not mcp_tools.host_allowed('labels.local', None, ['labels.example.com'])
+    assert mcp_tools.host_allowed('labels.example.com', ['labels.example.com'], ['labels.example.com'])
 
 
 def test_other_hosts_and_origins_are_refused(client):

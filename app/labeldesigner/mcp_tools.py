@@ -17,7 +17,7 @@ from .label import BLANK_TEMPLATE
 from .label_names import LABELS, label_printers
 
 API = '/labeldesigner/api'
-# Host names accepted without TRUSTED_HOSTS: those of the home network
+# Host names of the home network, accepted without MCP_HOSTS
 LOCAL_SUFFIXES = ('.local', '.lan', '.home.arpa')
 
 
@@ -39,14 +39,15 @@ def _hostname(host: str) -> str:
     return host.partition(':')[0]
 
 
-def host_allowed(host: str, trusted: list[str] | None) -> bool:
+def host_allowed(host: str, extra: list[str] | None = None, trusted: list[str] | None = None) -> bool:
     """Whether the endpoint answers requests for host, as Host or in Origin:
-    with TRUSTED_HOSTS set only for those, else for the home network. It
-    protects against DNS rebinding, which the MCP specification requires."""
+    names of the home network and those of MCP_HOSTS (extra), with
+    TRUSTED_HOSTS set only those of it. It protects against DNS rebinding,
+    which the MCP specification requires."""
     name = _hostname(host)
-    if trusted:
-        return host_is_trusted(name, trusted)
-    return bool(name) and local_host(name)
+    if not name or (trusted and not host_is_trusted(name, trusted)):
+        return False
+    return local_host(name) or bool(extra and host_is_trusted(name, extra))
 
 
 def _origin_host(origin: str) -> str:
@@ -312,9 +313,9 @@ class Endpoint:
     def __call__(self, environ, start_response):
         if environ.get('PATH_INFO') != '/mcp':
             return self.wsgi_app(environ, start_response)
-        trusted = self.app.config.get('TRUSTED_HOSTS')
+        hosts = self.app.config.get('MCP_HOSTS'), self.app.config.get('TRUSTED_HOSTS')
         origin = environ.get('HTTP_ORIGIN')
-        if not host_allowed(environ.get('HTTP_HOST', ''), trusted) or (origin and not host_allowed(_origin_host(origin), trusted)):
+        if not host_allowed(environ.get('HTTP_HOST', ''), *hosts) or (origin and not host_allowed(_origin_host(origin), *hosts)):
             return Response('Host or Origin not allowed', 403)(environ, start_response)
         with self._lock:
             if self._mcp is None:

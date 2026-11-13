@@ -107,6 +107,7 @@ The navbar shows the version and build time of the running image, please add the
 | `PROXY_COUNT` | Number of reverse proxies in front of the server, e.g. to serve the label designer below a path, see [Reverse proxy](docs/reverse-proxy.md). Only then the `X-Forwarded-*` headers they set are used, others could fake them. | `0` |
 | `PRINT_MAX_COUNT` | Most labels per print request | `100` |
 | `MCP_MAX_COUNT` | Most labels per call of an [AI assistant](docs/mcp.md) | `10` |
+| `MCP_HOSTS` | Further host names the [MCP endpoint](docs/mcp.md#host-names) answers, comma-separated, e.g. `labels.example.com` or `.example.com` with its subdomains | none |
 | `MAX_CONTENT_LENGTH` | Largest request in bytes, e.g. for uploaded images | 32 MB |
 | `FONT_FOLDER` | Folder with more fonts, see below | none |
 | `SYSTEM_FONTS` | `false` to offer only the fonts of `FONT_FOLDER`, not those installed on the system | `true` |
