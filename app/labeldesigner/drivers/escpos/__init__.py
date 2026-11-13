@@ -7,14 +7,14 @@ import re
 from PIL import Image
 
 from .. import devices
-from ..base import Driver, network_status
+from ..base import Driver, network_status, shown
 from ..labels import FormFactor, Label
 from ...enums import LabelContent
 from . import protocol
 
 logger = logging.getLogger(__name__)
 
-MODELS = ('TM-T20II',)
+MODELS = ('Epson/TM-T20II',)
 # Paper width in mm and the dots across it the TM-T20II prints, the first
 # one assumed, as the printer does not tell
 WIDTHS = {80: 576, 58: 420}
@@ -66,10 +66,10 @@ class Escpos(Driver):
         return protocol.DPI
 
     def resolution_problem(self, model, high_res):
-        return f'The {model} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
+        return f'The {shown(model)} cannot print at 600 dpi, turn off 600 dpi printing' if high_res else ''
 
     def cut_problem(self, cut, model):
-        return f'The {model} cuts the paper at least after the last label' if cut == 'none' else ''
+        return f'The {shown(model)} cuts the paper at least after the last label' if cut == 'none' else ''
 
     def capabilities(self, model):
         return dict(super().capabilities(model), qualities=['quality'], never_cut=NEVER_WHY,

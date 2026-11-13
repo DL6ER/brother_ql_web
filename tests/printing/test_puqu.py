@@ -81,7 +81,7 @@ def fake(monkeypatch):
 def client(tmp_path):
     client = make_client(tmp_path)
     client.application.config['PRINTER_PRINTER'] = DEVICE
-    client.application.config['PRINTER_MODEL'] = 'Q00'
+    client.application.config['PRINTER_MODEL'] = 'PUQU/Q00'
     return client
 
 
@@ -208,14 +208,14 @@ def test_printer_that_is_off(client, monkeypatch):
 def test_status_through_the_label_designer(client, fake):
     fake(answers=[reply(protocol.COVER_OPEN)])
     printer_ = client.get('/labeldesigner/api/printer_status').get_json()['printers'][0]
-    assert (printer_['model'], printer_['path']) == ('Q00', DEVICE)
+    assert (printer_['model'], printer_['path']) == ('PUQU/Q00', DEVICE)
     assert printer_['errors'] == ['The cover of the printer is open']
 
 
 def test_600_dpi_is_refused(client, fake):
     response = client.post('/labeldesigner/api/print', data={
         'label_size': 'puqu50x30', 'print_type': 'text', 'text': TEXT, 'high_res': '1'})
-    assert response.get_json() == {'success': False, 'message': 'The Q00 cannot print at 600 dpi, turn off 600 dpi printing'}
+    assert response.get_json() == {'success': False, 'message': 'The PUQU Q00 cannot print at 600 dpi, turn off 600 dpi printing'}
 
 
 def test_only_its_printers_print_its_labels(client):

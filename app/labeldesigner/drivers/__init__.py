@@ -4,10 +4,11 @@ from .base import Driver
 from .brother import DRIVER as BROTHER
 from .vc500w import DRIVER as VC500W
 from .puqu import DRIVER as PUQU
+from .niimbot import DRIVER as NIIMBOT
 from .escpos import DRIVER as ESCPOS
 
 # In the order the label designer lists their models and label sizes
-DRIVERS: tuple[Driver, ...] = (BROTHER, VC500W, PUQU, ESCPOS)
+DRIVERS: tuple[Driver, ...] = (BROTHER, VC500W, PUQU, NIIMBOT, ESCPOS)
 
 MODELS = tuple(model for driver in DRIVERS for model in driver.models)
 LABELS = tuple(label for driver in DRIVERS for label in driver.labels)
@@ -15,6 +16,17 @@ DEVICE_PATTERNS = tuple(pattern for driver in DRIVERS for pattern in driver.devi
 
 _BY_MODEL = {model: driver for driver in DRIVERS for model in driver.models}
 _BY_LABEL = {label.identifier: driver for driver in DRIVERS for label in driver.labels}
+# Models other than Brother ones are named with their maker, e.g. PUQU/Q00,
+# Brother ones also are, and without it as before. Q00 alone was its name
+# before, it is taken for a while.
+_ALIASES = {f'{driver.vendor}/{model}': model for driver in (BROTHER, VC500W) for model in driver.models}
+_ALIASES['Q00'] = 'PUQU/Q00'
+
+
+def canonical(model: str) -> str:
+    """A model as the drivers name it, from a configuration or a request:
+    Brother/QL-700 is QL-700."""
+    return _ALIASES.get(model, model) if isinstance(model, str) else model
 
 
 def for_model(model: str) -> Driver:

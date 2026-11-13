@@ -430,10 +430,11 @@ def _pdf_label(**values):
 def test_preview_shows_the_first_selected_pdf_page(tmp_path):
     client = make_client(tmp_path)
     previews = {}
-    for selection in ('', '2', '3-', 'all'):
+    for selection, selected in (('', '1'), ('2', '1'), ('3-', '1'), ('all', '3')):
         response = client.post('/labeldesigner/api/preview', data=_pdf_label(pdf_pages=selection))
         assert response.status_code == 200
         assert response.headers['X-PDF-Pages'] == '3'
+        assert response.headers['X-PDF-Selected-Pages'] == selected
         previews[selection] = Image.open(io.BytesIO(response.data)).size
     # The pages are fitted to the label width, their heights differ
     assert previews[''] == previews['all'] != previews['2'] != previews['3-']

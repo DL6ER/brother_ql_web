@@ -145,3 +145,76 @@ def test_shared_text_becomes_the_label(designer, server):
 def test_shared_content_is_only_handed_out_once(designer, server):
     designer.goto(server + '/labeldesigner/?shared=used')
     designer.wait_for_function("() => document.getElementById('toast').innerText.includes('no longer available')")
+
+
+def test_copies_of_several_files_as_sets_or_grouped(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+        {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
+        {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
+    ])
+    wait_for_preview(designer)
+    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    # The first printed on the right, as it leaves the printer
+    assert designer.evaluate(letters) == 'CBA'
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'name="collate"\r\n\r\n1' in request.value.post_data_buffer
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="0"]')
+    assert designer.locator('.pp [data-col="0"].on').count() == 1
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'BAA'
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'name="collate"\r\n\r\n0' in request.value.post_data_buffer
+    # Copies of one file stay all A
+    designer.set_input_files('#edFile', files=[{'name': 'four.png', 'mimeType': 'image/png', 'buffer': png()}])
+    designer.wait_for_selector('#edFileStep', state='hidden')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'AAA'
+
+
+def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[{'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))}])
+    designer.wait_for_selector('#edPages:enabled')
+    designer.fill('#edPages', '1-3')
+    wait_for_preview(designer)
+    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    # Its pages print like files, the first on the right
+    assert designer.evaluate(letters) == 'CBA'
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="0"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'BAA'
+    # Copies of one page stay all A
+    designer.fill('#edPages', '2')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'AAA'
+    # With an image after it the job is the same whichever file is shown
+    designer.fill('#edPages', '1-3')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))},
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+    ])
+    wait_for_preview(designer)
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-col="1"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.evaluate(letters) == 'CBA'
+    designer.click('#edFileStep [data-file="1"]')
+    wait_for_preview(designer)
+    assert designer.evaluate("() => fileShown(S.edit)") == 1
+    assert designer.evaluate(letters) == 'CBA'
+    # The PDF that is not shown is not previewed again as the text changes
+    asked = []
+    designer.on('request', lambda r: asked.append(r.url) if r.url.endswith('/preview') else None)
+    designer.fill('[data-row="0"] .tx', 'Box')
+    wait_for_preview(designer)
+    assert len(asked) == 1

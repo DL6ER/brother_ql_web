@@ -177,6 +177,21 @@ def test_several_files_are_printed_one_after_the_other(tmp_path):
     assert heights[1] > heights[0] > heights[2]
 
 
+@pytest.mark.parametrize('collate', ['0', 'false'])
+def test_copies_of_several_files_grouped(tmp_path, collate):
+    from app.labeldesigner import printer
+    client = make_client(tmp_path)
+    data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'image_fit': '1', 'border_thickness': '0', 'text': '[]',
+            'printer': 'simulation', 'print_count': '2', 'pdf_pages': 'all', 'collate': collate}
+    files = [(io.BytesIO(_pdf((300, 200), (200, 300))), 'two.pdf', 'application/pdf')]
+    response = client.post('/labeldesigner/api/print', data={**data, 'image': files})
+    assert response.status_code == 200, response.get_json()
+    names = sorted(os.listdir(printer.SIMULATED_LABELS_DIR))
+    heights = [Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).height for name in names]
+    # Both copies of the first page, then both of the second
+    assert heights[0] == heights[1] < heights[2] == heights[3]
+
+
 def test_several_files_count_against_the_print_limit(tmp_path):
     client = make_client(tmp_path)
     data = {**EXAMPLE_FORMDATA, 'print_type': 'image', 'text': '[]', 'printer': 'simulation', 'print_count': '40', 'pdf_pages': 'all',
