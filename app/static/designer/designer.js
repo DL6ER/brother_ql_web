@@ -2415,7 +2415,7 @@ function imageBlock(d) {
     const bw = d.image_mode === 'black_and_white';
     const fit = fitted(d), crop = d.image_crop === '1';
     const files = labelFiles(d);
-    const pdf = d.image && /pdf/i.test(d.image.mime);
+    const pdf = files.some(f => /pdf/i.test(f.mime));
     return `<div class="block"><div class="block-h"><i class="fa-regular fa-image"></i>Image</div>
         <div class="block-b">
             ${files.length ? `<ul class="files">${files.map((f, i) => `<li><i class="fa-regular fa-file-${/pdf/i.test(f.mime) ? 'pdf' : 'image'}"></i><span>${esc(f.name)}</span><button class="btn quiet icon" type="button" data-unfile="${i}" title="Remove ${esc(f.name)}" aria-label="Remove ${esc(f.name)}"><i class="fa-solid fa-xmark"></i></button></li>`).join('')}</ul>` : ''}

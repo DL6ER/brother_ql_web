@@ -121,6 +121,18 @@ def test_a_file_can_be_removed(designer):
     designer.wait_for_function("() => S.edit.design.image && S.edit.design.image.name === 'two.png'")
 
 
+def test_pages_can_be_chosen_for_a_pdf_after_other_files(designer):
+    # The pages chosen apply to every PDF of the label
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png()},
+        {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300))},
+    ])
+    designer.wait_for_selector('#edPages:enabled', timeout=5000)
+    designer.click('[aria-label="Remove pages.pdf"]')
+    designer.wait_for_selector('#edPages:disabled')
+
+
 def test_pages_of_a_pdf_can_be_chosen(designer):
     designer.click('[data-lay="image"]')
     wait_for_preview(designer)
