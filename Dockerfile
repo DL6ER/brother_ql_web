@@ -11,7 +11,7 @@ ARG TARGETARCH
 # This ensures the dependencies can be sourced from docker's cache (and save a
 # lot of time during building) *unless* the requirements.txt file actually
 # changes
-COPY ./requirements.txt /tmp/requirements.txt
+COPY ./requirements.txt ./requirements-mcp.txt /tmp/
 
 # Pillow has to be built from source on 32-bit ARM, the compilers stay in this
 # stage
@@ -34,7 +34,10 @@ RUN if [ "$TARGETARCH" = "arm" ]; then \
     libxcb-dev \
     openjpeg-dev \
     ; fi && \
-    pip3 install --no-cache-dir -r /tmp/requirements.txt
+    pip3 install --no-cache-dir -r /tmp/requirements.txt && \
+    # The MCP endpoint, not on 32-bit ARM: some of its packages have no
+    # wheels there and would need Rust
+    if [ "$TARGETARCH" != "arm" ]; then pip3 install --no-cache-dir -r /tmp/requirements-mcp.txt; fi
 
 # No pip, IDLE, Tk, C headers or manual pages in the image. /rundeps lists the
 # libraries that Python and the packages need, like the Python image does it.
@@ -46,6 +49,8 @@ RUN pip3 uninstall -q -y pip && \
         lib/python3.*/lib-dynload/_tkinter* && \
     apk add --no-cache pax-utils && \
     scanelf --needed --nobanner --format '%n#p' --recursive /usr/local | tr ',' '\n' | grep . | sort -u | \
+        # libc.so, which some wheels of the MCP packages name, is musl itself
+        grep -vx 'libc.so' | \
         while read -r lib; do [ -n "$(find /usr/local -name "$lib" -print -quit)" ] || echo "so:$lib"; done > /rundeps
 
 FROM --platform=$TARGETPLATFORM alpine:3.24 AS runtime

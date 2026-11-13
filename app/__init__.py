@@ -121,6 +121,7 @@ ENV_OVERRIDES = {
     'TRUSTED_HOSTS': _host_list,
     'LABEL_TEMPLATE_ENV_VARS': str,
     'PRINT_MAX_COUNT': _positive_int,
+    'MCP_MAX_COUNT': _positive_int,
     'MAX_CONTENT_LENGTH': _positive_int,
     'WEBHOOK_PASSWORD': str,
     'PROXY_COUNT': _non_negative_int,
@@ -160,6 +161,11 @@ def create_app(config_class=Config) -> Flask:
 
     from app.errors import bp as errors_bp
     app.register_blueprint(errors_bp)
+
+    # The MCP endpoint /mcp, with the mcp package installed. Behind the
+    # proxy fix, which gives it the host names the clients asked for.
+    from app.labeldesigner import mcp_tools
+    mcp_tools.install(app)
 
     # Behind reverse proxies, take the client address, scheme, host and path
     # prefix (e.g. /labels for https://example.com/labels/) from the

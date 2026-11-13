@@ -33,7 +33,7 @@ USB printers are detected automatically, also one on another computer through [U
 - **Printers:** several printers at once, each with a name if you like, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label, only after the last one or none, on P-touch printers half cuts and chain printing, set for each printer or saved with a label, endless labels of a fixed length on QL and P-touch printers, borders, round labels, cable flags that fold around a cable, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** an editor with the preview of the label leaving the printer, also shown large, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
-- **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
+- **API:** everything the label designer does, described in OpenAPI, a webhook to print images, and [tools for AI assistants](docs/mcp.md) (MCP)
 
 ## Screenshots
 
@@ -106,6 +106,7 @@ The navbar shows the version and build time of the running image, please add the
 | `TRUSTED_HOSTS` | Host names you open the label designer with, comma-separated, e.g. `labels.local,192.168.0.10`. Requests for other names are refused, which protects against DNS rebinding. | all |
 | `PROXY_COUNT` | Number of reverse proxies in front of the server, e.g. to serve the label designer below a path, see [Reverse proxy](docs/reverse-proxy.md). Only then the `X-Forwarded-*` headers they set are used, others could fake them. | `0` |
 | `PRINT_MAX_COUNT` | Most labels per print request | `100` |
+| `MCP_MAX_COUNT` | Most labels per call of an [AI assistant](docs/mcp.md) | `10` |
 | `MAX_CONTENT_LENGTH` | Largest request in bytes, e.g. for uploaded images | 32 MB |
 | `FONT_FOLDER` | Folder with more fonts, see below | none |
 | `SYSTEM_FONTS` | `false` to offer only the fonts of `FONT_FOLDER`, not those installed on the system | `true` |
@@ -148,6 +149,8 @@ curl -X POST http://localhost:8013/labeldesigner/api/webhook/print \
 - A request selects a printer with the `printer` parameter: the configured printer, `simulation`, or a printer given as for `PRINTER_PRINTER`. Address each printer in one way only (e.g. always `file:///dev/usb/lp0`), two addresses of the same printer are not recognized as one, and their jobs could get in each other's way.
 - Requests that print, save or delete labels must be `POST` requests and are refused when a browser sends them from another website, so that a malicious page cannot use your printer. Scripts and `curl` are not affected.
 - Text lines may have up to 10000 characters (100000 per label) after the templates are filled in, barcodes up to 1000. Labels and images may have up to 64 million pixels, enough for a 62 mm wide label of about 2 m at 600 dpi. Of PDFs the first page is printed, or the pages `pdf_pages` selects (e.g. `1-3, 5` or `all`), each as a label of its own. Several `image` fields in a print request are printed one after the other. Blanks are filled in from `blanks`, e.g. `{"Room": "Garage"}`, also in saved labels printed by name, or else with their default.
+
+AI assistants can print through the [MCP endpoint](docs/mcp.md) `/mcp`.
 
 ## Development
 

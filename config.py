@@ -68,6 +68,9 @@ class Config(object):
     # Maximum number of labels a single print request may produce
     PRINT_MAX_COUNT = 100
 
+    # Most labels an AI assistant may print with one call to the MCP endpoint
+    MCP_MAX_COUNT = 10
+
     # Maximum size of a request (uploaded images, JSON payloads) in bytes
     MAX_CONTENT_LENGTH = 32 * 1024 * 1024
 

@@ -1,0 +1,127 @@
+"""The MCP endpoint /mcp: its tools print through the API, with a cap, and
+only on the label size the call expects."""
+
+import base64
+import io
+import os
+
+import pytest
+from PIL import Image
+
+from app.labeldesigner import mcp_tools
+from tests.helpers import make_client
+
+HEADERS = {'Accept': 'application/json, text/event-stream', 'MCP-Protocol-Version': '2025-06-18'}
+
+
+@pytest.fixture
+def client(tmp_path):
+    client = make_client(tmp_path)
+    client.application.config['PRINTERS'] = [('QL-800', 'simulation', 'Kitchen')]
+    return client
+
+
+def call(client, method, params=None, **headers):
+    response = client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': method, 'params': params or {}},
+                           headers={**HEADERS, **headers})
+    return response.status_code, response.get_json(silent=True)
+
+
+def tool(client, tool_name, **arguments):
+    status, answer = call(client, 'tools/call', {'name': tool_name, 'arguments': arguments})
+    assert status == 200
+    return answer['result']
+
+
+def printed(tmp_path):
+    folder = tmp_path / 'simulated_labels'
+    return len(os.listdir(folder)) if folder.exists() else 0
+
+
+def test_tools_reading_are_marked_and_printing_ones_confirmed(client):
+    status, answer = call(client, 'tools/list')
+    tools = {t['name']: t for t in answer['result']['tools']}
+    assert set(tools) == {'list_printers', 'list_labels', 'preview_label', 'print_label', 'print_text'}
+    for name in ('list_printers', 'list_labels', 'preview_label'):
+        assert tools[name]['annotations']['readOnlyHint'] is True
+    for name in ('print_label', 'print_text'):
+        assert tools[name]['annotations']['readOnlyHint'] is False
+        assert tools[name]['_meta'] == {'anthropic/requiresUserInteraction': True}
+
+
+def test_print_text_with_a_code_returns_the_image(client, tmp_path):
+    result = tool(client, 'print_text', printer='Kitchen', label_size='62', count=2, lines=['Wi-Fi'],
+                  code='WIFI:T:WPA;S:home;P:secret;;')
+    assert not result.get('isError')
+    assert result['content'][0]['text'] == 'Printed 2 labels on Kitchen'
+    image = Image.open(io.BytesIO(base64.b64decode(result['content'][1]['data'])))
+    assert image.width > 0
+    assert printed(tmp_path) == 2
+
+
+def test_at_most_mcp_max_count_labels_per_call(client, tmp_path):
+    client.application.config['MCP_MAX_COUNT'] = 3
+    result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', label_size='62', count=2,
+                  fillings=[{}, {}])
+    assert result['isError'] and 'At most 3 labels per call' in result['content'][0]['text']
+    assert printed(tmp_path) == 0
+
+
+def test_print_label_once_for_each_filling(client, tmp_path):
+    result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', label_size='62', count=1,
+                  fillings=[{}, {}, {}])
+    assert not result.get('isError')
+    assert len(result['content']) == 4
+    assert printed(tmp_path) == 3
+
+
+def test_refused_on_another_label_size_than_loaded(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: ['29'])
+    result = tool(client, 'print_text', printer='Kitchen', label_size='62', count=1, lines=['x'])
+    assert result['isError'] and 'The printer has 29 loaded, not 62' in result['content'][0]['text']
+    assert printed(tmp_path) == 0
+
+
+def test_errors_are_those_of_the_api(client):
+    result = tool(client, 'preview_label', lines=['x'], label_size='62', code='abc', code_type='EAN13')
+    assert result['isError'] and 'EAN-13 takes 12 digits' in result['content'][0]['text']
+
+
+def test_list_labels_with_their_blanks(client, tmp_path):
+    repo = tmp_path / 'repo'
+    repo.mkdir()
+    (repo / 'Jar.json').write_text('{"label_size": "62", "tags": ["Kitchen"], "text": [{"text": "{{blank:Content}}", "size": "60"},'
+                                   ' {"text": "{{blank:Made}}", "size": "40"}], "fields": {"Made": {"type": "date"}}}')
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(repo)
+    labels = tool(client, 'list_labels')['structuredContent']['result']
+    assert labels == [{'name': 'Jar.json', 'title': 'Jar.json', 'label_size': '62', 'tags': ['Kitchen'],
+                       'blanks': [{'name': 'Content'}, {'name': 'Made', 'type': 'date'}]}]
+
+
+@pytest.mark.parametrize('status, sizes', [
+    ({'model': 'QL-800', 'media_width': 62, 'media_length': 0, 'text_color': ''}, ['62', '62red']),
+    ({'model': 'QL-800', 'media_width': 62, 'media_length': 0, 'text_color': 'Red'}, ['62red']),
+    ({'model': 'QL-800', 'media_width': 29, 'media_length': 90, 'text_color': ''}, ['29x90']),
+    ({'model': 'QL-800', 'media_width': None}, [])])
+def test_label_sizes_loaded(status, sizes):
+    assert mcp_tools.loaded_label_sizes(status) == sizes
+
+
+@pytest.mark.parametrize('host, allowed', [
+    ('localhost', True), ('printserver:8013', True), ('labels.local', True), ('x.lan', True),
+    ('x.home.arpa', True), ('192.168.1.5:8013', True), ('[fd00::1]:8013', True),
+    ('example.com', False), ('labels.local.example.com', False), ('', False)])
+def test_host_names_of_the_home_network(host, allowed):
+    assert mcp_tools.host_allowed(host, None) is allowed
+
+
+def test_trusted_hosts_take_the_place_of_the_home_network():
+    assert mcp_tools.host_allowed('labels.example.com', ['labels.example.com'])
+    assert not mcp_tools.host_allowed('labels.local', ['labels.example.com'])
+
+
+def test_other_hosts_and_origins_are_refused(client):
+    assert call(client, 'tools/list', Origin='http://evil.example')[0] == 403
+    assert call(client, 'tools/list', Origin='http://labels.local')[0] == 200
+    response = client.post('/mcp', json={}, headers={**HEADERS, 'Host': 'evil.example'})
+    assert response.status_code == 403
