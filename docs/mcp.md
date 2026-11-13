@@ -26,7 +26,7 @@ Printing makes paper, so both print tools:
 
 - need the number of labels and print at most `MCP_MAX_COUNT` (default 10) per call, counting each label, not the calls,
 - need the printer and the label size the assistant expects, and are refused if the printer has another one loaded,
-- return the image of what they printed.
+- return the image of what they printed, and its address.
 
 Errors are those of the API, e.g. "EAN-13 takes 12 digits, or 13 with the check digit". Claude Code asks before each print, also in its auto mode, other clients as they are set up.
 
@@ -64,7 +64,7 @@ In `~/.cursor/mcp.json`:
 
 ### Home Assistant
 
-Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here. It does not ask before printing, `MCP_MAX_COUNT` limits how many labels a call prints.
+Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here. It does not ask before printing, `MCP_MAX_COUNT` limits how many labels a call prints. It shows images only by their address: `preview_label` and the print tools also return the address of each image, below `/mcp/preview.png`.
 
 ### claude.ai and Claude Desktop
 

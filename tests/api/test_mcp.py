@@ -4,6 +4,7 @@ only on the label size the call expects."""
 import base64
 import io
 import os
+import re
 
 import pytest
 from PIL import Image
@@ -53,7 +54,7 @@ def test_print_text_with_a_code_returns_the_image(client, tmp_path):
     result = tool(client, 'print_text', printer='Kitchen', label_size='62', count=2, lines=['Wi-Fi'],
                   code='WIFI:T:WPA;S:home;P:secret;;')
     assert not result.get('isError')
-    assert result['content'][0]['text'] == 'Printed 2 labels on Kitchen'
+    assert result['content'][0]['text'].splitlines()[0] == 'Printed 2 labels on Kitchen'
     image = Image.open(io.BytesIO(base64.b64decode(result['content'][1]['data'])))
     assert image.width > 0
     assert printed(tmp_path) == 2
@@ -169,7 +170,7 @@ def test_a_name_of_several_printers_is_refused():
 
 def test_print_by_alias_prints_on_its_device(client, tmp_path):
     result = tool(client, 'print_text', printer='kitchen', label_size='62', count=1, lines=['x'])
-    assert result['content'][0]['text'] == 'Printed 1 label on Kitchen'
+    assert result['content'][0]['text'].splitlines()[0] == 'Printed 1 label on Kitchen'
     assert printed(tmp_path) == 1
 
 
@@ -187,3 +188,29 @@ def test_label_sizes_without_the_prefix_of_their_driver(monkeypatch):
     from mcp.server.mcpserver.exceptions import ToolError
     with pytest.raises(ToolError, match='it takes zpl100x30'):
         mcp_tools.label_size_for('Zebra/ZPL', '30')
+
+
+def _address(result):
+    return re.search(r'!\[Label\]\((\S+)\)', result['content'][0]['text']).group(1)
+
+
+@pytest.mark.parametrize('prefix', ['', '/labels'])
+def test_previews_also_by_their_address(client, prefix):
+    # Behind a reverse proxy below /labels
+    response = client.post('/mcp', headers=HEADERS, base_url=f'http://localhost{prefix}/', json={
+        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+        'params': {'name': 'preview_label', 'arguments': {'lines': ['x'], 'label_size': '62'}}})
+    result = response.get_json()['result']
+    address = _address(result)
+    assert address.startswith(f'http://localhost{prefix}/mcp/preview.png?r=')
+    image = client.get(address.removeprefix(f'http://localhost{prefix}'))
+    assert image.mimetype == 'image/png'
+    assert image.data == base64.b64decode(result['content'][1]['data'])
+
+
+def test_only_previews_by_address(client):
+    import json
+    spec = base64.urlsafe_b64encode(json.dumps({'path': '/print', 'data': {}}).encode()).decode()
+    assert client.get(f'/mcp/preview.png?r={spec}').status_code == 400
+    assert client.get('/mcp/preview.png?r=nonsense').status_code == 400
+    assert client.get('/mcp/preview.png', headers={'Host': 'evil.example'}).status_code == 403
