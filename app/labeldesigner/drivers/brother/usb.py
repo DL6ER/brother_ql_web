@@ -6,7 +6,7 @@ import threading
 import time
 
 from .. import devices
-from .backends import open_printer
+from ..backends import open_printer
 from .status import HEADER, LENGTH, parse_status
 
 logger = logging.getLogger(__name__)

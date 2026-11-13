@@ -84,6 +84,29 @@ def test_answer_kept_from_before_is_not_taken_for_the_status(monkeypatch):
     ours.close(), printer.close()
 
 
+def test_printer_through_pyusb(monkeypatch):
+    class Printer:
+        def __init__(self, device):
+            assert device == 'usb://0x04b8:0x0e15/TM1'
+            self.reads, self.written, self.disposed = [bytes([QUIET | 0x20]), b'', b'', bytes([QUIET])], [], False
+
+        def read(self, length):
+            return self.reads.pop(0) if self.reads else b''
+
+        def write(self, data):
+            self.written.append(data)
+
+        def dispose(self):
+            self.disposed = True
+    monkeypatch.setattr(protocol.backends, 'UsbPrinter', Printer)
+    monkeypatch.setattr(protocol, 'WRITE_CHUNK', 4)
+    with protocol.connect('usb://0x04b8:0x0e15/TM1') as c:
+        # An answer kept from before is not taken for the status
+        assert c.ask(protocol.PAPER) == QUIET
+        c.write(b'0123456789')
+    assert c.printer.written == [protocol.PAPER, b'0123', b'4567', b'89'] and c.printer.disposed
+
+
 def test_status_bytes():
     assert protocol.errors(QUIET, QUIET) == []
     assert protocol.errors(QUIET | 0x04, QUIET | 0x60) == ['The cover of the printer is open', 'The printer has no paper']
