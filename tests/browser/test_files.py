@@ -7,7 +7,7 @@ import re
 import pytest
 from PIL import Image
 
-from tests.browser.helpers import png, preview_size, printed, wait_for_preview
+from tests.browser.helpers import kept, png, preview_size, printed, wait_for_preview
 
 
 def pdf(*sizes) -> bytes:
@@ -89,6 +89,36 @@ def test_each_of_several_files_can_be_previewed(designer):
     designer.set_input_files('#edFile', files=[{'name': 'four.png', 'mimeType': 'image/png', 'buffer': png()}])
     designer.wait_for_selector('#edFileStep', state='hidden')
     assert designer.evaluate('() => fileShown(S.edit)') == 0
+
+
+def test_a_file_can_be_removed(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+        {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
+        {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
+    ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
+    designer.click('#edFileStep [data-file="1"]')
+    wait_for_preview(designer)
+    # The file shown stays shown when one before it is removed
+    designer.click('[aria-label="Remove one.png"]')
+    designer.wait_for_function("() => document.querySelector('#edFileOf').innerText === 'File 1 of 2: two.png'")
+    wait_for_preview(designer)
+    designer.click('[aria-label="Remove three.png"]')
+    designer.wait_for_selector('#edFileStep', state='hidden')
+    wait_for_preview(designer)
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert re.findall(rb'filename="([^"]*)"', request.value.post_data_buffer) == [b'two.png']
+    # Without its last file the label has no image, undo brings it back
+    kept(designer)
+    designer.click('[aria-label="Remove two.png"]')
+    designer.wait_for_function('() => !S.edit.design.image')
+    assert designer.inner_text('label.drop').strip() == 'Choose images or PDFs, drop or paste them'
+    designer.click('#edUndo')
+    designer.wait_for_function("() => S.edit.design.image && S.edit.design.image.name === 'two.png'")
 
 
 def test_pages_of_a_pdf_can_be_chosen(designer):
