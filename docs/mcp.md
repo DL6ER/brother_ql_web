@@ -64,7 +64,7 @@ In `~/.cursor/mcp.json`:
 
 ### Home Assistant
 
-Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here. It does not ask before printing, `MCP_MAX_COUNT` limits how many labels a call prints. It shows images only by their address: `preview_label` and the print tools also return the address of each image, below `/mcp/preview.png`.
+Add the integration **Model Context Protocol** with the URL of the endpoint, then turn on its tools for the conversation agent of your assistant. Home Assistant uses only tools and no login here. It does not ask before printing, `MCP_MAX_COUNT` limits how many labels a call prints. It shows images only by their address: `preview_label` and the print tools also return the address of each image, below `/mcp/preview.png`. Opened over HTTPS, Home Assistant shows them only if the label designer is reachable over HTTPS too, browsers block images over HTTP there.
 
 ### claude.ai and Claude Desktop
 
