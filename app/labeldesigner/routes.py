@@ -7,7 +7,6 @@ import uuid
 import time
 import base64
 import secrets
-import barcode
 import threading
 import contextlib
 import datetime
@@ -816,12 +815,24 @@ def _cutting(requested, stored: dict | None = None) -> tuple[str, bool, bool]:
     return cut, _whole(option('half_cut', 1)) != 0, _whole(option('chain', 0)) != 0 or cut == 'none'
 
 
-def _queue_labels(printer, labels, data, files, high_res, fast):
-    """Adds the labels to the queue, the printer cuts them as printer.cut says."""
+def _queue_labels(printer, labels, data, files, high_res, fast) -> list[SimpleLabel]:
+    """Adds the labels to the queue, the printer cuts them as printer.cut
+    says. The labels queued."""
     # The copies share the text measured, alike where nothing changes
     layouts = {}
+    queued = []
     for i, image in enumerate(labels):
-        printer.add_label_to_queue(create_label_from_request(data, files, i, image, layouts=layouts), high_res=high_res, fast=fast)
+        queued.append(create_label_from_request(data, files, i, image, layouts=layouts))
+        printer.add_label_to_queue(queued[-1], high_res=high_res, fast=fast)
+    return queued
+
+
+def _printed_image(result: dict, queued: list[SimpleLabel], return_format) -> dict:
+    """result with the image of the first label printed as base64 (image)
+    for return_format png, as the printer got it."""
+    if return_format == 'png' and queued and getattr(queued[0], 'generated', None) is not None:
+        result['image'] = base64.b64encode(image_to_png_bytes(queued[0].generated, gray=not queued[0].in_color)).decode()
+    return result
 
 
 def _given(value, default):
@@ -914,13 +925,18 @@ def _preview_response(data: dict, image_dir: str, image_bytes: bytes | None = No
         data['printer'] = printer
     try:
         data['blanks'] = _requested_blanks(data.get('blanks'))
-        label = create_label_from_request(data, {}, image=load_label_image(data, {}, image_dir, image_bytes))
+        images, page_count = load_label_images(data, {}, first_only=True, image_dir=image_dir, image_bytes=image_bytes)
+        label = create_label_from_request(data, {}, image=images[0])
         im = label.generate()
     except Exception as e:
         _log_refused_request('Preview', e)
         return make_response(jsonify({'message': refusals.message(e, refusals.PREVIEW_FAILED)}), 413 if isinstance(e, TextTooLong) else 400)
 
-    return _preview_of(label, im, _requested('return_format') or 'png')
+    response = _preview_of(label, im, _requested('return_format') or 'png')
+    # Of a PDF each selected page prints as a label of its own
+    if page_count and data.get('print_type', 'text') in ('image', 'image_qrcode_text'):
+        response.headers.set('X-PDF-Selected-Pages', str(len(selected_pdf_pages(str(data.get('pdf_pages') or ''), page_count))))
+    return response
 
 
 @bp.route('/api/repository/print', methods=['POST'])
@@ -978,7 +994,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # Of a PDF each selected page is a label of its own
         images, _ = load_label_images(data, {}, copies=print_count, image_dir=image_dir, image_bytes=image_bytes)
         labels = _copies(images, print_count, collate)
-        _queue_labels(printer, labels, data, {}, high_res, fast)
+        queued = _queue_labels(printer, labels, data, {}, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         _log_refused_request('Print job', e)
@@ -988,7 +1004,7 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
     if len(status) > 0:
         result['message'] = status
         return make_response(jsonify(result), PRINTER_FAILED)
-    return result
+    return _printed_image(result, queued, _requested('return_format'))
 
 
 # --- Demo labels --------------------------------------------------------------------------
@@ -1060,9 +1076,8 @@ def _check_print_count(print_count: int) -> int:
 
 @bp.route('/api/barcodes', methods=['GET'])
 def get_barcodes():
-    barcodes = [code.upper() for code in barcode.PROVIDED_BARCODES]
-    barcodes.insert(0, 'QR')  # Add QR at the top
-    return {'barcodes': barcodes}
+    # QR at the top
+    return {'barcodes': refusals.BARCODE_TYPES}
 
 
 @bp.route('/api/preview', methods=['POST'])
@@ -1187,7 +1202,7 @@ def print_label():
         # each selected page is a label of its own.
         images, _ = load_label_images(values, files, copies=print_count)
         labels = _copies(images, print_count, collate)
-        _queue_labels(printer, labels, values, files, high_res, fast)
+        queued = _queue_labels(printer, labels, values, files, high_res, fast)
         status = printer.process_queue()
     except Exception as e:
         return_dict['message'] = refusals.message(e, refusals.PRINT_FAILED)
@@ -1198,7 +1213,7 @@ def print_label():
     if len(status) > 0:
         return_dict['message'] = status
         return make_response(jsonify(return_dict), PRINTER_FAILED)
-    return return_dict
+    return _printed_image(return_dict, queued, request.values.get('return_format'))
 
 
 def _log_refused_request(what: str, error: Exception):

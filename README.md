@@ -33,7 +33,7 @@ USB printers are detected automatically, also one on another computer through [U
 - **Printers:** several printers at once, each with a name if you like, and a simulator to try everything without a printer
 - **Printing:** copies with a cut after every label, only after the last one or none, on P-touch printers half cuts and chain printing, set for each printer or saved with a label, endless labels of a fixed length on QL and P-touch printers, borders, round labels, cable flags that fold around a cable, 600 dpi printing, fast printing (a little less sharp)
 - **Interface:** an editor with the preview of the label leaving the printer, also shown large, a wizard that turns typed text into labels and finds fitting templates, search (Ctrl K), undo, dark mode, works on phones, can be installed as an app (over HTTPS), which on Android takes images, PDFs and links from the share menu
-- **API:** everything the label designer does, described in OpenAPI, and a webhook to print images
+- **API:** everything the label designer does, described in OpenAPI, a webhook to print images, and [tools for AI assistants](docs/mcp.md) (MCP)
 
 ## Screenshots
 
@@ -106,6 +106,9 @@ The navbar shows the version and build time of the running image, please add the
 | `TRUSTED_HOSTS` | Host names you open the label designer with, comma-separated, e.g. `labels.local,192.168.0.10`. Requests for other names are refused, which protects against DNS rebinding. | all |
 | `PROXY_COUNT` | Number of reverse proxies in front of the server, e.g. to serve the label designer below a path, see [Reverse proxy](docs/reverse-proxy.md). Only then the `X-Forwarded-*` headers they set are used, others could fake them. | `0` |
 | `PRINT_MAX_COUNT` | Most labels per print request | `100` |
+| `MCP_ENABLED` | `false` to turn off the [MCP endpoint](docs/mcp.md) for AI assistants | `true` |
+| `MCP_MAX_COUNT` | Most labels per call of an [AI assistant](docs/mcp.md) | `10` |
+| `MCP_HOSTS` | Further host names the [MCP endpoint](docs/mcp.md#host-names) answers, comma-separated, e.g. `labels.example.com` or `.example.com` with its subdomains | none |
 | `MAX_CONTENT_LENGTH` | Largest request in bytes, e.g. for uploaded images | 32 MB |
 | `FONT_FOLDER` | Folder with more fonts, see below | none |
 | `SYSTEM_FONTS` | `false` to offer only the fonts of `FONT_FOLDER`, not those installed on the system | `true` |
