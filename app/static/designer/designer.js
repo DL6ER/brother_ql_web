@@ -379,12 +379,18 @@ const usableCut = (c, k) => noCutter(k) ? Object.assign(c, { cut: 'none' })
     : neverWhy(k) && c.cut === 'none' ? Object.assign(c, { cut: 'last' }) : c;
 // Printers without a setting of their own cut as set before for all
 const printerCut = () => usableCut(Object.assign({ cut: S.settings.cut || 'each', half_cut: '1', chain: '0' }, (S.settings.cuts || {})[printerKey()]), printerCaps());
-// The end of the labels that leaves the printer first, set for each printer:
-// the top, as the drivers print them, or the bottom, turned by 180 degrees
-const leavesFirst = () => (S.settings.leaves || {})[printerKey()] || 'top';
+// The end of the labels that leaves the printer first, set for each printer,
+// else as its driver prints them
+const leavesSet = () => (S.settings.leaves || {})[printerKey()] || '';
+const leavesFirst = (k = printerCaps()) => leavesSet() || (k.leaves_turned ? 'top' : 'bottom');
 // A label on the tape in the printer with its ends named, to see which one
-// comes out first
-const endsTest = () => Object.assign(baseDesign(S.tape), { text: [L('TOP', 40, true), L('Which end came out first?', 20), L('BOTTOM', 40, true)] });
+// comes out first, at its left and right end where it leaves sideways
+const endsTest = () => {
+    const d = baseDesign(S.tape), ask = L('Which end came out first?', 20);
+    if (!runsAlong(d)) return Object.assign(d, { text: [L('TOP', 40, true), ask, L('BOTTOM', 40, true)] });
+    const [top, bottom] = printerCaps().leaves_turned ? ['right', 'left'] : ['left', 'right'];
+    return Object.assign(d, { text: [L('TOP', 40, true, top), ask, L('BOTTOM', 40, true, bottom)] });
+};
 // P-touch printers cut after the last label unless chain printing, so not
 // cutting at all is chain printing, as the server decides it too
 const chainOf = (c, k) => k.chain && (c.chain === '1' || c.cut === 'none');
@@ -482,7 +488,7 @@ function formFor(design, copies = 1, forPrint = false, values = null, marks = fa
         fd.set('cut', c.cut);
         fd.set('half_cut', c.half_cut);
         fd.set('chain', c.chain);
-        fd.set('leaves_first', leavesFirst());
+        if (leavesSet()) fd.set('leaves_first', leavesSet());
     }
     if (S.printer && S.printer.path) fd.append('printer', S.printer.path);
     if (S.printer && S.printer.model) fd.append('model', S.printer.model);
@@ -1456,8 +1462,10 @@ async function showOnStage(el, design, values, onWarning, blank = false) {
     // Labels that leave the printer top first are shown leaving it upwards,
     // the printer below them. Those that leave sideways have it to their
     // left, with the other end first to their right.
-    const back = leavesFirst() === 'bottom';
-    const turned = !side && sizeCaps(design.label_size).leaves_turned !== back;
+    const k = sizeCaps(design.label_size), top = leavesFirst(k) === 'top';
+    const turned = !side && top;
+    // Turned for printing where the other end than the driver's leaves first
+    const back = top !== !!k.leaves_turned;
     // The cut after the label, and how copies are cut
     const caps = sizeCaps(design.label_size), cutNow = cutOf(design);
     // The selected pages of a PDF print like files, of those not shown as
@@ -1541,7 +1549,8 @@ function placeOnStage(el, redraw = false) {
     const leadPx = Math.round(v.leadDots * k);
     const lead = leadPx ? `<div class="lead" style="${side ? 'width' : 'height'}:${leadPx}px" title="Blank paper, ${v.lead} mm"></div>` : '';
     const label = v.blank ? `<div class="blank-paper" style="aspect-ratio:${w} / ${h}"></div>` : `<img alt="Label preview" src="${v.url}"${sharp ? ' class="dots"' : ''}>`;
-    const paper = side && !v.back ? label + lead : lead + label;
+    // The blank paper is at the end that leaves first
+    const paper = (side ? v.back : turned) ? lead + label : label + lead;
     // How copies are cut: in the corner, or below the large label
     const cuts = `<div class="cuts">${v.cuts}</div>`;
     const zoom = 'zoom' in el.dataset ? `<button class="btn quiet icon zoom" type="button" aria-pressed="${large}" title="${large ? 'Smaller preview' : 'Larger preview'}">
@@ -3277,8 +3286,8 @@ function settingsCard() {
             <div class="row" style="gap:.5rem;align-items:center"><div class="seg">
             <button type="button" data-lf="top" class="${leavesFirst() === 'top' ? 'on' : ''}">Top</button>
             <button type="button" data-lf="bottom" class="${leavesFirst() === 'bottom' ? 'on' : ''}">Bottom</button></div>
-            <button type="button" class="btn quiet" id="setLfTest"${S.printer ? '' : ' disabled'}><i class="fa-solid fa-print"></i>Print a test label</button></div>
-            <div class="muted small">Bottom turns the labels, e.g. to stick them on as they come out.</div></div>
+            <button type="button" class="btn quiet" id="setLfTest"${S.printer ? '' : ' disabled title="No printer answered"'}><i class="fa-solid fa-print"></i>Print a test label</button></div>
+            <div class="muted small">The end to take first, e.g. to stick the labels on as they come out.</div></div>
         <div class="cutting">${cutSettings('c', c, caps)}
             <div class="cut-show">${cutStrip(c, caps)}<span class="muted small">${esc(cutText(c, caps))}${noCutter(caps) ? '' : ' Labels saved with their own cutting keep it.'}</span></div></div>
     </div>`;

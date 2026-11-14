@@ -316,22 +316,34 @@ def test_labels_leave_the_printer_bottom_first_turned(tmp_path, route):
     assert top.rotate(180).tobytes() == bottom.tobytes()
 
 
-def test_saved_label_leaves_the_printer_as_saved_unless_requested(tmp_path):
+def test_leaves_first_is_not_taken_from_a_saved_label(tmp_path):
     from app.labeldesigner import printer
     client = make_client(tmp_path, empty_repo=True)
+    repo = tmp_path / 'label_repo'
     with open(os.path.join(os.path.dirname(__file__), '../../labels/QR-Example.json'), encoding='utf-8') as f:
         label = json.load(f)
-    for name, leaves_first in (('Plain.json', None), ('Turned.json', 'bottom')):
-        saved = dict(label, name=name)
-        if leaves_first:
-            saved['leaves_first'] = leaves_first
-        assert client.post('/labeldesigner/api/repository/save', json=saved).status_code == 200
-    for body in ({'name': 'Plain.json'}, {'name': 'Turned.json'}, {'name': 'Turned.json', 'leaves_first': 'top'}):
+    assert client.post('/labeldesigner/api/repository/save', json=dict(label, name='Side.json', leaves_first='side')).status_code == 200
+    assert 'leaves_first' not in json.loads((repo / 'Side.json').read_text(encoding='utf-8'))
+    # A label file that has it all the same
+    (repo / 'Bottom.json').write_text(json.dumps(dict(label, name='Bottom.json', leaves_first='bottom')), encoding='utf-8')
+    for body in ({'name': 'Side.json'}, {'name': 'Bottom.json'}, {'name': 'Side.json', 'leaves_first': 'bottom'}):
         response = client.post('/labeldesigner/api/repository/print', data={'printer': 'simulation', 'print_count': '1', **body})
         assert response.get_json() == {'success': True}
-    top, turned, requested = (Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).tobytes()
-                              for name in sorted(os.listdir(printer.SIMULATED_LABELS_DIR)))
-    assert turned != top and requested == top
+    side, bottom, requested = (Image.open(os.path.join(printer.SIMULATED_LABELS_DIR, name)).tobytes()
+                               for name in sorted(os.listdir(printer.SIMULATED_LABELS_DIR)))
+    assert bottom == side != requested
+
+
+def test_vc500w_labels_are_turned_only_for_the_other_end(tmp_path, monkeypatch):
+    # Its driver prints them bottom first, leaves_turned is false
+    from app.labeldesigner import routes
+    turned = []
+    monkeypatch.setattr(routes.PrinterQueue, 'process_queue', lambda self: turned.extend(job['label'].turned for job in self._print_queue) or '')
+    client = make_client(tmp_path)
+    data = dict(EXAMPLE_FORMDATA, printer='simulation', model='VC-500W', label_size='vc25', cut='last')
+    for leaves_first in ('', 'bottom', 'top'):
+        assert client.post('/labeldesigner/api/print', data=dict(data, leaves_first=leaves_first)).get_json() == {'success': True}
+    assert turned == [False, False, True]
 
 
 def test_unknown_leaves_first_is_refused(tmp_path):

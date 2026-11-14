@@ -208,6 +208,7 @@ input[type=range] { width: 100%; accent-color: var(--ink); }
 .stage .paper img { display: block; width: 100%; height: auto; }
 .stage .paper .blank-paper { width: 100%; background: #fff; }
 .stage .paper .lead { background: #fff; border-bottom: 1px dashed rgba(0, 0, 0, .15); }
+.stage:not(.side):not(.turned) .paper .lead { border-bottom: 0; border-top: 1px dashed rgba(0, 0, 0, .15); }
 .stage.side .paper { display: flex; }
 .stage.side .paper > :first-child { flex: 1; min-width: 0; }
 .stage.side .paper .lead { flex: none; border-bottom: 0; border-left: 1px dashed rgba(0, 0, 0, .15); }

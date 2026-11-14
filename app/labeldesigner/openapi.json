@@ -224,6 +224,14 @@
                         "default": 1,
                         "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
+                      },
                       "cut_once": {
                         "type": "integer",
                         "enum": [
@@ -280,6 +288,14 @@
                         "enum": [0, 1],
                         "default": 1,
                         "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
+                      },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
                       },
                       "cut_once": {
                         "type": "integer",
@@ -963,8 +979,7 @@
                           "top",
                           "bottom"
                         ],
-                        "default": "top",
-                        "description": "The end of the labels that leaves the printer first: `top`, as the drivers print them, or `bottom`, each label turned by 180 degrees, e.g. to stick it on as it comes out."
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
                       },
                       "printer": {
                         "type": "string",
@@ -1364,8 +1379,7 @@
                           "top",
                           "bottom"
                         ],
-                        "default": "top",
-                        "description": "The end of the labels that leaves the printer first: `top`, as the drivers print them, or `bottom`, each label turned by 180 degrees, e.g. to stick it on as it comes out."
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
                       },
                       "printer": {
                         "type": "string",
@@ -1739,15 +1753,6 @@
             ],
             "default": 0,
             "description": "1 prints faster: the printer does not give priority to print quality, the print is a little less sharp. A QL-810W printed a 29 x 90 mm label in 1.8 instead of 3.0 s. The VC-500W prints in its color instead of its vivid mode, colors come out lighter, a 25 mm label took 27 instead of 33 s."
-          },
-          "leaves_first": {
-            "type": "string",
-            "enum": [
-              "top",
-              "bottom"
-            ],
-            "default": "top",
-            "description": "The end of the labels that leaves the printer first: `top`, as the drivers print them, or `bottom`, each label turned by 180 degrees, e.g. to stick it on as it comes out."
           },
           "shrink_text": {
             "type": "integer",
@@ -2193,6 +2198,14 @@
               "colored"
             ],
             "description": "Another one is refused. `bw` is read as `black_and_white`."
+          },
+          "leaves_first": {
+            "type": "string",
+            "enum": [
+              "top",
+              "bottom"
+            ],
+            "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
           },
           "bw_threshold": {
             "type": "integer",
