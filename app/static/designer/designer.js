@@ -1125,6 +1125,13 @@ function serverName(title) {
     return (base || 'label') + '.json';
 }
 // tags: those to save it with, else the ones of the label it replaces
+// Changes only the tags of a saved label, the rest stays as saved
+async function saveTags(name, tags) {
+    const r = await fetch(API + '/repository/tags', { method: 'POST', body: JSON.stringify({ name, tags }), headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.success) throw new Error(data.message || 'The tags could not be saved');
+    await loadSaved();
+}
 async function saveLabel(title, design, overwrite = null, tags = null) {
     let name = overwrite;
     if (!name) {
@@ -1133,9 +1140,10 @@ async function saveLabel(title, design, overwrite = null, tags = null) {
     }
     // The name that was checked above, with ".json": the server only adds it
     // when it is missing, "a.json" would replace a.json instead of a.json.json.
-    // A new label replaces none saved under the name in the meantime.
-    const replaced = overwrite && S.saved.find(x => x.name === overwrite);
-    const body = Object.assign({}, design, { name, title, text: design.text, replace: !!overwrite, tags: tags || (replaced ? replaced.tags : []) });
+    // A new label replaces none saved under the name in the meantime. The
+    // server keeps the tags of a label saved again without them.
+    const body = Object.assign({}, design, { name, title, text: design.text, replace: !!overwrite });
+    if (tags) body.tags = tags;
     // Each blank keeps its kind, the server does not guess it, and a date
     // the format it is shown in, like a [today], also when the label is
     // printed through the API: the settings previews send
@@ -1197,7 +1205,7 @@ function tagsDialog(item) {
         e.preventDefault();
         $('#tagsGo').disabled = true;
         try {
-            await saveLabel(item.title, await designOf(item), item.id, tags());
+            await saveTags(item.id, tags());
             closeLayer(true);
             renderLabels();
         } catch (err) {
@@ -1902,7 +1910,7 @@ function libItems(cat) {
     else if (cat === 'printed') items = S.history.slice(0, 40).map(histItem);
     else if (cat === 'all') items = demos.map(demoItem);
     else items = demos.filter(d => d.cat === cat).map(demoItem);
-    if (S.fitsOnly && !['printed', 'saved'].includes(cat)) {
+    if (S.fitsOnly && !['printed', 'saved'].includes(cat) && !cat.startsWith('tag:')) {
         // Labels made for other tapes come last
         items = items.filter(i => fitsTape(i.size)).concat(items.filter(i => !fitsTape(i.size)));
     }
@@ -1911,6 +1919,7 @@ function libItems(cat) {
 
 function renderLabels(arg) {
     if (arg) { try { S.libCat = decodeURIComponent(arg); } catch (e) { S.libCat = arg; } }
+    if (S.libCat.startsWith('tag:') && !S.saved.some(s => hasTag(s, S.libCat.slice(4)))) S.libCat = 'saved';
     S.libCatChosen = !!arg;
     const cats = S.demos || [];
     const count = id => S.demoList.filter(d => d.language === S.lang && d.cat === id && (!S.fitsOnly || fitsTape(d.label_size_id))).length;
@@ -2101,6 +2110,7 @@ async function showDetail(item) {
         $('#libMenu').hidden = true;
         saveDialog(item.title, async (title, replacing, tags) => {
             const name = await saveLabel(title, work.design, replacing, tags);
+            renderLabels();
             toast(`Saved "${title}" to your labels ${savedAs(work.design)}`, { label: 'Open', run: () => { location.hash = 'fill/' + encodeURIComponent(name); } });
         }, work.design);
     };
@@ -2111,7 +2121,7 @@ async function showDetail(item) {
         try { await deleteLabel(item.id); } catch (e) { toast(e.message); return; }
         S.libSel = null;
         renderLabels();
-        toast(`Removed "${item.title}"`, { label: 'Undo', run: async () => { await saveLabel(item.title, kept, item.id); renderLabels(); } });
+        toast(`Removed "${item.title}"`, { label: 'Undo', run: async () => { await saveLabel(item.title, kept, item.id, item.tags); renderLabels(); } });
     };
 }
 

@@ -2,9 +2,11 @@
 
 import json
 import os
+import time
 
 import pytest
 
+from app.labeldesigner import refusals
 from tests.helpers import make_client
 from tests.repository.helpers import SAVE_URL, TEXT
 
@@ -20,6 +22,9 @@ def _tags_listed(client, name):
     ('Kitchen, Freezer,,kitchen', ['Kitchen', 'Freezer']),
     ([], None),
     ('', None),
+    (None, None),
+    (['Kitchen, Freezer', 'Garage'], ['Kitchen', 'Freezer', 'Garage']),
+    (['Stra\u00dfe', 'STRASSE', 'stra\u00dfe'], ['Stra\u00dfe', 'STRASSE']),
 ])
 def test_tags_are_saved_trimmed_and_once(tmp_path, given, kept):
     client = make_client(tmp_path, empty_repo=True)
@@ -30,7 +35,7 @@ def test_tags_are_saved_trimmed_and_once(tmp_path, given, kept):
     assert _tags_listed(client, 'Shelf.json') == (kept or [])
 
 
-@pytest.mark.parametrize('given', [7, ['Kitchen', 3], {'Kitchen': True}, ['x' * 41], [f'Tag {n}' for n in range(21)]])
+@pytest.mark.parametrize('given', [7, ['Kitchen', 3], {'Kitchen': True}])
 def test_tags_that_are_no_list_of_short_texts_are_refused(tmp_path, given):
     client = make_client(tmp_path, empty_repo=True)
     response = client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': given})
@@ -52,3 +57,45 @@ def test_labels_without_tags_or_with_broken_ones_are_listed_without(tmp_path):
     # Written by hand as text, read as when it is saved so
     assert _tags_listed(client, 'broken.json') == ['Kitchen']
     assert _tags_listed(client, 'odd.json') == []
+
+
+@pytest.mark.parametrize('given', [['x' * 41], [f'Tag {n}' for n in range(21)]])
+def test_too_many_or_too_long_tags_are_refused_in_plain_words(tmp_path, given):
+    client = make_client(tmp_path, empty_repo=True)
+    response = client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': given})
+    assert response.status_code == 400
+    assert response.get_json()['message'] == refusals.TAGS_LIMIT
+
+
+def test_many_tags_are_refused_at_once(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    started = time.monotonic()
+    response = client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': ','.join(f't{n}' for n in range(30000))})
+    assert response.status_code == 400
+    assert time.monotonic() - started < 2
+
+
+def test_a_label_saved_again_without_tags_keeps_them(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': ['Kitchen']})
+    client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT})
+    assert _tags_listed(client, 'Shelf.json') == ['Kitchen']
+    client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': []})
+    assert _tags_listed(client, 'Shelf.json') == []
+
+
+def test_changing_the_tags_keeps_the_label_as_saved(tmp_path):
+    client = make_client(tmp_path, empty_repo=True)
+    client.post(SAVE_URL, json={'name': 'Shelf', 'label_size': '62', 'text': TEXT, 'tags': ['Kitchen'], 'print_count': 3, 'collate': 0})
+    path = os.path.join(client.application.config['LABEL_REPOSITORY_DIR'], 'Shelf.json')
+    with open(path, encoding='utf-8') as fh:
+        before = json.load(fh)
+    tags_url = '/labeldesigner/api/repository/tags'
+    response = client.post(tags_url, json={'name': 'Shelf.json', 'tags': 'Kitchen, Garage'})
+    assert response.get_json() == {'success': True, 'tags': ['Kitchen', 'Garage']}
+    with open(path, encoding='utf-8') as fh:
+        assert json.load(fh) == dict(before, tags=['Kitchen', 'Garage'])
+    client.post(tags_url, json={'name': 'Shelf.json', 'tags': []})
+    assert _tags_listed(client, 'Shelf.json') == []
+    assert client.post(tags_url, json={'name': 'Gone.json', 'tags': []}).status_code == 404
+    assert client.post(tags_url, json={'name': 'Shelf.json', 'tags': 7}).status_code == 400

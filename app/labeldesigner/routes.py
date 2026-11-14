@@ -512,7 +512,7 @@ def repo_list():
 
 
 # Tags of a saved label: words or a few words each, a handful per label,
-# as refusals.TAGS_MESSAGE says
+# as refusals.TAGS_LIMIT says
 MAX_TAGS = 20
 MAX_TAG_LENGTH = 40
 
@@ -520,18 +520,37 @@ MAX_TAG_LENGTH = 40
 def _tags(value) -> list[str]:
     """The tags of a saved label, from a list or from text with commas
     between them: trimmed, without empty ones, each once whatever its case,
-    in the order given."""
+    in the order given. Their case is compared as the label designer does
+    (lower(), toLowerCase())."""
+    if value is None:
+        return []
     if isinstance(value, str):
-        value = value.split(',')
+        value = [value]
     if not isinstance(value, list) or not all(isinstance(tag, str) for tag in value):
         raise ValueError(refusals.TAGS_MESSAGE)
-    tags = []
+    # The label designer cannot show a tag with a comma
+    value = (part for text in value for part in text.split(','))
+    tags, seen = [], set()
     for tag in (' '.join(tag.split()) for tag in value):
-        if tag and tag.casefold() not in (known.casefold() for known in tags):
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
             tags.append(tag)
+            if len(tags) > MAX_TAGS:
+                break
     if len(tags) > MAX_TAGS or any(len(tag) > MAX_TAG_LENGTH for tag in tags):
-        raise ValueError(refusals.TAGS_MESSAGE)
+        raise ValueError(refusals.TAGS_LIMIT)
     return tags
+
+
+def _stored_tags(path: str) -> dict:
+    """{'tags': [...]} of the label saved at path, empty for none."""
+    try:
+        with open(path, encoding='utf-8') as fh:
+            stored = json.load(fh)
+        tags = _tags(stored.get('tags')) if isinstance(stored, dict) else []
+    except (OSError, ValueError):
+        tags = []
+    return {'tags': tags} if tags else {}
 
 
 def stored_label_size(value):
@@ -571,7 +590,9 @@ def repo_save():
                     data[key] = value
                 else:
                     del data[key]
-        if 'tags' in data:
+        # A label saved again without tags keeps those it had
+        tags_given = 'tags' in data
+        if tags_given:
             data['tags'] = _tags(data['tags'])
             if not data['tags']:
                 del data['tags']
@@ -665,6 +686,8 @@ def repo_save():
             # The label, its image and removing images of before, while no
             # other save or removal of a label is under way
             with _saving(repo):
+                if replace and not tags_given:
+                    data.update(_stored_tags(_repo_path(repo, filename)))
                 write = _write_atomically if replace else _write_new
                 write(_repo_path(repo, filename), json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
                 if staged_image is not None:
@@ -684,6 +707,34 @@ def repo_save():
         current_app.logger.exception(e)
         return make_response(jsonify({'success': False, 'message': 'Failed to save file'}), 500)
     return {'success': True, 'name': filename}
+
+
+@bp.route('/api/repository/tags', methods=['POST'])
+def repo_tags():
+    """Change the tags of a saved label, the rest stays as saved."""
+    filename = secure_filename(_requested_name() or '')
+    if not filename:
+        return make_response(jsonify({'success': False, 'message': 'No name specified'}), 400)
+    try:
+        tags = _tags(_requested('tags'))
+    except ValueError as e:
+        _log_refused_request('Changing the tags', e)
+        return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
+    repo = _get_repo_dir()
+    path = _repo_path(repo, filename)
+    try:
+        with _saving(repo):
+            with open(path, encoding='utf-8') as fh:
+                data = json.load(fh)
+            data.pop('tags', None)
+            if tags:
+                data['tags'] = tags
+            _write_atomically(path, json.dumps(data, ensure_ascii=False, indent=2, default=str).encode('utf-8'))
+    except FileNotFoundError:
+        return make_response(jsonify({'success': False, 'message': 'Not found'}), 404)
+    except LabelsBusy:
+        return _busy()
+    return {'success': True, 'tags': tags}
 
 
 @bp.route('/api/repository/load', methods=['GET'])

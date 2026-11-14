@@ -224,3 +224,88 @@ def test_saved_labels_are_grouped_by_their_tags(designer, app):
     with open(os.path.join(app.config['LABEL_REPOSITORY_DIR'], 'Tagged_peas.json'), encoding='utf-8') as fh:
         assert json.load(fh)['tags'] == ['Kitchen']
     designer.evaluate("() => deleteLabel('Tagged_peas.json')")
+
+
+def test_tags_changed_elsewhere_stay_when_the_label_is_saved_again(designer):
+    designer.evaluate("() => saveLabel('Stale', normalize({ text: [{ text: 'x' }] }), null, ['Stale'])")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Stale"]')
+    designer.click('#libGrid .thumb')
+    designer.click('#libEdit')
+    designer.wait_for_selector('#edStage')
+    # Another browser adds a tag in the meantime
+    designer.evaluate("""() => fetch(API + '/repository/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Stale.json', text: [{ text: 'x' }], tags: ['Stale', 'Garage'] }) })""")
+    designer.fill('[data-row="0"] .tx', 'Changed')
+    designer.click('#edSave')
+    designer.wait_for_selector('#toast:has-text("Saved")')
+    assert designer.evaluate("() => S.saved.find(s => s.name === 'Stale.json').tags") == ['Stale', 'Garage']
+    designer.evaluate("() => deleteLabel('Stale.json')")
+
+
+def test_the_tags_dialog_changes_only_the_tags(designer):
+    designer.evaluate("""() => fetch(API + '/repository/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Api', text: [{ text: 'x' }], tags: ['Api'], print_count: 3, collate: 0 }) }).then(loadSaved)""")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Api"]')
+    designer.click('#libGrid .thumb')
+    designer.click('#libMore')
+    designer.click('#libTags')
+    designer.fill('#saveTags', 'Api, Garage')
+    designer.click('#tagsGo')
+    designer.wait_for_selector('#tagsForm', state='detached')
+    stored = designer.evaluate("() => fetch(API + '/repository/load?name=Api.json').then(r => r.json())")
+    assert (stored['tags'], stored['print_count'], stored['collate']) == (['Api', 'Garage'], 3, 0)
+    designer.evaluate("() => deleteLabel('Api.json')")
+
+
+def test_a_group_of_a_tag_keeps_the_order_of_the_saved_labels(designer):
+    designer.evaluate("""async () => {
+        await saveLabel('Aa small', normalize({ label_size: '29', text: [{ text: 'x' }] }), null, ['Order']);
+        await saveLabel('Bb wide', normalize({ label_size: '62', text: [{ text: 'x' }] }), null, ['Order']);
+    }""")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Order"]')
+    assert designer.locator('#libGrid .thumb .t').all_inner_texts() == ['Aa small', 'Bb wide']
+    designer.evaluate("async () => { await deleteLabel('Aa_small.json'); await deleteLabel('Bb_wide.json'); }")
+
+
+def test_a_group_no_label_has_any_more_shows_the_saved_labels(designer):
+    designer.evaluate("() => saveLabel('Last', normalize({ text: [{ text: 'x' }] }), null, ['Lonely'])")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Lonely"]')
+    designer.click('#libGrid .thumb')
+    designer.click('#libMore')
+    designer.click('#libTags')
+    designer.fill('#saveTags', '')
+    designer.click('#tagsGo')
+    designer.wait_for_selector('#tagsForm', state='detached')
+    assert designer.inner_text('#libTitle') == 'Saved labels'
+    assert designer.get_attribute('.lib-nav button.on', 'data-cat') == 'saved'
+    designer.evaluate("() => deleteLabel('Last.json')")
+
+
+def test_a_tag_given_to_a_ready_made_label_shows_its_group(designer):
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="all"]')
+    designer.locator('#libGrid .thumb').first.click()
+    designer.click('#libMore')
+    designer.click('#libKeep')
+    designer.fill('#saveName', 'Kept demo')
+    designer.fill('#saveTags', 'Brandnew')
+    designer.press('#saveName', 'Enter')
+    designer.wait_for_selector('.lib-nav [data-cat="tag:Brandnew"]', timeout=5000)
+    designer.evaluate("() => deleteLabel('Kept_demo.json')")
+
+
+def test_undo_of_removing_a_label_brings_back_its_tags(designer):
+    designer.evaluate("() => saveLabel('Undo', normalize({ text: [{ text: 'x' }] }), null, ['Undo'])")
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="tag:Undo"]')
+    designer.click('#libGrid .thumb')
+    designer.click('#libMore')
+    designer.click('#libDelete')
+    designer.click('#toast button:has-text("Undo")')
+    designer.wait_for_function("() => S.saved.some(s => s.name === 'Undo.json')")
+    assert designer.evaluate("() => S.saved.find(s => s.name === 'Undo.json').tags") == ['Undo']
+    designer.evaluate("() => deleteLabel('Undo.json')")
