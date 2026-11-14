@@ -5,7 +5,7 @@ import io
 
 from PIL import Image
 
-from tests.browser.helpers import kept, type_line, wait_for_preview
+from tests.browser.helpers import kept, set_tape, type_line, wait_for_preview
 
 
 def ink_top(page) -> int:
@@ -19,7 +19,7 @@ def ink_top(page) -> int:
 
 
 def test_the_content_can_be_at_the_top_or_bottom_of_a_die_cut_label(designer):
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     type_line(designer, 0, 'Shelf')
     assert 'on' in designer.get_attribute('[data-valign="center"]', 'class')
     middle = ink_top(designer)
@@ -52,7 +52,7 @@ def test_an_endless_label_across_the_tape_has_no_room_to_place_the_content_in(de
 
 
 def test_the_vertical_position_is_a_step_to_undo_and_kept_with_the_label(designer):
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     type_line(designer, 0, 'Shelf')
     kept(designer)
     designer.click('[data-valign="top"]')

@@ -81,7 +81,7 @@ def test_a_save_ends_well_when_the_editor_is_gone(designer, server):
     held[0].continue_()
     designer.unroute('**/api/repository/save')
     try:
-        designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Slow oats\" is now one of your saved labels')")
+        designer.wait_for_function("() => document.getElementById('toast').innerText.includes('Saved \"Slow oats\" to your labels')")
         assert designer.evaluate("() => S.edit.title === 'Slow oats' && S.edit.origin.kind === 'saved'")
     finally:
         designer.request.post(server + '/labeldesigner/api/repository/delete', form={'name': 'Slow_oats.json'})
@@ -133,7 +133,7 @@ def test_a_new_label_is_named_when_saved_and_replaces_none(designer, app, server
     designer.fill('#saveName', 'Pantry')
     designer.press('#saveName', 'Enter')
     designer.wait_for_selector('#saveForm', state='detached')
-    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Pantry\" is now one of your saved labels')")
+    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('Saved \"Pantry\" to your labels')")
     assert designer.input_value('#edTitle') == 'Pantry' and designer.evaluate('() => S.edit.title') == 'Pantry'
     pantry = designer.evaluate('() => S.edit.origin.id')
     assert saved_titles(designer) == sorted(before + ['Pantry'])

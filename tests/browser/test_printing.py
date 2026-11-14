@@ -7,7 +7,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
-from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, png, preview_size, printed, set_tape, type_line, wait_for_preview
 
 
 def fake_printer(page, **status):
@@ -94,14 +94,25 @@ def test_view_is_not_drawn_anew_long_after_the_printer_panel(designer):
     assert designer.evaluate("() => !!document.querySelector('#view [data-before]') && window.routed === 1")
 
 
+def offered_tapes(page):
+    """The tapes the printer panel offers to set by hand."""
+    page.click('#printerChip')
+    offered = page.eval_on_selector_all('#setTape option', 'options => options.map(o => o.value).filter(Boolean)')
+    page.keyboard.press('Escape')
+    page.wait_for_selector('.pp', state='detached')
+    return offered
+
+
 def test_label_sizes_follow_the_printer_model(designer):
     # The simulator is a QL-800
-    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
+    offered = offered_tapes(designer)
     assert '62' in offered and '62red' in offered
     assert 'pt36' not in offered and '103x164' not in offered
-    # A label made for another printer keeps its size
+    # It does not say which tape it has, a label made for another printer
+    # keeps its size
     designer.evaluate("() => { S.edit.design.label_size = 'pt36'; renderEditor(); }")
-    assert designer.input_value('#edSize') == 'pt36'
+    assert designer.inner_text('.tape-line .grow') == designer.evaluate("() => sizeName('pt36')")
+    assert designer.inner_text('#edTapeChange') == 'Set the tape'
 
 
 def test_tape_follows_the_printer(designer):
@@ -115,20 +126,49 @@ def test_tape_follows_the_printer(designer):
     assert designer.evaluate('() => [S.tape, S.tapeManual]') == ['62', False]
 
 
-def test_loaded_label_can_be_chosen(designer):
-    # The printer reports 29 x 90 mm labels, the new label is for 62 mm tape
+def test_label_is_placed_on_the_loaded_tape(designer):
+    # The printer reports 29 x 90 mm labels, the label is for 62 mm tape
     fake_printer(designer, media_width=29, media_length=90)
-    type_line(designer, 0, 'Hello')
-    assert designer.inner_text('.tape-note') == 'The Brother QL-800 has 29 x 90 mm loaded. Switch to it'
-    # Printing asks first
-    designer.click('#edPrint')
-    designer.wait_for_selector('.sheet h2:text-is("This label needs 62 mm endless")')
-    designer.click('.sheet [data-r="cancel"]')
-    assert designer.evaluate('() => S.history.length') == 0
-    designer.click('#edUseTape')
+    designer.evaluate("() => openEditor({ title: 'Hello', design: Object.assign(baseDesign('62'), { text: [L('Hello', 40)] }) })")
     wait_for_preview(designer)
-    assert designer.input_value('#edSize') == '29x90'
-    assert 'Matches the tape in the printer' in designer.inner_text('.tape-note')
+    assert designer.evaluate('() => S.edit.design.label_size') == '29x90'
+    assert designer.inner_text('.tape-line .grow') == '29 x 90 mm'
+    assert designer.inner_text('.tape-note').strip() == 'In the printer'
+    assert designer.inner_text('#edMade').strip() == 'Made for 62 mm endless, shown as it prints on the 29 x 90 mm in the Brother QL-800.'
+    assert designer.inner_text('#edStage .dim-x') == '90 mm'
+    # Printed as shown without a question, the history keeps it as made
+    sent = []
+    designer.route('**/api/print', lambda route: (sent.append(route.request.post_data_buffer), route.continue_()))
+    designer.click('#edPrint')
+    assert printed(designer) == ['printed']
+    assert parse_qs(sent[0].decode())['label_size'] == ['29x90']
+    assert designer.evaluate('() => S.history[0].design.label_size') == '62'
+    # With its own tape in the printer again, it is the label as made
+    kept(designer)
+    fake_printer(designer, media_width=62, media_length=0)
+    assert designer.evaluate('() => [S.edit.design.label_size, S.edit.design.orientation]') == ['62', 'standard']
+    assert designer.locator('#edMade').count() == 0
+
+
+def test_label_saved_as_made_unless_changed_on_the_loaded_tape(designer):
+    fake_printer(designer, media_width=29, media_length=90)
+    designer.evaluate("() => openEditor({ title: 'Placed shelf', design: Object.assign(baseDesign('62'), { text: [L('Shelf', 40)] }) })")
+    wait_for_preview(designer)
+    saved_size = "() => (S.saved.find(s => s.title === 'Placed shelf') || {}).size"
+    # Not changed: saved for the tape it was made for, which is said
+    designer.click('#edSave')
+    assert 'It is saved as 62 mm endless label' in designer.inner_text('.dialog-h p')
+    designer.fill('#saveName', 'Placed shelf')
+    designer.press('#saveName', 'Enter')
+    designer.wait_for_selector('#toast:has-text("Saved \\"Placed shelf\\" to your labels as 62 mm endless label")')
+    assert designer.evaluate(saved_size) == '62'
+    assert designer.is_visible('#edMade')
+    # Changed on the tape in the printer: saved for it, made for it now
+    type_line(designer, 0, 'Shelf 2')
+    designer.click('#edSave')
+    designer.wait_for_selector('#toast:has-text("Saved \\"Placed shelf\\" as 29 x 90 mm label")')
+    designer.wait_for_function(f'() => ({saved_size})() === "29x90"')
+    assert designer.locator('#edMade').count() == 0
 
 
 def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, monkeypatch):
@@ -149,7 +189,7 @@ def test_configured_printers_are_offered_and_the_choice_is_kept(designer, app, m
     designer.reload()
     wait_for_preview(designer)
     assert designer.inner_text('#printerChip b') == 'Brother QL-1100'
-    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
+    offered = offered_tapes(designer)
     assert '103x164' in offered and '62red' not in offered
 
 
@@ -172,13 +212,15 @@ def test_configured_printers_are_shown_by_their_names(designer, app, monkeypatch
     assert designer.inner_text('#printerChip b') == 'Shelf'
 
 
-@pytest.mark.parametrize('name, called', [('Kitchen', 'Kitchen'), ('', 'The Brother QL-800')])
+@pytest.mark.parametrize('name, called', [('Kitchen', 'Kitchen'), ('', 'the Brother QL-800')])
 def test_sentences_call_a_printer_by_its_name(designer, name, called):
     # "the" before a model, not before a name
+    fake_printer(designer, name=name)
+    assert designer.inner_text('.tape-note') == f'{called[0].upper()}{called[1:]} does not say which tape it has.'
     fake_printer(designer, name=name, media_width=29, media_length=90)
-    designer.select_option('#edSize', '62')
+    designer.evaluate("() => openEditor({ title: 'Box', design: Object.assign(baseDesign('62'), { text: [L('Box', 40)] }) })")
     wait_for_preview(designer)
-    assert designer.inner_text('.tape-note').startswith(f'{called} has 29 x 90 mm')
+    assert designer.inner_text('#edMade').endswith(f'on the 29 x 90 mm in {called}.')
 
 
 def test_no_600_dpi_on_the_ql1100(designer):
@@ -212,7 +254,7 @@ def test_ptouch_tape_is_shown_at_180_dpi(designer):
         S.edit.design.label_size = S.tape;
         renderEditor();
     }""")
-    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
+    offered = offered_tapes(designer)
     assert 'pt6' in offered and 'pt9' in offered and '62' not in offered
     # 35 dots at 180 dpi
     assert designer.input_value('[data-margin="left"]') == '4.9'
@@ -229,7 +271,7 @@ def test_wide_ptouch_tape_is_shown_at_360_dpi(designer):
         S.edit.design.label_size = S.tape;
         renderEditor();
     }""")
-    assert designer.input_value('#edSize') == 'pt36'
+    assert designer.evaluate('() => S.edit.design.label_size') == 'pt36'
     # 35 dots at 360 dpi
     assert designer.input_value('[data-margin="left"]') == '2.5'
     type_line(designer, 0, 'Hello')
@@ -245,29 +287,33 @@ def test_switch_shows_how_the_text_runs_on_the_tape(designer):
     type_line(designer, 0, 'Spices')
     assert runs() == 'Across the tape'
     # 62 x 29 mm labels are wider than long, standard is across the tape
-    designer.select_option('#edSize', '62x29')
+    set_tape(designer, '62x29')
     assert runs() == 'Across the tape'
     designer.click('[data-along="1"]')
     assert runs() == 'Along'
     assert designer.evaluate('() => S.edit.design.orientation') == 'rotated'
-    designer.select_option('#edSize', '29x90')
+    set_tape(designer, '29x90')
     assert runs() == 'Along'
-    # Round labels are shown round, endless tape keeps the direction of the text
-    designer.select_option('#edSize', 'd24')
+    # Round labels are shown round
+    set_tape(designer, 'd24')
     assert runs() == 'Across the tape'
     assert 'round' in designer.get_attribute('#edStage', 'class')
-    designer.select_option('#edSize', '62')
-    assert runs() == 'Across the tape'
+    # Endless tape keeps the direction of the label as last changed, on
+    # 62 x 29 mm labels
+    set_tape(designer, '62')
+    assert runs() == 'Along'
 
 
 def test_red_prints_black_on_tape_without_red(designer):
     type_line(designer, 0, 'Danger')
-    designer.select_option('#edSize', '62red')
-    wait_for_preview(designer)
+    # A label for black tape takes the name of black and red tape of its size
+    set_tape(designer, '62red')
+    assert designer.evaluate('() => S.edit.design.label_size') == '62red'
+    assert designer.locator('#edMade').count() == 0
     designer.click('[data-row="0"] [data-act="red"]')
     wait_for_preview(designer)
-    designer.select_option('#edSize', '62')
-    wait_for_preview(designer)
+    set_tape(designer, '62')
+    assert 'Made for 62 mm endless, black and red' in designer.inner_text('#edMade')
     assert 'red parts print black' in fits_note(designer)
     assert 'nored' in designer.get_attribute('[data-row="0"] [data-act="red"]', 'class')
     assert designer.evaluate("() => JSON.parse(formFor(S.edit.design).get('text'))[0].color") == 'black'
@@ -319,21 +365,35 @@ def test_printer_that_is_not_connected_is_reported(designer):
 def test_black_and_red_roll_is_not_a_mismatch(designer):
     # A QL-800 reports a black and red roll as 62 mm endless, without a color
     fake_printer(designer, media_width=62, media_length=0, media_type='Continuous length tape')
-    designer.select_option('#edSize', '62red')
+    designer.evaluate("() => openEditor({ title: 'Red', design: Object.assign(baseDesign('62red'), { text: [L('Red', 40, false, 'center', { color: 'red' })] }) })")
     wait_for_preview(designer)
-    assert designer.locator('.tape-note.warn').count() == 0
-    assert designer.evaluate("() => fitsTape('62red')")
+    assert designer.evaluate('() => S.edit.design.label_size') == '62red'
+    assert designer.locator('#edMade, .tape-note.warn').count() == 0
+    assert designer.evaluate("() => fitsTape('62red') && onTape(S.edit.design).label_size === '62red'")
 
 
 def test_loaded_label_that_is_not_offered(designer):
-    # The simulator reports no tape, the assumed one matches nothing
-    assert designer.locator('.tape-note').count() == 0
-    assert not designer.evaluate("() => [...document.querySelectorAll('#edSize option')].some(o => o.textContent.includes('in the printer'))")
+    # The simulator reports no tape, labels keep their own
+    assert designer.inner_text('.tape-note') == 'The Brother QL-800 does not say which tape it has.'
+    designer.evaluate("() => openEditor({ title: 'Box', design: Object.assign(baseDesign('29x90'), { text: [L('Box', 40)] }) })")
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.label_size') == '29x90'
+    assert designer.locator('#edMade').count() == 0
     fake_printer(designer, media_width=40, media_length=0)
     assert designer.inner_text('.tape-note') == 'The Brother QL-800 reports 40 mm tape, which is not offered here.'
     designer.click('#printerChip')
     # The assumed tape is named, not called the default
-    assert designer.inner_text('.pp #setTape + .muted') == 'The printer reports 40 mm tape, which is not offered here. ' + designer.evaluate('() => sizeName(S.tape)') + ' is assumed.'
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer reports 40 mm tape, which is not offered here. Labels keep their own size, new ones are ' + designer.evaluate('() => sizeName(S.tape)') + '.'
+    # Neither the chip nor the printer panel names it as the tape in the printer
+    assert designer.locator('#printerChip .tape').count() == 0
+    assert designer.evaluate("() => $('#setTape').selectedOptions[0].textContent") == 'Automatic'
+    # Set by hand it is the tape in the printer
+    designer.select_option('#setTape', '62')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert designer.inner_text('#printerChip .tape') == '62 mm endless'
+    assert designer.inner_text('.tape-note').strip() == 'Set in the printer settings'
+    assert designer.evaluate('() => S.edit.design.label_size') == '62'
 
 
 def test_tape_set_by_hand_is_known(designer):
@@ -347,18 +407,6 @@ def test_tape_set_by_hand_is_known(designer):
     assert designer.evaluate("() => fitsTape('62red')")
     designer.evaluate("() => { S.settings.tapes = { a: '62' }; detectTape(); }")
     assert not designer.evaluate("() => fitsTape('62red')")
-
-
-def test_tape_question_is_settled_when_something_else_opens(designer):
-    # Print waited for an answer forever when the search took its place
-    result = designer.evaluate("""async () => {
-        const job = printJob({ title: 'Box', design: Object.assign(baseDesign('29x90'), { text: [L('Box', 40)] }), values: {}, copies: 1 });
-        await new Promise(done => setTimeout(done, 300));
-        const asked = !!document.querySelector('#layer [data-r="anyway"]');
-        openSearch();
-        return [asked, await Promise.race([job, new Promise(done => setTimeout(() => done('waiting'), 1000))])];
-    }""")
-    assert result == [True, False]
 
 
 def test_printer_panel_of_a_link_stays_closed(designer):
@@ -568,9 +616,9 @@ def test_assumed_tape_is_one_the_printer_takes(designer):
     # A PUQU Q00 does not report its labels, 62 mm endless tape was assumed
     designer.evaluate("() => { S.settings.tapes = {}; S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00', media_width: null, media_length: 0 }); detectTape(); }")
     assert designer.evaluate('() => [S.tape, S.tapeAssumed]') == ['puqu50x30', True]
-    # The printer panel names it, "the default is assumed" was 62 mm endless
+    # New labels start on it, the printer panel names it, not 62 mm endless
     designer.evaluate('() => openPrinterPanel()')
-    assert designer.inner_text('.pp #setTape + .muted') == 'The printer does not report its tape, 50 x 30 mm is assumed.'
+    assert designer.inner_text('.pp #setTape + .muted') == 'The printer does not report its tape. Labels keep their own size, new ones are 50 x 30 mm.'
     designer.evaluate('() => closeLayer(true)')
     designer.evaluate("() => { S.printer = Object.assign({}, S.printer, { model: 'QL-700', media_width: null }); detectTape(); }")
     assert designer.evaluate('() => S.tape') == '62'
@@ -663,24 +711,29 @@ def test_open_printer_panel_follows_the_status(designer):
     assert designer.evaluate("() => $('#setTape').selectedOptions[0].textContent") == 'Automatic: 29 x 90 mm'
 
 
-def test_tape_note_follows_the_tape_the_printer_reports(designer):
-    # It still offered to switch to the tape assumed before the roll was read
+def test_editor_follows_the_tape_the_printer_reports(designer):
     printer = {'path': 'simulation', 'model': 'QL-800', 'status_type': 'Reply to status request', 'errors': [], 'media_width': 62, 'media_length': 0}
     designer.route('**/api/printer_status*', lambda route: route.fulfill(json={'printers': [printer]}))
-    in_printer = "() => $$('#edSize option').filter(o => o.textContent.endsWith('(in the printer)')).map(o => o.value)"
+    type_line(designer, 0, 'Jars')
     designer.evaluate("() => refreshPrinters()")
-    assert 'Matches the tape in the printer' in designer.inner_text('.tape-note')
-    assert designer.locator('#edUseTape').count() == 0
+    assert designer.inner_text('.tape-note').strip() == 'In the printer'
+    assert designer.inner_text('.tape-line .grow') == '62 mm endless'
+    # Another roll: the label is placed on it
     printer.update(media_width=29, media_length=90)
     designer.evaluate("() => refreshPrinters()")
-    assert 'has 29 x 90 mm' in designer.inner_text('.tape-note')
-    assert designer.evaluate(in_printer) == ['29x90']
-    designer.focus('#edUseTape')
-    designer.evaluate("() => refreshPrinters()")
-    assert designer.evaluate("() => document.activeElement.id") == 'edUseTape'
-    designer.click('#edUseTape')
     wait_for_preview(designer)
-    assert designer.input_value('#edSize') == '29x90'
+    assert designer.inner_text('.tape-line .grow') == '29 x 90 mm'
+    assert designer.inner_text('#edMade').startswith('Made for 62 mm endless')
+    # The same roll leaves the editor as it is
+    designer.focus('#edTapeChange')
+    designer.evaluate("() => refreshPrinters()")
+    assert designer.evaluate("() => document.activeElement.id") == 'edTapeChange'
+    # Its own roll again, the label is as made
+    printer.update(media_width=62, media_length=0)
+    designer.evaluate("() => refreshPrinters()")
+    wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.label_size') == '62'
+    assert designer.locator('#edMade').count() == 0
 
 
 def test_sheet_after_printing_on_a_phone_names_the_printer_with_its_maker(designer):

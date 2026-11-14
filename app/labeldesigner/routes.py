@@ -10,6 +10,7 @@ import secrets
 import barcode
 import threading
 import contextlib
+import datetime
 from collections import OrderedDict
 from io import BytesIO
 from typing import BinaryIO
@@ -27,7 +28,7 @@ from .drivers.devices import flock_within, look_again
 from .printer import PrinterQueue, configured_printers, get_ptr_status
 from .drivers.labels import FormFactor
 from .cable_flag import CABLE_FLAG_REFUSED, cable_diameter, wrap_dots
-from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color
+from .label import MAX_TEXT_LENGTH, SimpleLabel, LabelContent, LabelOrientation, LabelType, TextTooLong, check_image_position, check_image_size, check_vertical_align, datetime_codes, parse_color, shift_date
 from .label_names import LABELS, MODELS, check_cut, label_dpi, label_length_problem, label_name, label_palette, label_printers, label_size_problem, length_limits
 from flask import Request, current_app, json, jsonify, redirect, render_template, request, make_response, url_for
 from werkzeug.security import safe_join
@@ -544,6 +545,7 @@ def repo_save():
         _image_text_gap(data.get('image_text_gap'))
         _text_fit(data)
         cut = _cutting(data.get)[0]
+        _text_wrap(data)
         check_image_position(data.get('image_position'))
         check_vertical_align(data.get('vertical_align'))
         check_image_mode(data.get('image_mode'))
@@ -693,7 +695,7 @@ def _label_for_designer(data: dict, image_dir: str) -> dict:
     # Flags and the text size read as when the label is printed, e.g. "true"
     # as 1, a text size from shrink_text of labels of before. One that is
     # refused stays as it is, the preview tells why.
-    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0)):
+    for key, default in (('image_fit', 1), ('image_crop', 0), ('image_contrast', 0), ('text_wrap', 0)):
         try:
             data[key] = '1' if _whole_or(data.get(key), default) > 0 else '0'
         except (TypeError, ValueError):
@@ -1359,6 +1361,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         'text_fit': _text_fit(d),
         # Empty: an endless label grows with its content
         'label_length': _label_length(d.get('label_length')),
+        'text_wrap': _text_wrap(d),
         'image_text_gap': _image_text_gap(d.get('image_text_gap')),
         # Left out or empty: above the text across the tape, left of it along
         'image_position': check_image_position(d.get('image_position')),
@@ -1479,6 +1482,7 @@ def create_label_from_request(d: dict = {}, files: dict = {}, counter: int = 0, 
         warnings=warnings,
         shrink_text=context['text_fit'] == 'shrink',
         fill_text=context['text_fit'] == 'fill',
+        text_wrap=context['text_wrap'],
         image_text_gap=context['image_text_gap'],
         image_position=context['image_position'],
         blanks=context['blanks'],
@@ -1545,6 +1549,15 @@ def _printed_length(length: float | None, label, diameter: float | None, high_re
     return round((length - 2 * limits[2]) / 25.4 * label_dpi(label.identifier, high_res))
 
 
+def _text_wrap(d: dict) -> bool:
+    """Whether lines wider than the label wrap into several lines: text_wrap
+    1, also true. Left out or empty they do not."""
+    try:
+        return _whole_or(d.get('text_wrap'), 0) != 0
+    except (TypeError, ValueError):
+        raise ValueError("text_wrap must be 0 or 1") from None
+
+
 def _image_text_gap(value) -> int | None:
     """The distance between image or code and text of a request in dots, also
     a JSON number like 12.0. None (left out, empty or null) lets it follow
@@ -1604,8 +1617,15 @@ def _blank_setting(field) -> bool:
 
 def _blank_fields(value) -> dict:
     """The settings of the blanks by name, e.g. {"Frozen on": {"type":
-    "date", "format": "%d.%m.%Y"}}."""
-    return _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    "date", "format": "%d.%m.%Y"}}. A date may start at a day moved from
+    today, e.g., {"Best before": {"type": "date", "default": "+5d"}}."""
+    fields = _json_object(value, _blank_setting, refusals.FIELDS_MESSAGE)
+    # A date moved from today must be one it can be moved by
+    for field in fields.values():
+        default = field.get('default')
+        if field.get('type') == 'date' and isinstance(default, str) and default.strip()[:1] in ('+', '-'):
+            shift_date(datetime.date.today(), default.strip())
+    return fields
 
 
 def _requested_blanks(stored=None) -> dict[str, str]:

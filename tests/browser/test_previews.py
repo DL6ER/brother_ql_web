@@ -1,7 +1,7 @@
 """Previews in the label designer: the queue, time limits, thumbnails and
 what a failed one tells."""
 
-from tests.browser.helpers import fits_note, kept, preview_size, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, kept, preview_size, set_tape, type_line, wait_for_preview
 
 
 def test_preview_of_typed_text(designer):
@@ -491,7 +491,7 @@ def test_large_preview_fills_the_stage(designer):
 
 
 def test_stage_fits_the_label_again_when_the_window_changes(designer):
-    designer.select_option('#edSize', '62x100')
+    set_tape(designer, '62x100')
     wait_for_preview(designer)
     asked = []
     designer.on('request', lambda request: asked.append(request.url) if '/preview' in request.url else None)
@@ -531,7 +531,7 @@ def test_large_preview_follows_the_height_of_its_stage(designer):
 
 
 def test_large_preview_of_a_small_label_keeps_its_dots_small(designer):
-    designer.select_option('#edSize', '12')
+    set_tape(designer, '12')
     type_line(designer, 0, 'A')
     designer.click('#edStage .zoom')
     # At most 16 px per mm of the label, at 300 dpi
