@@ -16,7 +16,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Brother | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
 | Brother | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
 | Brother | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
-| Epson | ESC/POS receipt printers (USB or network), tried on a TM-T20II | 80 and 58 mm receipt paper, cut, a blank lead of 12 mm before each receipt as on a TM-T20II |
+| Epson | ESC/POS receipt printers (USB or network), tried on a TM-T20II: `Epson/ESC-POS` with a 203 dpi head, `Epson/ESC-POS-180` with a 180 dpi one like the TM-T88 series, found by its device ID on USB | 80 and 58 mm receipt paper, cut, a blank lead of 12 mm before each receipt as on a TM-T20II |
 | Niimbot | D110_M (Bluetooth) | 12 to 15 mm wide die-cut thermal labels, torn off, printed on 12 x 40 mm only |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 

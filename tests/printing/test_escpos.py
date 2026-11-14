@@ -216,3 +216,59 @@ def test_printer_on_the_network(monkeypatch):
     thread.join(5)
     server.close()
     assert received == [protocol.PAPER + b'job']
+
+
+def test_printer_with_a_180_dpi_head(monkeypatch):
+    from app.labeldesigner.drivers import devices
+    from app.labeldesigner.label_names import label_dpi, label_fits
+    monkeypatch.setattr(devices, 'usb_device_id', lambda device: 'MFG:EPSON;CMD:ESC/POS;MDL:TM-T88V;')
+    model = escpos.DRIVER.model_of('usb://0x04b8:0x0202')
+    # 512 dots on 80 mm paper, 360 on 58 mm
+    assert [(label.tape_size[0], label.dots_printable[0], label_dpi(label.identifier, False))
+            for label in escpos.LABELS if label_fits(label, model)] == [(80, 512, 180), (58, 360, 180)]
+
+
+@pytest.mark.parametrize('device, address', [
+    ('tcp://192.0.2.10', ('192.0.2.10', 9100)),
+    ('tcp://printer.local:9101', ('printer.local', 9101)),
+    ('tcp://[2001:db8::1]', ('2001:db8::1', 9100)),
+    ('tcp://[2001:db8::1]:9101', ('2001:db8::1', 9101)),
+])
+def test_address_of_a_printer_on_the_network(monkeypatch, device, address):
+    asked = []
+
+    class Socket:
+        def close(self):
+            pass
+    monkeypatch.setattr(protocol.socket, 'create_connection', lambda to, timeout: asked.append(to) or Socket())
+    with protocol.connect(device):
+        pass
+    assert asked == [address]
+
+
+def test_printer_on_the_network_that_takes_nothing_more(monkeypatch):
+    import socket
+    import threading
+    # A printer without paper takes no data: the job ends, as it holds the printer
+    monkeypatch.setattr(protocol, 'WRITE_WAIT', 1)
+    server = socket.create_server(('127.0.0.1', 0))
+    accepted = []
+    threading.Thread(target=lambda: accepted.append(server.accept()[0]), daemon=True).start()
+    failed = []
+
+    def send():
+        try:
+            with protocol.connect(f'tcp://127.0.0.1:{server.getsockname()[1]}') as c:
+                c.write(bytes(64 << 20))
+        except OSError as e:
+            failed.append(e)
+    thread = threading.Thread(target=send, daemon=True)
+    thread.start()
+    thread.join(20)
+    still_sending = thread.is_alive()
+    for conn in accepted:
+        conn.close()
+    server.close()
+    thread.join(5)
+    assert not still_sending
+    assert isinstance(failed[0], TimeoutError)

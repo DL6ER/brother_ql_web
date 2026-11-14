@@ -244,11 +244,11 @@ def test_device_id_asked_once(pyusb, monkeypatch):
     pyusb.append(epson)
     # The detection keeps the device ID it read
     assert devices.found_usb_printers() == ['usb://0x04b8:0x0e15/5443']
-    assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15/5443') == 'Epson/TM-T20II'
+    assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15/5443') == 'Epson/ESC-POS'
     assert len(asked) == 1
     # Configured without serial number: asked once, then kept
     for _ in range(2):
-        assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15') == 'Epson/TM-T20II'
+        assert escpos.DRIVER.model_of('usb://0x04b8:0x0e15') == 'Epson/ESC-POS'
     assert len(asked) == 2
 
 

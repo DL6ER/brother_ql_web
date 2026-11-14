@@ -9,7 +9,6 @@ import time
 
 from .. import backends
 
-DPI = 203
 # Rows per raster image, the printer takes them in pieces
 BAND = 256
 # How long the printer may take to answer a status request, in s
@@ -20,6 +19,8 @@ WRITE_CHUNK = 16384
 # Port of raw printing on the network, and how long connecting may take
 PORT = 9100
 CONNECT_WAIT = 10
+# How long a piece of a job may take to reach a printer on the network
+WRITE_WAIT = 15
 
 INIT = b'\x1b@'
 # Feed to the cutter and cut. A TM-T20II leaves one corner uncut, as its
@@ -135,8 +136,10 @@ class TcpConnection(Connection):
         self.socket.close()
 
     def write(self, data: bytes):
-        self.socket.settimeout(None)
-        self.socket.sendall(data)
+        # In pieces as on USB, the timeout counts for each
+        self.socket.settimeout(WRITE_WAIT)
+        for start in range(0, len(data), WRITE_CHUNK):
+            self.socket.sendall(data[start:start + WRITE_CHUNK])
 
     def ask(self, request: bytes) -> int:
         """The status byte the printer answers a DLE EOT request with."""

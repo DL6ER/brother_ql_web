@@ -278,3 +278,15 @@ def test_unknown_printer_model_is_refused_at_the_start(monkeypatch, model):
     monkeypatch.setenv('PRINTER_MODEL', model)
     with pytest.raises(ValueError, match='PRINTER_MODEL'):
         create_app()
+
+
+@pytest.mark.parametrize('name', ['TM-T20II', 'Epson/TM-T20II', 'Epson/ESC-POS'])
+def test_names_of_the_receipt_printer_before(monkeypatch, name):
+    monkeypatch.setenv('PRINTERS', f'Kitchen:{name}=file:///dev/usb/lp0')
+    assert create_app().config['PRINTERS'] == [('Epson/ESC-POS', 'file:///dev/usb/lp0', 'Kitchen')]
+    monkeypatch.delenv('PRINTERS')
+    monkeypatch.setenv('PRINTER_MODEL', name)
+    app = create_app()
+    assert app.config['PRINTER_MODEL'] == 'Epson/ESC-POS'
+    parse_args(app, ['--model', name])
+    assert app.config['PRINTER_MODEL'] == 'Epson/ESC-POS'
