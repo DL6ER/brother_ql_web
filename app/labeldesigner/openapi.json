@@ -522,6 +522,86 @@
         }
       }
     },
+    "/labeldesigner/api/repository/tags": {
+      "post": {
+        "summary": "Change the tags of a saved label",
+        "description": "The rest of the saved label stays as it is.",
+        "operationId": "repositoryTags",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "tags"],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "File name of the saved label."
+                  },
+                  "tags": {
+                    "description": "The tags, as for saving a label. An empty list removes them.",
+                    "oneOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Changed, with the tags as they are kept.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request was refused, `message` says why.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No label is saved under the name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/labeldesigner/api/repository/load": {
       "get": {
         "summary": "Load a saved label",
@@ -1969,6 +2049,26 @@
                 "examples": [
                   "image/png"
                 ]
+              },
+              "tags": {
+                "description": "Tags the label designer groups saved labels by, a list or texts with commas between them, at most 20 of at most 40 characters each. They are trimmed and split at commas, and each is kept once whatever its case. A label saved again without `tags` keeps those it had, an empty list removes them.",
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "examples": [
+                  [
+                    "Kitchen",
+                    "Freezer"
+                  ]
+                ]
               }
             }
           },
@@ -1996,6 +2096,13 @@
           "mtime": {
             "type": "integer",
             "description": "Time saved, Unix time."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags of the label, empty for none."
           },
           "size": {
             "type": "integer",
