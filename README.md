@@ -16,7 +16,7 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Brother | QL-800, QL-810W, QL-820NWB | up to 62 mm wide, also black/red |
 | Brother | QL-1050, QL-1060N, QL-1100, QL-1110NWB, QL-1115NWB | up to 103 mm wide, e.g. 4 x 6 in shipping labels |
 | Brother | VC-500W | 9 to 50 mm wide ZINK tape in full color, about 40 s per label |
-| Epson | TM-T20II (USB, ESC/POS) | 80 and 58 mm receipt paper, cut |
+| Epson | ESC/POS receipt printers (USB or network), tried on a TM-T20II: `Epson/ESC-POS` with a 203 dpi head, `Epson/ESC-POS-180` with a 180 dpi one like the TM-T88 series, found by its device ID on USB | 80 and 58 mm receipt paper, cut, a blank lead of 12 mm before each receipt as on a TM-T20II |
 | Niimbot | D110_M (Bluetooth) | 12 to 15 mm wide die-cut thermal labels, torn off, printed on 12 x 40 mm only |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 
@@ -75,8 +75,11 @@ To detect printers automatically, also ones plugged in later and network printer
     network_mode: host
     volumes:
       - /dev/usb:/dev/usb
+      - /dev/bus/usb:/dev/bus/usb
       - ./labels:/app/labels
 ```
+
+`/dev/usb` holds the printers as `/dev/usb/lp<N>`, `/dev/bus/usb` the USB devices that `usb://<vendor>:<product>` printers are reached through. A printer gets a new device there each time it is plugged in or switched on, so the folder is mounted rather than single devices given. Without `privileged`, the container may use them with `device_cgroup_rules: ['c 189:* rmw']` next to the volume.
 
 ### Image tags
 
@@ -97,7 +100,7 @@ The navbar shows the version and build time of the running image, please add the
 | Environment variable | Meaning | Default |
 |---|---|---|
 | `PRINTER_PRINTER` | The printer: `file:///dev/usb/lp<N>` (Linux only), `usb://<vendor>:<product>[/<serial number>]` (Brother and Epson printers, also on macOS; on Windows untested, PyUSB needs the WinUSB driver for the printer, e.g. installed with Zadig; the serial number tells printers of the same model apart), `tcp://<host>` (an IPv6 address in brackets), a VC-500W on the network as `vc500w://<host>`, a PUQU Q00, Reekon P1 Tagger or Niimbot D110_M as `bt://<MAC>[/<RFCOMM channel>]` (channel 2 on a PUQU, 1 on a Niimbot if left out; paired with the computer for a Niimbot; in a container only with `network_mode: host`), or `?` to detect printers automatically | `?` |
-| `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer. Models of other makers than Brother are named with their maker, e.g. `PUQU/Q00` or `Epson/TM-T20II`, Brother ones with or without it (`Brother/QL-800`). | `QL-800` |
+| `PRINTER_MODEL` | Model of a printer that does not report it, e.g. a network printer. Models of other makers than Brother are named with their maker, e.g. `PUQU/Q00` or `Epson/ESC-POS`, Brother ones with or without it (`Brother/QL-800`). | `QL-800` |
 | `PRINTERS` | Several printers of different models instead of `PRINTER_PRINTER` and `PRINTER_MODEL`, as `<model>=<printer>`, comma-separated, e.g., `QL-700=usb://0x04f9:0x2042,QL-1100=file:///dev/usb/lp1,PUQU/Q00=bt://<MAC>`, the models as for `PRINTER_MODEL`. A name in front, e.g., `Kitchen:QL-700=usb://0x04f9:0x2042`, is shown in the label designer, and requests may choose the printer by it (`printer=Kitchen`). There is no detection, each printer keeps its model and its own label settings in the browser, requests that name no printer go to the first one. The simulator is offered only when listed, e.g., `QL-700=simulation`. | none |
 | `LABEL_DEFAULT_SIZE` | Label size the label designer starts with when the printer does not report its roll, e.g., the simulator. The name tells the kind: `62` or `102` is endless tape, `62x29` or `103x164` die-cut labels, `d24` round ones. | `62` |
 | `LABEL_DEFAULT_ORIENTATION` | `standard` or `rotated` | `standard` |

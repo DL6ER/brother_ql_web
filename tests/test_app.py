@@ -238,10 +238,11 @@ def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
     assert create_app().config['PRINTERS'] == [
         ('QL-700', 'usb://0x04f9:0x2042'),
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:46:4C'),
-        ('Epson/TM-T20II', 'file:///dev/usb/lp0', 'Kitchen'),
+        # ESC/POS is one model, its names before are taken
+        ('Epson/ESC-POS', 'file:///dev/usb/lp0', 'Kitchen'),
         # Their names before, taken for a while
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:AA:29'),
-        ('Epson/TM-T20II', 'file:///dev/usb/lp1'),
+        ('Epson/ESC-POS', 'file:///dev/usb/lp1'),
     ]
     # The maker is required for models other than Brother ones
     for value in ('TM-T88V=file:///dev/usb/lp0', 'Epson TM-T20II=file:///dev/usb/lp0', 'Brother/Q00=bt://CD:AC:BB:E0:46:4C'):
@@ -255,7 +256,7 @@ def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
     parse_args(app, ['--model', 'Brother/QL-800'])
     assert app.config['PRINTER_MODEL'] == 'QL-800'
     monkeypatch.setenv('PRINTER_MODEL', 'TM-T20II')
-    assert create_app().config['PRINTER_MODEL'] == 'Epson/TM-T20II'
+    assert create_app().config['PRINTER_MODEL'] == 'Epson/ESC-POS'
 
 
 def test_request_names_a_model_with_its_maker(tmp_path):
@@ -277,3 +278,15 @@ def test_unknown_printer_model_is_refused_at_the_start(monkeypatch, model):
     monkeypatch.setenv('PRINTER_MODEL', model)
     with pytest.raises(ValueError, match='PRINTER_MODEL'):
         create_app()
+
+
+@pytest.mark.parametrize('name', ['TM-T20II', 'Epson/TM-T20II', 'Epson/ESC-POS'])
+def test_names_of_the_receipt_printer_before(monkeypatch, name):
+    monkeypatch.setenv('PRINTERS', f'Kitchen:{name}=file:///dev/usb/lp0')
+    assert create_app().config['PRINTERS'] == [('Epson/ESC-POS', 'file:///dev/usb/lp0', 'Kitchen')]
+    monkeypatch.delenv('PRINTERS')
+    monkeypatch.setenv('PRINTER_MODEL', name)
+    app = create_app()
+    assert app.config['PRINTER_MODEL'] == 'Epson/ESC-POS'
+    parse_args(app, ['--model', name])
+    assert app.config['PRINTER_MODEL'] == 'Epson/ESC-POS'

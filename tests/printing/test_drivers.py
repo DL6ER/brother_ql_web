@@ -133,3 +133,9 @@ def test_models_of_other_makers_are_named_with_their_maker():
                 assert '/' not in model and drivers.canonical(f'Brother/{model}') == model
             else:
                 assert model.startswith(f'{driver.vendor}/') and drivers.canonical(model) == model
+
+
+def test_every_name_before_ends_at_a_model():
+    # canonical() looks a name up once
+    for name in drivers._ALIASES:
+        assert drivers.canonical(name) in drivers.MODELS, name

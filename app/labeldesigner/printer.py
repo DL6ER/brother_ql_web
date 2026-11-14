@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 # Where printers are looked for when PRINTER_PRINTER is '?'. The tests point
 # them elsewhere, so that they never find, let alone print on, a real printer.
 USB_PRINTER_DEVICES = [f'/dev/usb/lp{i}' for i in range(0, 11)]
+# Brother printers on USB, which the Brother driver asks for their model
+BROTHER_USB = 'usb://0x04f9:'
 ARP_TABLE = '/proc/net/arp'
 # Network printers that announce themselves (DNS-SD, as for Bonjour and
 # CUPS). Asking takes a second, the answer is kept for a minute.
@@ -287,10 +289,21 @@ def get_ptr_status(config: Config):
             if now - _last_scan_ts > 10:
                 logger.debug('Auto-detecting printers: scanning local USB and network')
                 found_list = []
-                for dev in USB_PRINTER_DEVICES:
-                    if not os.path.exists(dev):
+                # usblp's devices on Linux, then the printers PyUSB finds
+                # that usblp does not hold, e.g. all on macOS,
+                # those of a maker without a driver here left out
+                specs = [f"file://{dev}" for dev in USB_PRINTER_DEVICES if os.path.exists(dev)]
+                for spec in devices.found_usb_printers():
+                    fields = devices.device_id_fields(devices.usb_device_id(spec))
+                    driver, model = drivers.resolve(spec, fields.get('MDL', 'Unknown'))
+                    # Only where its driver reaches it, a VC-500W only through usblp
+                    if not any(pattern.fullmatch(spec) for pattern in driver.device_patterns):
                         continue
-                    spec = f"file://{dev}"
+                    # A Brother printer telling no device ID or Brother's raster commands tells its model in the status
+                    raster = spec.startswith(BROTHER_USB) and (not fields or 'PT-CBP' in fields.get('CMD', '').split(','))
+                    if model in drivers.MODELS or raster:
+                        specs.append(spec)
+                for spec in specs:
                     try:
                         # The configured model need not be the model of this
                         # printer. If it is busy before it ever answered, its

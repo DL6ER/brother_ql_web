@@ -21,7 +21,8 @@ _BY_LABEL = {label.identifier: driver for driver in DRIVERS for label in driver.
 # were their names before, they are taken for a while.
 _ALIASES = {f'{driver.vendor}/{model}': model for driver in (BROTHER, VC500W) for model in driver.models}
 _ALIASES['Q00'] = 'PUQU/Q00'
-_ALIASES['TM-T20II'] = 'Epson/TM-T20II'
+# Names before ESC/POS was one model for every printer
+_ALIASES['TM-T20II'] = _ALIASES['Epson/TM-T20II'] = 'Epson/ESC-POS'
 
 
 def canonical(model: str) -> str:
