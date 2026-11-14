@@ -1,9 +1,11 @@
 """Cable flags in the label designer: the checkbox, the diameter of the
 cable, and labels that cannot be flags."""
 
+from urllib.parse import parse_qs
+
 import pytest
 
-from tests.browser.helpers import kept, preview_size, save_as, type_line, wait_for_preview
+from tests.browser.helpers import kept, preview_size, printed, save_as, set_tape, type_line, wait_for_preview
 from tests.browser.test_printing import fake_printer
 
 TAPE = 'Cable flags need continuous tape'
@@ -54,22 +56,19 @@ def test_cable_diameter_changes_the_preview(designer):
 
 
 def test_cable_flag_cannot_be_ticked_on_die_cut_labels(designer):
-    designer.select_option('#edSize', '62x29')
-    wait_for_preview(designer)
+    set_tape(designer, '62x29')
     assert designer.is_disabled('#edFlag')
     assert designer.get_attribute('#edFlagRow', 'title') == TAPE
 
 
-def test_die_cut_labels_turn_the_cable_flag_off_and_undo_brings_it_back(designer):
+def test_die_cut_labels_show_a_cable_flag_without_it_and_its_own_tape_brings_it_back(designer):
     type_line(designer, 0, 'Router')
     _flag(designer)
     kept(designer)
-    designer.select_option('#edSize', '62x29')
-    wait_for_preview(designer)
+    set_tape(designer, '62x29')
     assert not designer.is_checked('#edFlag')
-    designer.wait_for_selector('#toast:has-text("Cable flag turned off, it needs continuous tape")')
-    designer.click('#toast button')
-    wait_for_preview(designer)
+    assert designer.inner_text('#edMade').endswith(f'{TAPE}.')
+    set_tape(designer, '62')
     assert designer.evaluate('() => [S.edit.design.label_size, S.edit.design.cable_flag]') == ['62', '1']
     assert designer.is_checked('#edFlag')
 
@@ -92,31 +91,19 @@ def test_a_stored_cable_flag_is_read_as_the_server_reads_it(designer, value, on)
     assert designer.is_checked('#edFlag') == on
 
 
-def test_switching_to_the_loaded_die_cut_labels_turns_the_cable_flag_off(designer):
+def test_a_cable_flag_on_loaded_die_cut_labels_prints_without_it(designer):
     fake_printer(designer, media_width=29, media_length=90)
-    type_line(designer, 0, 'Router')
-    _flag(designer)
-    designer.click('#edUseTape')
+    designer.evaluate("""() => openEditor({ title: 'Router', design: Object.assign(baseDesign('62'),
+        { text: [L('Router', 40)], cable_flag: '1' }) })""")
     wait_for_preview(designer)
-    assert designer.input_value('#edSize') == '29x90' and not designer.is_checked('#edFlag')
-    designer.wait_for_selector('#toast:has-text("Cable flag turned off, it needs continuous tape")')
-
-
-def test_tape_guard_offers_no_die_cut_labels_for_a_cable_flag(designer):
-    fake_printer(designer, media_width=29, media_length=90)
-    type_line(designer, 0, 'Router')
-    _flag(designer)
+    assert designer.evaluate('() => S.edit.design.label_size') == '29x90' and not designer.is_checked('#edFlag')
+    assert TAPE in designer.inner_text('#edMade')
+    sent = []
+    designer.route('**/api/print', lambda route: (sent.append(route.request.post_data_buffer), route.continue_()))
     designer.click('#edPrint')
-    designer.wait_for_selector('.sheet h2:text-is("This label needs 62 mm endless")')
-    assert designer.locator('.sheet [data-r="adapt"]').count() == 0
-    assert TAPE in designer.inner_text('.sheet')
-    designer.click('.sheet [data-r="cancel"]')
-    # Without the flag the label can be printed on the labels loaded
-    designer.uncheck('#edFlag')
-    wait_for_preview(designer)
-    designer.click('#edPrint')
-    designer.wait_for_selector('.sheet [data-r="adapt"]')
-    designer.click('.sheet [data-r="cancel"]')
+    assert printed(designer) == ['printed']
+    assert parse_qs(sent[0].decode())['cable_flag'] == ['0']
+    assert designer.evaluate('() => S.history[0].design.cable_flag') == '1'
 
 
 def test_saved_cable_flag_opens_as_a_cable_flag(designer):
@@ -125,7 +112,7 @@ def test_saved_cable_flag_opens_as_a_cable_flag(designer):
     designer.fill('#edCable', '8')
     wait_for_preview(designer)
     save_as(designer, 'Patch')
-    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('\"Patch\" is now one of your saved labels')")
+    designer.wait_for_function("() => document.getElementById('toast').innerText.includes('Saved \"Patch\" to your labels as 62 mm endless label')")
     designer.evaluate("""async () => openEditor({ title: 'Patch',
         design: await itemDesign(savedItem({ name: 'Patch.json', title: 'Patch' })) })""")
     wait_for_preview(designer)

@@ -20,14 +20,14 @@ Design and print labels 100% offline. Labelburg is a web interface and REST API 
 | Niimbot | D110_M (Bluetooth) | 12 to 15 mm wide die-cut thermal labels, torn off, printed on 12 x 40 mm only |
 | PUQU | Q00 (Bluetooth), also sold as the [Reekon P1 Tagger](https://reekon.tools/products/p1-tagger-construction-printer) (P1L) | 50 x 30, 50 x 80, 40 x 30 and 40 x 50 mm die-cut thermal labels, torn off |
 
-USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer offers only the label sizes the selected printer can print and tells you when another label is loaded.
+USB printers are detected automatically, also one on another computer through [USB/IP](docs/usbip.md), network printers with some limits. The label designer shows and prints every label on the tape loaded in the printer and offers only the label sizes it can print.
 
 ## Features
 
-- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, optionally shrunk to fit the label or made as large as fits, placed at the top, in the middle or at the bottom of die-cut labels
+- **Text:** font, size, alignment and line spacing for each line, inverted text, checkboxes for to-do lists, red text on black/red labels and any color on the VC-500W, long lines wrapped, optionally shrunk to fit the label or made as large as fits, placed at the top, in the middle or at the bottom of die-cut labels
 - **Codes:** QR codes and barcodes (EAN, UPC, Code 128, Code 39, ITF, GS1-128, ISBN and more), with or without text
-- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once and stepped through in the preview, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red, on the VC-500W stronger contrast for light drawings (suggested when an image looks faint)
-- **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, UUIDs, random strings and selected environment variables, in the text and in codes
+- **Images:** PDFs, one label per page if you like, and dozens of image formats (PNG, JPG, WEBP, AVIF, GIF, TIFF, BMP and many more), dropped, chosen or pasted, several at once, stepped through in the preview and removed one by one, alone, with text or with text and a code, with auto-fit, auto-crop, scaling, rotation and conversion to black/white or black/red, on the VC-500W stronger contrast for light drawings (suggested when an image looks faint)
+- **Templates:** blanks that are filled in when printing (text, numbers or dates, with a default if you like), counters, date and time, also counted from today (e.g., best before in 5 days), UUIDs, random strings and selected environment variables, in the text and in codes
 - **Icons:** the 7400 [Material Design Icons](https://pictogrammers.com/library/mdi/) as `{{mdi:<name>}}` (e.g. `{{mdi:lightbulb}}`), next to text in the same line, shown and found by name in the symbol picker
 - **Labels:** save, load and print labels, export and import them as JSON, or start from one of about 680 demo labels in English and German, e.g. addresses, safety signs, GHS hazard labels, name badges, price tags and pictures for kids
 - **Printers:** several printers at once, each with a name if you like, and a simulator to try everything without a printer

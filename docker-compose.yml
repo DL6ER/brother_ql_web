@@ -11,12 +11,12 @@ services:
       - LABEL_DEFAULT_SIZE=62
       - LABEL_DEFAULT_ORIENTATION=standard
       - PRINTER_MODEL=QL-800
-      - PRINTER_PRINTER=file:///dev/usb/lp0
-#    devices:
-#      - "/dev/usb/lp0:/dev/usb/lp0"
+#      - PRINTER_PRINTER=file:///dev/usb/lp0 # only this printer, no detection
+    privileged: true # needed to use the USB printers in /dev/usb
     volumes:
       - ./labels:/app/labels
       - /etc/timezone:/etc/timezone:ro
+      - /dev/usb:/dev/usb
     network_mode: host # needed for network printer scanning
 #    command: >
 #      --model QL-800

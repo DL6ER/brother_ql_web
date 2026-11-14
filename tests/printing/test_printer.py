@@ -221,6 +221,23 @@ def test_busy_printer_is_scanned_again(client, monkeypatch):
     assert lp0(client.get('/labeldesigner/api/printer_status').get_json())['status_type'] == 'Reply to status request'
 
 
+def test_configured_usb_printer_is_listed(client):
+    # The label designer offers only the printers of the list
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert [p['path'] for p in status['printers']] == [DEVICE, 'simulation']
+    assert status['selected'] == DEVICE
+    assert status['printers'][0]['status_type'] == status['status_type'] == 'Reply to status request'
+
+
+def test_configured_usb_printer_without_device_file_is_listed(client, monkeypatch):
+    def gone(device_specifier):
+        raise FileNotFoundError(errno.ENOENT, 'No such file or directory', '/dev/usb/lp0')
+    monkeypatch.setattr(backends, 'KernelPrinter', gone)
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert [p['path'] for p in status['printers']] == [DEVICE, 'simulation']
+    assert status['printers'][0]['errors'] == status['errors'] == ['The printer is switched off or not connected']
+
+
 def test_label_offset_corrections():
     from app.labeldesigner.drivers.brother.labels import BY_ID
     # Measured on a QL-1100: -6 centers the 103 x 164 mm die-cut label

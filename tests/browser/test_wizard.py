@@ -2,6 +2,7 @@
 search."""
 
 from tests.browser.helpers import printed, wait_for_preview
+from tests.browser.test_printing import fake_printer
 
 
 def test_looks_follow_typing_one_batch_at_a_time(designer):
@@ -118,19 +119,13 @@ def test_demo_labels(designer):
     designer.click('[data-tab="wizard"]')
     designer.click('.lib-nav [data-cat="signs"]')
     assert designer.inner_text('#libTitle') == 'Safety signs'
-    # Those for the tape in the printer come first and are counted, the others dimmed
-    fits = designer.eval_on_selector_all('#libGrid .thumb', 'thumbs => thumbs.map(t => !t.classList.contains("other"))')
+    # Those for the tape in the printer come first and are counted. The
+    # simulator does not say which tape it has, none is placed on it.
+    fits = designer.evaluate("() => libItems('signs').map(i => fitsTape(i.size))")
     count = int(designer.inner_text('.lib-nav [data-cat="signs"] .n'))
     assert 0 < count < len(fits) and fits == [True] * count + [False] * (len(fits) - count)
-    # What dimmed means is said, where there are dimmed ones
-    tape = designer.evaluate('() => sizeName(S.tape)')
-    assert designer.is_visible('#libOther')
-    assert designer.inner_text('#libOther') == f'Dimmed labels are made for another label size than {tape}.'
-    for cat in ('saved', 'printed'):
-        designer.click(f'.lib-nav [data-cat="{cat}"]')
-        assert designer.is_visible('#libOther') == (designer.locator('#libGrid .thumb.other').count() > 0)
-    assert designer.is_hidden('#libOther')
-    designer.click('.lib-nav [data-cat="signs"]')
+    subs = designer.eval_on_selector_all('#libGrid .thumb .s', 'subs => subs.map(s => s.textContent)')
+    assert not any(sub.startswith('Made for ') for sub in subs)
     designer.wait_for_function("() => document.querySelector('#libGrid .thumb img').src.startsWith('blob:')")
     designer.click('#libGrid .thumb:has(.t:text-is("Fire extinguisher"))')
     wait_for_preview(designer, '#libStage')
@@ -139,6 +134,24 @@ def test_demo_labels(designer):
     wait_for_preview(designer)
     assert designer.evaluate('() => [S.edit.design.label_size, S.edit.design.image.name]') == ['62', 'fire-extinguisher.png']
     assert designer.evaluate('() => S.edit.design.text.map(l => l.text)') == ['Fire', 'extinguisher']
+
+
+def test_templates_are_shown_on_the_tape_in_the_printer(designer):
+    fake_printer(designer, media_width=62, media_length=0)
+    asked = []
+    designer.on('request', lambda request: asked.append(request.url))
+    designer.click('[data-tab="wizard"]')
+    designer.click('.lib-nav [data-cat="doors"]')
+    door = designer.locator('#libGrid .thumb:has(.t:text-is("Meeting room")):has(.s:text-is("Made for 29 x 90 mm"))')
+    door.scroll_into_view_if_needed()
+    designer.wait_for_function('img => img.complete && img.naturalWidth > 0', arg=door.locator('img').element_handle())
+    # Drawn here on the tape in the printer, not by the server on its own
+    assert any('/demos/load?id=doors%2F002-meeting-room-29x90.json' in url for url in asked)
+    assert not any('/demos/preview?id=doors%2F002-meeting-room-29x90.json' in url for url in asked)
+    door.click()
+    wait_for_preview(designer, '#libStage')
+    assert designer.inner_text('#libDetail .badge') == 'Made for 29 x 90 mm'
+    assert designer.inner_text('#libStage .dim-y') == '62 mm'
 
 
 def test_demo_labels_in_german(designer):

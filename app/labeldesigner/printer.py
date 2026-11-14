@@ -373,31 +373,19 @@ def get_ptr_status(config: Config):
                     'selected': None,
                     **status
                 }
+        # The label designer offers only the printers of the list
         driver, model = drivers.resolve(device_specifier, default_model)
-        # A Brother printer on USB is shown at the top only, like before the
-        # list of printers. The others are listed with the simulator.
-        if driver is not drivers.BROTHER or device_specifier.startswith('tcp://'):
-            try:
-                printer = driver.status(device_specifier, model)
-            except driver.errors as e:
-                logger.info('Status query of %s failed: %s', device_specifier, e)
-                printer = devices.failed_printer_state(device_specifier, e, model)
-            status.update(printer)
-            status['printers'] = [printer, SIMULATOR_PRINTER.copy()]
-            status['selected'] = device_specifier
-            return status
-        else:
-            printer_state = driver.status(device_specifier, model)
-            for key, value in printer_state.items():
-                status[key] = value
-        # Always include simulator in returned printers list
-        sim = SIMULATOR_PRINTER.copy()
-        status['red_support'] = _red_support(status['model'])
-        return {
-            'printers': [sim],
-            'selected': status.get('path'),
-            **status
-        }
+        try:
+            printer = driver.status(device_specifier, model)
+        except driver.errors as e:
+            logger.info('Status query of %s failed: %s', device_specifier, e)
+            printer = devices.failed_printer_state(device_specifier, e, model)
+        printer.setdefault('path', device_specifier)
+        printer.setdefault('red_support', _red_support(printer.get('model', model)))
+        status.update(printer)
+        status['printers'] = [printer, SIMULATOR_PRINTER.copy()]
+        status['selected'] = device_specifier
+        return status
     except Exception as e:
         logger.exception("Printer status error: %s", e)
         status['errors'] = ['The status of the printer could not be read, the log of the server names the reason']
