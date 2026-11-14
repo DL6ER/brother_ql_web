@@ -103,7 +103,8 @@ def test_list_labels_with_their_blanks(client, tmp_path):
     client.application.config['LABEL_REPOSITORY_DIR'] = str(repo)
     labels = tool(client, 'list_labels')['structuredContent']['result']
     assert labels == [{'name': 'Jar.json', 'title': 'Jar.json', 'label_size': '62', 'tags': ['Kitchen'],
-                       'blanks': [{'name': 'Content'}, {'name': 'Made', 'type': 'date'}]}]
+                       'blanks': [{'name': 'Content'}, {'name': 'Made', 'type': 'date'}],
+                       'text': ['{{blank:Content}}', '{{blank:Made}}'], 'code': None}]
 
 
 @pytest.mark.parametrize('status, sizes', [
@@ -234,8 +235,8 @@ def test_without_a_label_size_the_one_loaded(client, tmp_path, monkeypatch):
     assert not result.get('isError') and printed(tmp_path) == 1
 
 
-@pytest.mark.parametrize('loaded, told', [([], 'does not tell which label is loaded, it takes: 12'),
-                                          (['29x90', '39x90'], 'may have one of these loaded: 29x90, 39x90')])
+@pytest.mark.parametrize('loaded, told', [([], 'does not tell which label is loaded, it takes: 12: '),
+                                          (['29x90', '39x90'], 'may have one of these loaded: 29x90: ')])
 def test_without_a_label_size_the_user_is_asked(client, tmp_path, monkeypatch, loaded, told):
     monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: loaded)
     result = tool(client, 'print_text', printer='Kitchen', count=1, lines=['x'])
@@ -245,11 +246,18 @@ def test_without_a_label_size_the_user_is_asked(client, tmp_path, monkeypatch, l
 
 
 def test_a_saved_label_asks_whether_its_size_is_loaded(client, tmp_path, monkeypatch):
-    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: [])
+    # A printer that tells no label size, not the simulator
+    monkeypatch.setattr(mcp_tools.Tools, '_printers', lambda self: [{'name': 'Kitchen', 'path': 'tcp://192.0.2.10', 'model': 'QL-800'}])
     result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', count=1)
-    assert result['content'][0]['text'].startswith('Nothing printed yet. Ask the user whether 62 is loaded in Kitchen')
+    assert result['content'][0]['text'].startswith('Nothing printed yet. Ask the user whether 62')
     assert printed(tmp_path) == 0
-    result = tool(client, 'print_label', name='QR-Example.json', printer='Kitchen', count=1, label_size='62')
+
+
+def test_a_saved_label_prints_on_the_simulator_on_its_size(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Badge.json', 'label_size': '62x29', 'text': [{'text': 'Carla', 'size': '60'}]}).status_code == 200
+    result = tool(client, 'print_label', name='Badge.json', printer='Kitchen', count=1)
     assert not result.get('isError') and printed(tmp_path) == 1
 
 
@@ -258,3 +266,154 @@ def test_turned_off_with_mcp_enabled_false(tmp_path, monkeypatch):
     client = make_client(tmp_path)
     assert call(client, 'tools/list')[0] == 404
     assert client.get('/mcp/preview.png').status_code == 404
+
+
+def test_names_of_trusted_hosts_are_answered(client):
+    client.application.config['TRUSTED_HOSTS'] = ['labels.example.com']
+    response = client.post('/mcp', json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'},
+                           headers=HEADERS, base_url='http://labels.example.com')
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize('spec', [{'path': '/preview', 'json': {}, 'data': {}}, {'path': '/preview', 'data': [1, 2]}])
+def test_a_broken_preview_address_is_refused(client, spec):
+    address = mcp_tools.preview_address('http://localhost', spec)
+    assert client.get(address.removeprefix('http://localhost')).status_code == 400
+
+
+def test_the_user_is_asked_with_the_names_of_the_label_sizes(client, tmp_path, monkeypatch):
+    # A printer that tells no label size
+    monkeypatch.setattr(mcp_tools.Tools, '_printers', lambda self: [{'name': 'Kitchen', 'path': 'tcp://192.0.2.10', 'model': 'QL-800'}])
+    text = tool(client, 'print_text', printer='Kitchen', count=1, lines=['x'])['content'][0]['text']
+    assert '; 62: 62 mm endless (DK-22205 / DK-2205); ' in text and 'd24: 24 mm round (DK-11218 / DK-1218)' in text
+    # Some names have a comma
+    assert '54: 54 mm endless, non-adhesive (DK-N55224 / DK-N5224); ' in text
+    result = tool(client, 'print_text', printer='Kitchen', label_size='62mm endless', count=1, lines=['x'])
+    assert '62: 62 mm endless (DK-22205 / DK-2205)' in result['content'][0]['text']
+
+
+@pytest.mark.parametrize('device, printer', [('file:///dev/usb/lp9', 'QL-800'), ('simulation', 'simulation')])
+def test_the_simulator_only_where_configured(tmp_path, device, printer):
+    client = make_client(tmp_path)
+    client.application.config['PRINTER_PRINTER'] = device
+    assert [p['device'] for p in tool(client, 'list_printers')['structuredContent']['result']] == [device]
+    result = tool(client, 'print_text', printer=printer, label_size='62', count=1, lines=['x'])
+    assert 'names several printers' not in result['content'][0]['text']
+
+
+def test_list_labels_with_what_they_say(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Kopie-vorab.json', 'label_size': '62', 'print_type': 'qrcode_text', 'code_text': 'https://example.com',
+        'text': [{'text': 'URGENT', 'size': '60'}, {'text': 'for {{blank:Name}}', 'size': '40'}]}).status_code == 200
+    label = tool(client, 'list_labels')['structuredContent']['result'][0]
+    assert (label['text'], label['code']) == (['URGENT', 'for {{blank:Name}}'], 'https://example.com')
+
+
+def test_pages_of_a_saved_pdf_count_against_the_cap(client, tmp_path):
+    from tests.helpers import _pdf
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Manual.json', 'label_size': '62', 'print_type': 'image', 'pdf_pages': 'all',
+        'image_data': base64.b64encode(_pdf(*[(300, 150)] * 5)).decode(), 'image_mime': 'application/pdf'}).status_code == 200
+    result = tool(client, 'print_label', name='Manual.json', printer='Kitchen', label_size='62', count=10)
+    assert result['isError'] and 'At most 10 labels per call' in result['content'][0]['text']
+    assert printed(tmp_path) == 0
+
+
+def test_a_saved_label_by_its_name_without_json(client, tmp_path):
+    result = tool(client, 'print_label', name='QR-Example', printer='Kitchen', label_size='62', count=1)
+    assert not result.get('isError') and printed(tmp_path) == 1
+    assert not tool(client, 'preview_label', name='QR-Example').get('isError')
+
+
+def test_a_filling_names_only_blanks_of_the_label(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Badge.json', 'label_size': '62x29',
+        'text': [{'text': '{{blank:Name}}', 'size': '60'}, {'text': '{{blank:Team}}', 'size': '40'}]}).status_code == 200
+    result = tool(client, 'print_label', name='Badge.json', printer='Kitchen', label_size='62x29', count=1,
+                  fillings=[{'name': 'Carla'}])
+    assert result['isError'] and 'its blanks are: Name, Team' in result['content'][0]['text'] and printed(tmp_path) == 0
+    result = tool(client, 'preview_label', name='Badge.json', blanks={'name': 'Carla'})
+    assert result['isError'] and 'its blanks are: Name, Team' in result['content'][0]['text']
+
+
+def test_a_saved_label_for_another_size_is_refused_in_its_preview(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(mcp_tools, 'loaded_label_sizes', lambda printer: ['62x29'])
+    message = 'Kitchen has 62x29 loaded, QR-Example.json is for 62. Ask the user to load 62: 62 mm endless (DK-22205 / DK-2205).'
+    for tool_name, arguments in (('preview_label', {}), ('print_label', {'count': 1})):
+        result = tool(client, tool_name, name='QR-Example.json', printer='Kitchen', **arguments)
+        assert result['isError'] and message in result['content'][0]['text']
+    assert tool(client, 'preview_label', name='QR-Example.json', label_size='62x29')['isError']
+    assert printed(tmp_path) == 0
+
+
+def test_a_refused_filling_prints_none_of_them(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Asset.json', 'label_size': '62', 'print_type': 'qrcode_text', 'barcode_type': 'EAN13',
+        'code_text': '{{blank:Code}}', 'text': [{'text': 'Asset', 'size': '40'}]}).status_code == 200
+    result = tool(client, 'print_label', name='Asset.json', printer='Kitchen', label_size='62', count=1,
+                  fillings=[{'Code': '400638133393'}, {'Code': '400638133394'}, {'Code': '12'}])
+    assert result['isError'] and printed(tmp_path) == 0
+
+
+def test_the_logging_of_the_app_is_kept(tmp_path, monkeypatch):
+    import logging
+    root = logging.getLogger()
+    # As under gunicorn: no handler on the root logger, level WARNING
+    monkeypatch.setattr(root, 'handlers', [])
+    monkeypatch.setattr(root, 'level', logging.WARNING)
+    assert call(make_client(tmp_path), 'tools/list')[0] == 200
+    assert (root.level, root.handlers) == (logging.WARNING, [])
+
+
+def test_the_image_returned_is_the_one_printed(client, tmp_path):
+    result = tool(client, 'print_text', printer='Kitchen', label_size='62', count=1, lines=['ID {{short-uuid}}'])
+    returned = Image.open(io.BytesIO(base64.b64decode(result['content'][1]['data'])))
+    folder = tmp_path / 'simulated_labels'
+    label = Image.open(folder / os.listdir(folder)[0])
+    assert returned.convert('L').tobytes() == label.convert('L').tobytes()
+
+
+def test_home_assistant_gets_the_addresses_without_the_image_data(client):
+    status, answer = call(client, 'tools/call', {'name': 'preview_label', 'arguments': {'lines': ['Chili'], 'label_size': '62'}},
+                          **{'User-Agent': 'HomeAssistant/2026.11.0 httpx2/1.0.0 Python/3.14'})
+    content = answer['result']['content']
+    assert status == 200 and [c['type'] for c in content] == ['text']
+    assert '/mcp/preview.png?r=' in content[0]['text']
+
+
+def test_a_date_blank_takes_only_a_date(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Freezer.json', 'label_size': '62',
+        'text': [{'text': '{{blank:Content}}', 'size': '60'}, {'text': 'Eat by {{blank:Eat by}}', 'size': '40'}],
+        'fields': {'Eat by': {'type': 'date', 'format': '%d.%m.%Y', 'default': '+3m'}}}).status_code == 200
+    filling = {'Content': 'Chili', 'Eat by': 'in 2 months'}
+    result = tool(client, 'print_label', name='Freezer.json', printer='Kitchen', label_size='62', count=1, fillings=[filling])
+    assert result['isError'] and 'Eat by is a date: give e.g. 2026-11-03 or +2m' in result['content'][0]['text']
+    assert tool(client, 'preview_label', name='Freezer.json', blanks=filling)['isError']
+    assert printed(tmp_path) == 0
+    result = tool(client, 'print_label', name='Freezer.json', printer='Kitchen', label_size='62', count=1,
+                  fillings=[{'Content': 'Chili', 'Eat by': '+2m'}])
+    assert not result.get('isError') and printed(tmp_path) == 1
+
+
+def test_a_label_cut_off_is_told_and_not_printed(client, tmp_path):
+    client.application.config['LABEL_REPOSITORY_DIR'] = str(tmp_path / 'repo')
+    assert client.post('/labeldesigner/api/repository/save', json={
+        'name': 'Badge.json', 'label_size': '62x29', 'print_type': 'text', 'text_fit': 'none',
+        'text': [{'text': '{{blank:Name}}', 'size': '80'}]}).status_code == 200
+    name = {'Name': 'Maximilian-Alexander von Hohenzollern'}
+    assert 'part of it is cut off' in tool(client, 'preview_label', name='Badge.json', blanks=name)['content'][0]['text']
+    result = tool(client, 'print_label', name='Badge.json', printer='Kitchen', label_size='62x29', count=1, fillings=[name])
+    assert 'part of it is cut off' in result['content'][0]['text'] and printed(tmp_path) == 0
+
+
+def test_unknown_barcode_types_are_told_the_types(client, tmp_path):
+    result = tool(client, 'print_text', printer='Kitchen', label_size='62', count=1, code='4006381333931', code_type='ean-13')
+    assert result['isError'] and 'EAN13' in result['content'][0]['text'] and printed(tmp_path) == 0
+    tools = {t['name']: t for t in call(client, 'tools/list')[1]['result']['tools']}
+    assert all('EAN8' in tools[name]['description'] for name in ('print_text', 'preview_label'))

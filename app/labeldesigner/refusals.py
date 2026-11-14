@@ -8,6 +8,7 @@ the log of the server.
 import json
 import re
 
+import barcode
 from flask import current_app, has_app_context
 
 from barcode.errors import BarcodeError, BarcodeNotFoundError, IllegalCharacterError, NumberOfDigitsError, WrongCountryCodeError
@@ -96,13 +97,16 @@ PATTERNS = (
     (re.compile(r'(?s)A date offset is at most a hundred years, not .*'), 'A date offset is at most a hundred years'),
 )
 
+# The code types the API takes, also told by GET /api/barcodes
+BARCODE_TYPES = ['QR', *(code.upper() for code in barcode.PROVIDED_BARCODES)]
+
 # Errors by their kind, the first that applies
 KINDS = (
     (TextTooLong, 'Text is too long'),
     (NumberOfDigitsError, 'The barcode has the wrong number of digits for its type'),
     (IllegalCharacterError, 'The barcode has characters its type does not allow'),
     (WrongCountryCodeError, 'The barcode has a country code its type does not allow'),
-    (BarcodeNotFoundError, 'Unknown barcode type'),
+    (BarcodeNotFoundError, f'Unknown barcode type, it is one of {", ".join(BARCODE_TYPES)}'),
     (BarcodeError, 'The barcode cannot be made of this value'),
     (DataOverflowError, 'The QR code holds too much text'),
     (json.JSONDecodeError, 'The text lines are no valid JSON'),

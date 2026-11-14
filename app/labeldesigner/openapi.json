@@ -192,6 +192,17 @@
       "post": {
         "summary": "Print a label",
         "operationId": "print",
+        "parameters": [
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` adds the image of the first label printed, as the printer got it, as base64 in `image`.",
+            "schema": {
+              "type": "string",
+              "enum": ["png"]
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -727,6 +738,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "X-PDF-Selected-Pages": {
+                "description": "Number of the pages of a saved PDF `pdf_pages` selects, each printed as a label of its own.",
+                "schema": {
+                  "type": "integer"
+                }
               }
             },
             "content": {
@@ -853,6 +870,12 @@
                 "schema": {
                   "type": "string"
                 }
+              },
+              "X-PDF-Selected-Pages": {
+                "description": "Number of the pages of a saved PDF `pdf_pages` selects, each printed as a label of its own.",
+                "schema": {
+                  "type": "integer"
+                }
               }
             },
             "content": {
@@ -909,6 +932,15 @@
         "description": "The saved label is cut as saved with it (`cut`, `half_cut`, `chain`), unless the request names `cut` or `cut_once`: then the request decides all three.",
         "operationId": "repositoryPrint",
         "parameters": [
+          {
+            "name": "return_format",
+            "in": "query",
+            "description": "`png` adds the image of the first label printed, as the printer got it, as base64 in `image`.",
+            "schema": {
+              "type": "string",
+              "enum": ["png"]
+            }
+          },
           {
             "name": "name",
             "in": "query",
@@ -1609,6 +1641,10 @@
           "message": {
             "type": "string",
             "description": "Why it failed."
+          },
+          "image": {
+            "type": "string",
+            "description": "The image of the first label printed as base64 PNG, with `return_format=png`."
           }
         }
       },

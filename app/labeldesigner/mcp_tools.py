@@ -6,6 +6,7 @@ import asyncio
 import base64
 import ipaddress
 import json
+import logging
 import os
 import re
 import threading
@@ -14,8 +15,9 @@ from urllib.parse import urlsplit
 from werkzeug.sansio.utils import host_is_trusted
 from werkzeug.wrappers import Response
 
-from .label import BLANK_TEMPLATE
+from .label import BLANK_TEMPLATE, DATE_OFFSET, _iso_date
 from .label_names import LABELS, label_printers
+from .refusals import BARCODE_TYPES
 
 API = '/labeldesigner/api'
 # The image of a preview, for clients that show images only by their address,
@@ -47,11 +49,13 @@ def _hostname(host: str) -> str:
 def host_allowed(host: str, extra: list[str] | None = None, trusted: list[str] | None = None) -> bool:
     """Whether the endpoint answers requests for host, as Host or in Origin:
     names of the home network and those of MCP_HOSTS (extra), with
-    TRUSTED_HOSTS set only those of it. It protects against DNS rebinding,
-    which the MCP specification requires."""
+    TRUSTED_HOSTS set exactly its names, like the label designer. It
+    protects against DNS rebinding, which the MCP specification requires."""
     name = _hostname(host)
-    if not name or (trusted and not host_is_trusted(name, trusted)):
+    if not name:
         return False
+    if trusted:
+        return host_is_trusted(name, trusted)
     return local_host(name) or bool(extra and host_is_trusted(name, extra))
 
 
@@ -142,6 +146,14 @@ def find_printer(printers: list[dict], wanted: str) -> dict | None:
     return None
 
 
+def _named(sizes: list[str]) -> str:
+    """Label sizes with the names the label designer shows, e.g.
+    62: 62 mm endless (DK-22205 / DK-2205), joined with "; " as names
+    have commas."""
+    from .routes import _label_size_name
+    return '; '.join(f'{size}: {_label_size_name(size)}' for size in sizes)
+
+
 class AskUser(Exception):
     """Nothing done yet: the user is to be asked, e.g. which label is loaded."""
 
@@ -160,7 +172,7 @@ def label_size_for(model: str | None, label_size: str) -> str:
         raise ToolError(f'Label size {label_size} is one of {", ".join(found)}, give the printer' if found
                         else f'No label size {label_size}, give the printer to find out its sizes')
     if len(found) != 1:
-        raise ToolError(f'No label size {label_size} for this printer. Ask the user which of its sizes is loaded: {", ".join(takes)}')
+        raise ToolError(f'No label size {label_size} for this printer. Ask the user which of its sizes is loaded: {_named(takes)}')
     return found[0]
 
 
@@ -172,8 +184,12 @@ def preview_address(base_url: str, spec: dict) -> str:
 
 
 def _decoded(encoded: str) -> dict:
+    """The preview spec of an address, only as preview_label makes it: the
+    path and one object as json or data."""
     spec = json.loads(base64.urlsafe_b64decode(encoded + '=' * (-len(encoded) % 4)))
-    if not isinstance(spec, dict) or spec.get('path') not in PREVIEW_PATHS:
+    body = [key for key in ('json', 'data') if key in spec] if isinstance(spec, dict) else []
+    if (len(body) != 1 or spec.get('path') not in PREVIEW_PATHS
+            or not isinstance(spec[body[0]], dict) or set(spec) != {'path', *body}):
         raise ValueError('Not a preview')
     return spec
 
@@ -199,9 +215,10 @@ class Tools:
     def __init__(self, app):
         self.app = app
 
-    def _call(self, method: str, path: str, **kwargs):
-        """A request to the API, the response as JSON or bytes. One that is
-        refused raises ToolError with the message of the API."""
+    def _call(self, method: str, path: str, headers: dict | None = None, **kwargs):
+        """A request to the API, the response as JSON or bytes, its headers
+        put into headers. One that is refused raises ToolError with the
+        message of the API."""
         from mcp.server.mcpserver.exceptions import ToolError
         trusted = self.app.config.get('TRUSTED_HOSTS')
         client = self.app.test_client()
@@ -213,6 +230,8 @@ class Tools:
             return result
         if response.status_code >= 400:
             raise ToolError(f'Refused with {response.status_code}')
+        if headers is not None:
+            headers.update(response.headers)
         return response.data
 
     def _cap(self, count: int):
@@ -247,20 +266,27 @@ class Tools:
         # A QL printer that cannot tell a black and red roll: black
         if len(black) == 1 and all(size in (black[0], black[0] + 'red') for size in loaded):
             loaded = black if saved != black[0] + 'red' else loaded
-        if saved and saved in loaded:
+        # The simulator tells no label size, it takes the one of a saved label
+        if saved and (saved in loaded or not loaded and found.get('path') == 'simulation'):
             return saved
         if len(loaded) == 1:
             return loaded[0]
         name = found.get('name') or found.get('path')
         if saved:
-            raise AskUser(f'Nothing printed yet. Ask the user whether {saved} is loaded in {name}, then call again with label_size.')
+            raise AskUser(f'Nothing printed yet. Ask the user whether {_named([saved])} is loaded in {name}, then call again with label_size.')
         takes = loaded or [label.identifier for label in LABELS if found.get('model') in label_printers(label)]
         told = 'may have one of these loaded' if loaded else 'does not tell which label is loaded, it takes'
-        raise AskUser(f'Nothing done yet. {name} {told}: {", ".join(takes)}. Ask the user which one, then call again with label_size.')
+        raise AskUser(f'Nothing done yet. {name} {told}: {_named(takes)}. Ask the user which one, then call again with label_size.')
 
     def _printers(self) -> list[dict]:
         status = self._call('GET', '/printer_status')
-        return status.get('printers') or [status]
+        printers = status.get('printers') or [status]
+        # Without PRINTERS the label designer adds the simulator, offered
+        # here only as PRINTER_PRINTER
+        if not self.app.config.get('PRINTERS'):
+            simulator = self.app.config.get('PRINTER_PRINTER') == 'simulation'
+            printers = printers[:1] if simulator else [p for p in printers if p.get('path') != 'simulation']
+        return printers
 
     def _printer(self, printer: str) -> dict:
         from mcp.server.mcpserver.exceptions import ToolError
@@ -294,8 +320,43 @@ class Tools:
                     blank['default'] = defaults[name]
                 blanks.append(blank)
             labels.append({'name': entry['name'], 'title': entry.get('title') or entry['name'],
-                           'label_size': entry.get('label_size_id'), 'tags': data.get('tags') or [], 'blanks': blanks})
+                           'label_size': entry.get('label_size_id'), 'tags': data.get('tags') or [], 'blanks': blanks,
+                           'text': [line.get('text', '') for line in data.get('text', []) if isinstance(line, dict)],
+                           'code': (data.get('code_text') or None) if 'qrcode' in str(data.get('print_type')) else None})
         return labels
+
+    def _saved(self, name: str) -> dict:
+        """The saved label name names, with or without .json."""
+        from mcp.server.mcpserver.exceptions import ToolError
+        saved = next((label for label in self.list_labels() if label['name'] in (name, f'{name}.json')), None)
+        if saved is None:
+            raise ToolError(f'No saved label {name}, list_labels names them')
+        return saved
+
+    @staticmethod
+    def _filled(saved: dict, fillings: list[dict]):
+        """Refused where a filling names a blank the saved label does not
+        have, or gives a date blank anything but a date like 2026-11-03 or
+        one moved from today like +5d, as the API reads a date."""
+        from mcp.server.mcpserver.exceptions import ToolError
+        names = [blank['name'] for blank in saved['blanks']]
+        dates = [blank['name'] for blank in saved['blanks'] if blank.get('type') == 'date']
+        for filling in fillings:
+            for name, value in filling.items():
+                if name not in names:
+                    raise ToolError(f'{saved["name"]} has no blank {name}, its blanks are: {", ".join(names) or "none"}')
+                if name in dates and not (DATE_OFFSET.fullmatch(str(value).strip()) or _iso_date(str(value))):
+                    raise ToolError(f'{name} is a date: give e.g. 2026-11-03 or +2m (d days, w weeks, m months, y years from today)')
+
+    @staticmethod
+    def _same_size(saved: dict, found: dict | None, size: str | None):
+        """Refused where the saved label is for another label size than size,
+        the one given or loaded in the printer found."""
+        from mcp.server.mcpserver.exceptions import ToolError
+        if size and size != saved['label_size']:
+            where = (found.get('name') or found['path']) if found else 'The printer'
+            raise ToolError(f'{where} has {size} loaded, {saved["name"]} is for {saved["label_size"]}. '
+                            f'Ask the user to load {_named([saved["label_size"]])}.')
 
     @staticmethod
     def _text_label(lines: list[str], label_size: str, font_size: int, code: str | None, code_type: str) -> dict:
@@ -309,52 +370,77 @@ class Tools:
                       font_size: int, code: str | None, code_type: str, printer: str | None) -> dict:
         from mcp.server.mcpserver.exceptions import ToolError
         found = self._printer(printer) if printer else None
-        printer = found['path'] if found else None
+        device = found['path'] if found else None
+        if name:
+            saved = self._saved(name)
+            self._filled(saved, [blanks or {}])
+            if label_size:
+                size = label_size_for(found.get('model') if found else None, label_size)
+            else:
+                size = self._loaded(found, saved['label_size']) if found else None
+            self._same_size(saved, found, size)
+            body = {'name': saved['name'], 'blanks': blanks or {}}
+            if device:
+                body['printer'] = device
+            return {'path': '/repository/preview', 'json': body}
         if label_size:
             label_size = label_size_for(found.get('model') if found else None, label_size)
-        elif found and not name:
+        elif found:
             label_size = self._loaded(found)
-        if name:
-            body = {'name': name, 'blanks': blanks or {}}
-            if printer:
-                body['printer'] = printer
-            return {'path': '/repository/preview', 'json': body}
         if not (lines or code) or not label_size:
             raise ToolError('Give the name of a saved label, or lines or a code and a label size')
         form = self._text_label(lines or [], label_size, font_size, code, code_type)
-        if printer:
-            form['printer'] = printer
+        if device:
+            form['printer'] = device
         return {'path': '/preview', 'data': form}
 
-    def preview(self, spec: dict) -> bytes:
+    def preview(self, spec: dict, headers: dict | None = None) -> bytes:
         """The image of the preview spec, the path and the body of a request
-        to the API."""
-        return self._call('POST', spec['path'], **{k: v for k, v in spec.items() if k in ('json', 'data')})
+        to the API, its headers put into headers."""
+        return self._call('POST', spec['path'], headers=headers, **{k: v for k, v in spec.items() if k in ('json', 'data')})
 
-    def print_label(self, name: str, printer: str, label_size: str | None, fillings: list[dict], count: int) -> tuple[str, list[dict]]:
+    def checked(self, spec: dict) -> dict:
+        """The headers of the preview spec, what the API tells about the
+        label. Refused where the label designer warns about it, e.g. text
+        cut off: nothing is printed then."""
+        from mcp.server.mcpserver.exceptions import ToolError
+        headers = {}
+        self.preview(spec, headers)
+        if headers.get('X-Label-Warning'):
+            raise ToolError(f'Nothing printed: {headers["X-Label-Warning"]}')
+        return headers
+
+    def _printed(self, path: str, **kwargs) -> bytes:
+        """Prints, the image of the first label as the printer got it."""
+        return base64.b64decode(self._call('POST', f'{path}?return_format=png', **kwargs)['image'])
+
+    def print_label(self, name: str, printer: str, label_size: str | None, fillings: list[dict],
+                    count: int) -> tuple[str, list[dict], list[bytes]]:
         from mcp.server.mcpserver.exceptions import ToolError
         fillings = fillings or [{}]
-        self._cap(count * len(fillings))
-        saved = next((label for label in self.list_labels() if label['name'] == name), None)
-        if saved is None:
-            raise ToolError(f'No saved label {name}, list_labels names them')
+        saved = self._saved(name)
+        name = saved['name']
+        self._filled(saved, fillings)
         found, label_size = self._expected(printer, label_size, saved['label_size'])
-        if saved['label_size'] != label_size:
-            raise ToolError(f'{name} is for {saved["label_size"]}, not {label_size}')
+        self._same_size(saved, found, label_size)
         printer, device = found.get('name') or found['path'], found['path']
-        previews = []
-        for done, blanks in enumerate(fillings):
-            body = {'name': name, 'printer': device, 'blanks': blanks, 'print_count': count}
-            previews.append({'path': '/repository/preview', 'json': body})
-            self.preview(previews[-1])
+        specs = [{'path': '/repository/preview', 'json': {'name': name, 'printer': device, 'blanks': blanks}}
+                 for blanks in fillings]
+        # All of them are checked before the first one is printed, each page
+        # of a saved PDF prints as a label of its own
+        told = [self.checked(spec) for spec in specs]
+        labels = count * sum(int(headers.get('X-PDF-Selected-Pages') or 1) for headers in told)
+        self._cap(labels)
+        images = []
+        for done, spec in enumerate(specs):
             try:
-                self._call('POST', '/repository/print', json=body)
+                images.append(self._printed('/repository/print', json=dict(spec['json'], print_count=count)))
             except ToolError as e:
-                raise ToolError(f'{e} ({done * count} of {_labels(len(fillings) * count)} printed)') from None
-        return f'Printed {_labels(count * len(fillings))} of {name} on {printer}', previews
+                raise ToolError(f'{e} ({done * labels // len(specs)} of {_labels(labels)} printed)') from None
+        return f'Printed {_labels(labels)} of {name} on {printer}', specs, images
 
     def print_text(self, lines: list[str], printer: str, label_size: str | None, count: int, font_size: int,
-                   code: str | None, code_type: str) -> tuple[str, list[dict]]:
+                   code: str | None, code_type: str) -> tuple[str, list[dict], list[bytes]]:
         from mcp.server.mcpserver.exceptions import ToolError
         if not (lines or code):
             raise ToolError('Give lines or a code to print')
@@ -362,10 +448,10 @@ class Tools:
         found, label_size = self._expected(printer, label_size)
         printer = found.get('name') or found['path']
         form = dict(self._text_label(lines, label_size, font_size, code, code_type), printer=found['path'])
-        preview = {'path': '/preview', 'data': form}
-        self.preview(preview)
-        self._call('POST', '/print', data=dict(form, print_count=count))
-        return f'Printed {_labels(count)} on {printer}', [preview]
+        spec = {'path': '/preview', 'data': form}
+        self.checked(spec)
+        image = self._printed('/print', data=dict(form, print_count=count))
+        return f'Printed {_labels(count)} on {printer}', [spec], [image]
 
 
 def _server(app):
@@ -376,6 +462,9 @@ def _server(app):
     printing = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=False)
     # Claude Code asks before each print, also in its auto mode
     confirm = {'anthropic/requiresUserInteraction': True}
+    # MCPServer() calls logging.basicConfig(), the app keeps its own logging
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
     server = MCPServer('labelburg', instructions=(
         'Prints labels on the label printers of this home. list_printers tells the printers and the label '
         'size loaded in each, list_labels the saved labels and their blanks. A printer is named by its alias, '
@@ -384,20 +473,38 @@ def _server(app):
         'the user. Show a preview_label before printing something new. Where you cannot show the image of a '
         'preview, show the Markdown image of its address in the result, never an image of your own. '
         'Printing makes paper: print only what was asked for.'))
+    root.handlers[:] = handlers
+    root.setLevel(level)
 
     def shown(ctx, call):
         """The text of call, the address of each of its previews and their
         images, or what to ask the user."""
         try:
-            text, previews = call()
+            text, specs, images = call()
         except AskUser as e:
             return [str(e)]
         request = ctx.request_context.request
-        images = [tools.preview(spec) for spec in previews]
-        if request is not None:
-            text = '\n'.join([text, 'Where you cannot show the images, put these Markdown images as they are into your answer:',
-                              *(f'![Label]({preview_address(str(request.base_url), spec)})' for spec in previews)])
+        if request is None:
+            return [text, *(Image(data=image, format='png') for image in images)]
+        text = '\n'.join([text, 'Where you cannot show the images, put these Markdown images as they are into your answer:',
+                          *(f'![Label]({preview_address(str(request.base_url), spec)})' for spec in specs)])
+        # Home Assistant hands each result to its model as JSON text, image
+        # data included, so it gets the addresses only
+        if request.headers.get('user-agent', '').startswith('HomeAssistant/'):
+            return [text]
         return [text, *(Image(data=image, format='png') for image in images)]
+
+    def coded(tool):
+        """tool, its description with the code types the API takes."""
+        tool.__doc__ += f' Code types: {", ".join(BARCODE_TYPES)}.'
+        return tool
+
+    def preview(name, blanks, lines, label_size, font_size, code, code_type, printer):
+        spec = tools.preview_label(name, blanks, lines, label_size, font_size, code, code_type, printer)
+        headers = {}
+        image = tools.preview(spec, headers)
+        warning = headers.get('X-Label-Warning')
+        return (f'Preview. {warning}' if warning else 'Preview'), [spec], [image]
 
     @server.tool(annotations=reading)
     def list_printers() -> list[dict]:
@@ -410,13 +517,15 @@ def _server(app):
 
     @server.tool(annotations=reading)
     def list_labels() -> list[dict]:
-        """The saved labels: name to print them by, title, label size, tags
-        and their blanks, which print_label fills in by name. A blank of type
+        """The saved labels: name to print them by, title, label size, tags,
+        what they say (text lines with their blanks, and code) to find the one
+        asked for, and their blanks, which print_label fills in by name. A blank of type
         date takes e.g. 2026-11-03 or +5d (d days, w weeks, m months, y
         years from today) and is today without a value."""
         return tools.list_labels()
 
     @server.tool(annotations=reading)
+    @coded
     def preview_label(name: str | None = None, blanks: dict[str, str] | None = None, lines: list[str] | None = None,
                       label_size: str | None = None, font_size: int = 60, code: str | None = None,
                       code_type: str = 'QR', printer: str | None = None, ctx: Context = None) -> list:
@@ -425,8 +534,8 @@ def _server(app):
         like EAN13 or CODE128) on label_size, e.g. 62 or 29x90, without it on
         the one loaded in printer. Font size
         in dots at 300 dpi, the text shrinks to fit. Returns its address and
-        its image."""
-        return shown(ctx, lambda: ('Preview', [tools.preview_label(name, blanks, lines, label_size, font_size, code, code_type, printer)]))
+        its image, and what the label designer warns about, e.g. text cut off."""
+        return shown(ctx, lambda: preview(name, blanks, lines, label_size, font_size, code, code_type, printer))
 
     @server.tool(annotations=printing, meta=confirm)
     def print_label(name: str, printer: str, count: int, label_size: str | None = None,
@@ -434,18 +543,21 @@ def _server(app):
         """Print a saved label on printer, count labels of each filling of
         its blanks, e.g. [{"Name": "Anna"}, {"Name": "Ben"}] prints a badge
         for each, on the label size it is saved for. label_size only as the
-        user told it, refused if the printer has another one loaded. Returns
-        the image of each."""
+        user told it, refused if the printer has another one loaded. Prints
+        nothing where a label is cut off or a filling is refused. Returns
+        the image of each printed."""
         return shown(ctx, lambda: tools.print_label(name, printer, label_size, fillings or [], count))
 
     @server.tool(annotations=printing, meta=confirm)
+    @coded
     def print_text(printer: str, count: int, label_size: str | None = None, lines: list[str] | None = None,
                    font_size: int = 60, code: str | None = None, code_type: str = 'QR', ctx: Context = None) -> list:
         """Print lines of text and/or a code (QR, e.g. a URL or
         WIFI:T:WPA;S:<name>;P:<password>;;, or a barcode type like EAN13 or
         CODE128) on printer, count labels. label_size, e.g. 62 or 100x30,
         only as the user told it, else the one loaded; refused if the printer
-        has another one loaded. Returns the image."""
+        has another one loaded. Prints nothing where the label is cut off.
+        Returns the image printed."""
         return shown(ctx, lambda: tools.print_text(lines or [], printer, label_size, count, font_size, code, code_type))
 
     return server

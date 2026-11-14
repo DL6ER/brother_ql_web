@@ -746,6 +746,11 @@ class SimpleLabel:
             return date.isoformat()
 
     def generate(self):
+        """The image of the label, also kept as generated: the one printed."""
+        self.generated = self._generate()
+        return self.generated
+
+    def _generate(self):
         img = self._generate_label()
         if not self._flag_wrap:
             return img
