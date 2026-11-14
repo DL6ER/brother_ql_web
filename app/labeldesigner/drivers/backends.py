@@ -145,8 +145,8 @@ def _find(usb, device_specifier: str):
 
 def _device_id(usb, device) -> str:
     """The IEEE 1284 device ID of a printer, e.g. MFG:EPSON;CMD:ESC/POS;
-    MDL:TM-T20II;..., asked with GET_DEVICE_ID of the printer class, which
-    needs no interface claimed. Empty when it does not tell."""
+    MDL:TM-T20II;..., asked with GET_DEVICE_ID of the printer class, for
+    which PyUSB claims the interface. Empty when it does not tell."""
     try:
         interface = usb.util.find_descriptor(device.get_active_configuration(), bInterfaceClass=7)
         answer = bytes(device.ctrl_transfer(0xA1, 0, 0, interface.bInterfaceNumber << 8 | interface.bAlternateSetting, 1024, 1000))
@@ -186,9 +186,16 @@ def found_printers() -> list[tuple[str, str]]:
         try:
             if printer.is_kernel_driver_active(0):
                 continue
-        except (NotImplementedError, usb.core.USBError):
+        except NotImplementedError:
             pass
-        serial = _serial_number(usb, printer)
+        except usb.core.USBError:
+            # PyUSB may not open it, e.g. without permission, so it cannot print on it either
+            continue
+        try:
+            serial = _serial_number(usb, printer)
+        except NotImplementedError:
+            # On Windows a printer without the WinUSB driver
+            continue
         spec = f'usb://0x{printer.idVendor:04x}:0x{printer.idProduct:04x}'
         if serial and re.fullmatch(r'[A-Za-z0-9_-]+', serial):
             spec += f'/{serial}'
