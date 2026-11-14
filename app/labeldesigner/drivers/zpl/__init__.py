@@ -1,8 +1,9 @@
 """Label printers on ZPL (protocol.py), e.g. a Zebra GK420t or a
-Datamax-O'Neil E-4204B with its ZPL emulation, tested on the Datamax only.
-Die-cut labels, which the printer finds by their gaps, torn off. The label
-is sent as an image. The printer is asked for its status with ~HS: its
-errors and the length of the labels it measured, which picks their size."""
+Datamax-O'Neil E-4204B with its ZPL emulation, tested on both. Die-cut
+labels, which the printer finds by their gaps, torn off. The label is sent
+as an image. The printer is asked for its status with ~HS: its errors and
+the length of the labels it measured, which picks their size where labels
+of a single width have that length."""
 
 import logging
 import os
@@ -46,6 +47,12 @@ ASK_EVERY = 10
 _asked: dict[str, float] = {}
 NO_ANSWER = 'The printer does not answer, is its printhead open?'
 
+
+def _asked_lately(device: str) -> bool:
+    # The monotonic clock starts at boot, a printer never asked was not asked lately
+    return device in _asked and time.monotonic() - _asked[device] < ASK_EVERY
+
+
 # The command set ZPL in a device ID
 ZPL_DEVICE_ID = re.compile(r'(^|;)\s*(CMD|COMMAND SET):[^;]*\bZPL', re.IGNORECASE)
 
@@ -55,10 +62,12 @@ LENGTH_TOLERANCE = 2
 
 def measured(length: int) -> int | None:
     """The length in mm of the labels of a length the printer measured in
-    dots, e.g. 235 dots 30 mm, None if no labels have about that length."""
+    dots, e.g. 235 dots 30 mm, None if no labels have about that length or
+    it is as near to two lengths."""
     mm = length / DOTS_PER_MM
-    nearest = min(SIZES, key=lambda size: abs(size[1] - mm))[1]
-    return nearest if abs(nearest - mm) <= LENGTH_TOLERANCE else None
+    nearest = min(abs(size[1] - mm) for size in SIZES)
+    lengths = {size[1] for size in SIZES if abs(size[1] - mm) == nearest}
+    return lengths.pop() if nearest <= LENGTH_TOLERANCE and len(lengths) == 1 else None
 
 
 def loaded(length: int) -> tuple[int, int] | None:
@@ -135,13 +144,17 @@ class Zpl(Driver):
             raise FileNotFoundError(2, 'No such device', path)
         state = dict(network_status(device, model), media_type='Die-cut labels')
         cached = devices.status_cache.get(devices.lock_key(device))
-        if time.monotonic() - _asked.get(device, 0) < ASK_EVERY:
+        if _asked_lately(device):
             return dict(cached) if cached else state
         with devices.device_lock(device, timeout=devices.STATUS_LOCK_TIMEOUT) as acquired:
             if not acquired:
                 state.update(devices.status_cache.get(devices.lock_key(device), {}))
                 state.update({'errors': [], 'status_type': devices.BUSY_STATUS_TYPE, 'phase_type': 'Printing state'})
                 return state
+            # A query that waited for the printer takes the answer of the one before
+            cached = devices.status_cache.get(devices.lock_key(device))
+            if _asked_lately(device):
+                return dict(cached) if cached else state
             answer = protocol.parse_host_status(protocol.host_status(device))
             _asked[device] = time.monotonic()
         if answer is None:

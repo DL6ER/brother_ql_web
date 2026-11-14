@@ -3,10 +3,11 @@ over the network, and printing and status through the label designer."""
 import json
 import socket
 import threading
+import time
 
 import pytest
 
-from app.labeldesigner.drivers import zpl
+from app.labeldesigner.drivers import devices, zpl
 from app.labeldesigner.drivers.zpl import protocol
 from tests.helpers import make_client
 
@@ -263,3 +264,54 @@ def test_known_by_its_device_id(monkeypatch, device_id, model):
     from app.labeldesigner.drivers import devices
     monkeypatch.setattr(devices, 'usb_device_id', lambda device: device_id)
     assert zpl.DRIVER.model_of('file:///dev/usb/lp0') == model
+
+
+@pytest.mark.parametrize('length', [808, 1192, 1208])
+def test_a_length_as_near_to_two_lengths_picks_none(length):
+    # 101, 149 and 151 mm: as near to 100 as to 102, to 148 as to 150 and to
+    # 150 as to 152 mm
+    assert zpl.loaded(length) is None and zpl.measured(length) is None
+
+
+def test_two_status_queries_at_once_ask_once(monkeypatch):
+    # A Datamax leaves a ~HS within 5 s of the one before unanswered
+    server = socket.create_server(('127.0.0.1', 0))
+    asked = []
+
+    def serve():
+        for _ in range(2):
+            conn, _ = server.accept()
+            with conn:
+                asked.append(conn.recv(16))
+                if len(asked) == 1:
+                    time.sleep(0.3)
+                    conn.sendall(DATAMAX_HS.replace(b'0235', b'1214'))
+    thread = threading.Thread(target=serve, daemon=True)
+    thread.start()
+    monkeypatch.setattr(protocol, 'PORT', server.getsockname()[1])
+    monkeypatch.setattr(protocol, 'ANSWER_WAIT', 0.5)
+    # Asked more than 10 s ago
+    monkeypatch.setitem(devices.status_cache, 'tcp://127.0.0.1:9100', {'errors': [], 'media_width': 102, 'media_length': 152})
+    monkeypatch.setitem(zpl._asked, 'tcp://127.0.0.1', time.monotonic() - 60)
+    start = threading.Barrier(2)
+    states = []
+
+    def query():
+        start.wait()
+        states.append(zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL'))
+    queries = [threading.Thread(target=query) for _ in range(2)]
+    for query_ in queries:
+        query_.start()
+    for query_ in queries:
+        query_.join(5)
+    server.close()
+    assert asked == [b'~HS'] and [state['errors'] for state in states] == [[], []]
+
+
+def test_asked_right_after_boot(monkeypatch):
+    # The monotonic clock starts at boot
+    monkeypatch.setattr(time, 'monotonic', lambda: 5.0)
+    asked = []
+    monkeypatch.setattr(protocol, 'host_status', lambda device: asked.append(device) or DATAMAX_HS)
+    zpl.DRIVER.status('tcp://127.0.0.1', 'Zebra/ZPL')
+    assert asked == ['tcp://127.0.0.1']
