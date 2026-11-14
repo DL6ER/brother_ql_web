@@ -7,7 +7,8 @@ import json
 import pytest
 from PIL import Image, ImageDraw
 
-from tests.browser.helpers import fits_note, png, preview_size, printed, type_line, wait_for_preview
+from tests.browser.helpers import fits_note, png, preview_size, printed, set_tape, type_line, wait_for_preview
+from tests.browser.test_printing import fake_printer
 
 VC = {'errors': [], 'model': 'VC-500W', 'path': 'file:///dev/usb/lp0', 'media_width': 25, 'media_length': 0,
       'media_type': 'Continuous length tape', 'tape_length_mm': 5004, 'tape_remaining_mm': 4596, 'color_support': True}
@@ -23,8 +24,8 @@ def fake_vc500w(page, **status):
 
 
 def use_tape(page):
-    page.evaluate('() => { setSize(S.edit.design, S.tape); renderEditor(); }')
-    wait_for_preview(page)
+    # The label in the editor is placed on the tape in the printer
+    assert page.evaluate('() => S.edit.design.label_size === S.tape')
 
 
 def pick(page, selector, color):
@@ -35,11 +36,13 @@ def pick(page, selector, color):
 def test_color_tape_of_the_printer(designer):
     fake_vc500w(designer)
     assert designer.evaluate('() => S.tape') == 'vc25'
-    offered = designer.eval_on_selector_all('#edSize option', 'options => options.map(o => o.value)')
-    assert offered == ['62', 'vc9', 'vc12', 'vc19', 'vc25', 'vc50']
-    assert designer.eval_on_selector('#edSize optgroup:last-child', 'g => g.label') == 'Color tape'
+    designer.click('#printerChip')
+    offered = designer.eval_on_selector_all('#setTape option', 'options => options.map(o => o.value).filter(Boolean)')
+    assert offered == ['vc9', 'vc12', 'vc19', 'vc25', 'vc50']
+    assert designer.eval_on_selector('#setTape optgroup:last-child', 'g => g.label') == 'Color tape'
+    designer.keyboard.press('Escape')
     use_tape(designer)
-    assert designer.inner_text('.tape-note').strip() == 'Matches the tape in the printer, 4.6 m of 5.0 m left'
+    assert designer.inner_text('.tape-note').strip() == 'In the printer, 4.6 m of 5.0 m left'
     # 35 dots of the margin at 320 dpi
     assert designer.input_value('[data-margin="left"]') == '2.8'
     assert designer.inner_text('#printerChip .tape') == '25 mm color tape'
@@ -68,18 +71,17 @@ def test_any_color_on_color_tape(designer):
 
 
 def test_colors_on_tape_without_them(designer):
-    fake_vc500w(designer)
-    use_tape(designer)
-    type_line(designer, 0, 'Blue')
-    pick(designer, '[data-row="0"] input.lcol', '#1e90ff')
-    # A label made for another printer
-    designer.evaluate("() => { S.edit.design.label_size = '62'; renderEditor(); }")
+    # A label made on color tape, printed on a QL-800 with 62 mm endless tape
+    fake_printer(designer, media_width=62, media_length=0)
+    designer.evaluate("""() => openEditor({ title: 'Blue', design: Object.assign(baseDesign('vc25'),
+        { text: [L('Blue', 40, false, 'center', { color: '#1e90ff' })] }) })""")
     wait_for_preview(designer)
+    assert designer.evaluate('() => S.edit.design.label_size') == '62'
     assert 'red parts print black' in fits_note(designer)
     assert designer.evaluate("() => JSON.parse(formFor(S.edit.design).get('text'))[0].color") == 'black'
     # On black and red tape the server prints it in one of them
-    designer.evaluate("() => { S.edit.design.label_size = '62red'; renderEditor(); }")
-    wait_for_preview(designer)
+    set_tape(designer, '62red')
+    assert designer.evaluate('() => S.edit.design.label_size') == '62red'
     assert 'other colors print in one of them' in fits_note(designer)
     assert designer.evaluate("() => JSON.parse(formFor(S.edit.design).get('text'))[0].color") == '#1e90ff'
 

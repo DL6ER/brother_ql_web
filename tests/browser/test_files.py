@@ -7,7 +7,7 @@ import re
 import pytest
 from PIL import Image
 
-from tests.browser.helpers import png, preview_size, printed, wait_for_preview
+from tests.browser.helpers import kept, png, preview_size, printed, wait_for_preview
 
 
 def pdf(*sizes) -> bytes:
@@ -91,6 +91,48 @@ def test_each_of_several_files_can_be_previewed(designer):
     assert designer.evaluate('() => fileShown(S.edit)') == 0
 
 
+def test_a_file_can_be_removed(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
+        {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
+        {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
+    ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
+    designer.click('#edFileStep [data-file="1"]')
+    wait_for_preview(designer)
+    # The file shown stays shown when one before it is removed
+    designer.click('[aria-label="Remove one.png"]')
+    designer.wait_for_function("() => document.querySelector('#edFileOf').innerText === 'File 1 of 2: two.png'")
+    wait_for_preview(designer)
+    designer.click('[aria-label="Remove three.png"]')
+    designer.wait_for_selector('#edFileStep', state='hidden')
+    wait_for_preview(designer)
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert re.findall(rb'filename="([^"]*)"', request.value.post_data_buffer) == [b'two.png']
+    # Without its last file the label has no image, undo brings it back
+    kept(designer)
+    designer.click('[aria-label="Remove two.png"]')
+    designer.wait_for_function('() => !S.edit.design.image')
+    assert designer.inner_text('label.drop').strip() == 'Choose images or PDFs, drop or paste them'
+    designer.click('#edUndo')
+    designer.wait_for_function("() => S.edit.design.image && S.edit.design.image.name === 'two.png'")
+
+
+def test_pages_can_be_chosen_for_a_pdf_after_other_files(designer):
+    # The pages chosen apply to every PDF of the label
+    designer.click('[data-lay="image"]')
+    designer.set_input_files('#edFile', files=[
+        {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png()},
+        {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300))},
+    ])
+    designer.wait_for_selector('#edPages:enabled', timeout=5000)
+    designer.click('[aria-label="Remove pages.pdf"]')
+    designer.wait_for_selector('#edPages:disabled')
+
+
 def test_pages_of_a_pdf_can_be_chosen(designer):
     designer.click('[data-lay="image"]')
     wait_for_preview(designer)
@@ -155,8 +197,9 @@ def test_copies_of_several_files_as_sets_or_grouped(designer):
         {'name': 'two.png', 'mimeType': 'image/png', 'buffer': png(100, 200)},
         {'name': 'three.png', 'mimeType': 'image/png', 'buffer': png(300, 100)},
     ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
     wait_for_preview(designer)
-    letters = "() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
+    letters ="() => $$('#edStage .cut-strip .lab').map(l => l.textContent).join('')"
     # The first printed on the right, as it leaves the printer
     assert designer.evaluate(letters) == 'CBA'
     with designer.expect_request('**/api/print') as request:
@@ -202,6 +245,7 @@ def test_copies_of_the_pages_of_a_pdf_as_sets_or_grouped(designer):
         {'name': 'pages.pdf', 'mimeType': 'application/pdf', 'buffer': pdf((300, 200), (200, 300), (400, 100))},
         {'name': 'one.png', 'mimeType': 'image/png', 'buffer': png(200, 100)},
     ])
+    designer.wait_for_selector('#edFileStep:not([hidden])')
     wait_for_preview(designer)
     designer.evaluate("() => openPrinterPanel()")
     designer.click('.pp [data-col="1"]')

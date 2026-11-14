@@ -234,16 +234,17 @@ def test_font_settings_from_environment(monkeypatch):
 def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
     # Short model names like D110 or P1 are used by more than one maker
     monkeypatch.setenv('PRINTERS', 'Brother/QL-700=usb://0x04f9:0x2042, PUQU/Q00=bt://CD:AC:BB:E0:46:4C,'
-                       'Kitchen:Epson/TM-T20II=file:///dev/usb/lp0, Q00=bt://CD:AC:BB:E0:AA:29')
+                       'Kitchen:Epson/TM-T20II=file:///dev/usb/lp0, Q00=bt://CD:AC:BB:E0:AA:29, TM-T20II=file:///dev/usb/lp1')
     assert create_app().config['PRINTERS'] == [
         ('QL-700', 'usb://0x04f9:0x2042'),
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:46:4C'),
         ('Epson/TM-T20II', 'file:///dev/usb/lp0', 'Kitchen'),
-        # Its name before, taken for a while
+        # Their names before, taken for a while
         ('PUQU/Q00', 'bt://CD:AC:BB:E0:AA:29'),
+        ('Epson/TM-T20II', 'file:///dev/usb/lp1'),
     ]
     # The maker is required for models other than Brother ones
-    for value in ('TM-T20II=file:///dev/usb/lp0', 'Epson TM-T20II=file:///dev/usb/lp0', 'Brother/Q00=bt://CD:AC:BB:E0:46:4C'):
+    for value in ('TM-T88V=file:///dev/usb/lp0', 'Epson TM-T20II=file:///dev/usb/lp0', 'Brother/Q00=bt://CD:AC:BB:E0:46:4C'):
         monkeypatch.setenv('PRINTERS', value)
         with pytest.raises(ValueError, match='PRINTERS'):
             create_app()
@@ -253,6 +254,8 @@ def test_models_are_named_with_their_maker(monkeypatch, tmp_path):
     assert app.config['PRINTER_MODEL'] == 'QL-700'
     parse_args(app, ['--model', 'Brother/QL-800'])
     assert app.config['PRINTER_MODEL'] == 'QL-800'
+    monkeypatch.setenv('PRINTER_MODEL', 'TM-T20II')
+    assert create_app().config['PRINTER_MODEL'] == 'Epson/TM-T20II'
 
 
 def test_request_names_a_model_with_its_maker(tmp_path):
@@ -268,7 +271,7 @@ def test_request_names_a_model_with_its_maker(tmp_path):
     assert response.get_json()['message'] == 'Labels on the QL-800 can be at most 1000 mm long'
 
 
-@pytest.mark.parametrize('model', ['TM-T20II', 'Epson TM-T20II'])
+@pytest.mark.parametrize('model', ['TM-T88V', 'Epson TM-T20II'])
 def test_unknown_printer_model_is_refused_at_the_start(monkeypatch, model):
     # The status poll took it for a Brother printer and sent an Epson ESC i, a cut
     monkeypatch.setenv('PRINTER_MODEL', model)

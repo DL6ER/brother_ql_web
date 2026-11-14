@@ -55,8 +55,10 @@ class Escpos(Driver):
     models = MODELS
     labels = LABELS
     label_names = NAMES
-    # Also a name a udev rule gives it, e.g. /dev/usb/lp_epson
-    device_patterns = (re.compile(r'(file://)?/dev/usb/lp\w+'),)
+    # usblp's device, also a name a udev rule gives it, e.g. /dev/usb/lp_epson,
+    # on Linux only, or the printer through PyUSB, e.g. usb://0x04b8:0x0e15
+    device_patterns = (re.compile(r'(file://)?/dev/usb/lp\w+'),
+                       re.compile(r'usb://0x[0-9a-fA-F]{4}:0x[0-9a-fA-F]{4}(/[A-Za-z0-9_-]+)?'))
     errors = (OSError, protocol.EscposError)
 
     def fits(self, label, model):

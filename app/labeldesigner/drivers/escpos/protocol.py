@@ -6,11 +6,16 @@ import os
 import select
 import time
 
+from .. import backends
+
 DPI = 203
 # Rows per raster image, the printer takes them in pieces
 BAND = 256
 # How long the printer may take to answer a status request, in s
 ANSWER_WAIT = 2
+# A job goes to a printer on PyUSB in pieces: PyUSB gives up on a single
+# write after 15 s, a long receipt takes longer to print
+WRITE_CHUNK = 16384
 
 INIT = b'\x1b@'
 # Feed to the cutter and cut. A TM-T20II leaves one corner uncut, as its
@@ -84,8 +89,33 @@ class Connection:
         raise EscposError('no answer to the status request')
 
 
+class UsbConnection(Connection):
+    """The printer through PyUSB, usb://<vendor>:<product>[/<serial>]."""
+
+    def __init__(self, device: str):
+        self.printer = backends.UsbPrinter(device)
+
+    def __exit__(self, *args):
+        self.printer.dispose()
+
+    def write(self, data: bytes):
+        for start in range(0, len(data), WRITE_CHUNK):
+            self.printer.write(data[start:start + WRITE_CHUNK])
+
+    def ask(self, request: bytes) -> int:
+        """The status byte the printer answers a DLE EOT request with."""
+        while self.printer.read(64):
+            pass
+        self.write(request)
+        deadline = time.monotonic() + ANSWER_WAIT
+        while time.monotonic() < deadline:
+            if reply := self.printer.read(64):
+                return reply[-1]
+        raise EscposError('no answer to the status request')
+
+
 def connect(device: str) -> Connection:
-    return Connection(device)
+    return UsbConnection(device) if device.startswith('usb://') else Connection(device)
 
 
 def get_errors(c: Connection) -> list[str]:

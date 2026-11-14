@@ -1,5 +1,5 @@
-"""The connections of the Brother driver to USB printers, and the status
-answers it cannot read."""
+"""The connections to USB printers, and the status answers the Brother
+driver cannot read."""
 
 import os
 import sys
@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from app.labeldesigner.drivers.brother import backends
+from app.labeldesigner.drivers import backends
 from app.labeldesigner.drivers.brother.status import StatusError, parse_status
 
 
@@ -15,16 +15,28 @@ class Endpoint:
     def __init__(self, address, reads=()):
         self.bEndpointAddress, self.reads, self.written = address, list(reads), []
 
-    def read(self, length):
-        return self.reads.pop(0) if self.reads else b''
+    def read(self, length, timeout=None):
+        reply = self.reads.pop(0) if self.reads else b''
+        if reply is None:
+            raise USBTimeoutError('Operation timed out')
+        return reply
 
     def write(self, data, timeout):
         self.written.append((data, timeout))
 
 
+class USBError(OSError):
+    pass
+
+
+class USBTimeoutError(USBError):
+    pass
+
+
 class Device:
-    def __init__(self, product, reads=()):
-        self.idVendor, self.idProduct, self.bDeviceClass, self.iSerialNumber = 0x04F9, product, 0, 3
+    def __init__(self, product, reads=(), vendor=0x04F9, serial='A1'):
+        self.idVendor, self.idProduct, self.bDeviceClass, self.iSerialNumber = vendor, product, 0, 3
+        self.serial = serial
         self.endpoints = [Endpoint(0x81, reads), Endpoint(0x02)]
         self.calls = []
 
@@ -54,7 +66,8 @@ def pyusb(monkeypatch):
     devices = []
     usb = types.ModuleType('usb')
     usb.core = types.SimpleNamespace(find=lambda find_all, custom_match, idVendor: [
-        device for device in devices if device.idVendor == idVendor and custom_match(device)])
+        device for device in devices if device.idVendor == idVendor and custom_match(device)],
+        USBError=USBError, USBTimeoutError=USBTimeoutError)
 
     def find_descriptor(parent, bInterfaceClass=None, custom_match=None):
         if bInterfaceClass is not None:
@@ -63,7 +76,8 @@ def pyusb(monkeypatch):
     usb.util = types.SimpleNamespace(
         find_descriptor=find_descriptor, endpoint_direction=lambda address: address & 0x80,
         ENDPOINT_IN=0x80, ENDPOINT_OUT=0x00,
-        dispose_resources=lambda device: device.calls.append('dispose'))
+        dispose_resources=lambda device: device.calls.append('dispose'),
+        get_string=lambda device, index: device.serial)
     monkeypatch.setitem(sys.modules, 'usb', usb)
     monkeypatch.setitem(sys.modules, 'usb.core', usb.core)
     monkeypatch.setitem(sys.modules, 'usb.util', usb.util)
@@ -87,8 +101,29 @@ def test_usb_printer_through_pyusb(pyusb):
 
 def test_usb_printer_that_is_not_connected(pyusb):
     pyusb.append(Device(0x2042))
-    with pytest.raises(ValueError, match='Device not found'):
+    with pytest.raises(FileNotFoundError, match='Device not found'):
         backends.open_printer('usb://0x04f9:0x209c')
+
+
+def test_printers_of_the_same_model_by_their_serial_number(pyusb):
+    first, second = Device(0x2042, serial='000L9Z111111'), Device(0x2042, serial='000L9Z378866')
+    pyusb.extend([first, second])
+    # As on the sticker of the printer, or as it tells it over USB
+    assert backends.open_printer('usb://0x04f9:0x2042/L9Z378866').dev is second
+    assert backends.open_printer('usb://0x04f9:0x2042/000L9Z378866').dev is second
+    assert backends.open_printer('usb://0x04f9:0x2042').dev is first
+    with pytest.raises(FileNotFoundError):
+        backends.open_printer('usb://0x04f9:0x2042/L9Z000000')
+
+
+def test_printers_of_other_makers(pyusb):
+    # An Epson TM-T20II, its reads time out while it has nothing to tell
+    epson = Device(0x0e15, vendor=0x04b8, reads=[None, None, b'\x12'])
+    pyusb.extend([Device(0x0e15), epson])
+    printer = backends.open_printer('usb://0x04b8:0x0e15')
+    assert printer.dev is epson
+    assert printer.read() == b''
+    assert printer.read() == b'\x12'
 
 
 def test_printer_through_the_kernel(tmp_path):
