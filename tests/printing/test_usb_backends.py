@@ -64,10 +64,13 @@ def pyusb(monkeypatch):
     """A fake PyUSB with the devices of its list: each is its own
     configuration with a printer interface."""
     devices = []
+    libusb = object()
+
+    def find(find_all, custom_match, idVendor, backend):
+        assert backend is libusb
+        return [device for device in devices if device.idVendor == idVendor and custom_match(device)]
     usb = types.ModuleType('usb')
-    usb.core = types.SimpleNamespace(find=lambda find_all, custom_match, idVendor: [
-        device for device in devices if device.idVendor == idVendor and custom_match(device)],
-        USBError=USBError, USBTimeoutError=USBTimeoutError)
+    usb.core = types.SimpleNamespace(find=find, USBError=USBError, USBTimeoutError=USBTimeoutError)
 
     def find_descriptor(parent, bInterfaceClass=None, custom_match=None):
         if bInterfaceClass is not None:
@@ -82,6 +85,7 @@ def pyusb(monkeypatch):
     monkeypatch.setitem(sys.modules, 'usb.core', usb.core)
     monkeypatch.setitem(sys.modules, 'usb.util', usb.util)
     monkeypatch.setattr(backends.UsbPrinter, 'read_timeout', 0.)
+    monkeypatch.setattr(backends, '_libusb', lambda: libusb)
     return devices
 
 
@@ -124,6 +128,32 @@ def test_printers_of_other_makers(pyusb):
     assert printer.dev is epson
     assert printer.read() == b''
     assert printer.read() == b'\x12'
+
+
+def test_libusb_by_its_file_name_where_ctypes_cannot_find_it(monkeypatch):
+    import usb.backend.libusb1
+    asked = []
+    monkeypatch.setattr(usb.backend.libusb1, 'get_backend', lambda find_library=None: asked.append(find_library))
+    monkeypatch.setattr(sys, 'platform', 'linux')
+    backends._libusb()
+    monkeypatch.setattr('ctypes.util.find_library', lambda name: None)
+    assert asked[0]('usb-1.0') == 'libusb-1.0.so.0'
+    monkeypatch.setattr('ctypes.util.find_library', lambda name: f'/usr/lib/lib{name}.so')
+    assert asked[0]('usb-1.0') == '/usr/lib/libusb-1.0.so'
+
+
+def test_libusb_looked_for_by_pyusb_on_other_systems(monkeypatch):
+    import usb.backend.libusb1
+    asked = []
+    monkeypatch.setattr(usb.backend.libusb1, 'get_backend', lambda find_library=None: asked.append(find_library))
+    monkeypatch.setattr(sys, 'platform', 'darwin')
+    backends._libusb()
+    assert asked == [None]
+
+
+@pytest.mark.skipif(not os.path.exists('/etc/alpine-release'), reason='libusb comes with the image')
+def test_libusb_in_the_image():
+    assert backends._libusb() is not None
 
 
 def test_printer_through_the_kernel(tmp_path):

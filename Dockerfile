@@ -53,8 +53,8 @@ FROM --platform=$TARGETPLATFORM alpine:3.24 AS runtime
 ENV LANG=C.UTF-8
 WORKDIR /app
 
-# Fonts for the labels and poppler-utils for PDF files. They come first, so
-# that new Python packages keep this layer.
+# Fonts for the labels, poppler-utils for PDF files and libusb for usb://
+# printers. They come first, so that new Python packages keep this layer.
 RUN apk add --no-cache \
     ttf-dejavu \
     ttf-liberation \
@@ -66,7 +66,8 @@ RUN apk add --no-cache \
     poppler-utils \
     ca-certificates \
     tzdata \
-    bash
+    bash \
+    libusb
 
 RUN --mount=type=bind,from=slim,source=/rundeps,target=/tmp/rundeps \
     xargs -r apk add --no-cache < /tmp/rundeps
