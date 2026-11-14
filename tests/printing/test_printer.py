@@ -238,6 +238,18 @@ def test_configured_usb_printer_without_device_file_is_listed(client, monkeypatc
     assert status['printers'][0]['errors'] == status['errors'] == ['The printer is switched off or not connected']
 
 
+def test_configured_usb_printer_without_libusb_is_listed(client, monkeypatch):
+    import usb.core
+
+    def no_backend(**args):
+        raise usb.core.NoBackendError('No backend available')
+    monkeypatch.setattr(usb.core, 'find', no_backend)
+    client.application.config['PRINTER_PRINTER'] = 'usb://0x04f9:0x209b'
+    status = client.get('/labeldesigner/api/printer_status').get_json()
+    assert [p['path'] for p in status['printers']] == ['usb://0x04f9:0x209b', 'simulation']
+    assert status['printers'][0]['errors'] == status['errors'] == ['Printers on usb:// need libusb, please install it']
+
+
 def test_label_offset_corrections():
     from app.labeldesigner.drivers.brother.labels import BY_ID
     # Measured on a QL-1100: -6 centers the 103 x 164 mm die-cut label
@@ -280,6 +292,7 @@ def test_printer_without_status_answer_stays_listed(client, monkeypatch):
     (TimeoutError('timed out'), 'The printer does not answer'),
     (ConnectionRefusedError(errno.ECONNREFUSED, 'Connection refused'), 'The printer refuses the connection'),
     (OSError(errno.EHOSTUNREACH, 'No route to host'), 'The printer cannot be reached'),
+    (backends.NoLibusb('No backend available'), 'Printers on usb:// need libusb, please install it'),
     # Other errors only in the log, they may show paths of the server
     (ValueError('Unexpected status in /app/instance'), 'The printer does not answer the status query, the log of the server names the reason'),
 ])
@@ -437,6 +450,8 @@ def test_send_errors_are_told_without_their_text(client, monkeypatch, caplog):
     # The text of an error may show paths of the server, only the log has it
     for error, message in ((FileNotFoundError(errno.ENOENT, 'No such file or directory', '/dev/usb/lp0'),
                             'Could not send the label to the printer: The printer is switched off or not connected'),
+                           (backends.NoLibusb('No backend available'),
+                            'Could not send the label to the printer: Printers on usb:// need libusb, please install it'),
                            (RuntimeError('/app/instance/secret.json is gone'),
                             'Could not send the label to the printer, the log of the server names the reason')):
         def fail(*args, **kwargs):

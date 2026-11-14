@@ -14,6 +14,10 @@ import time
 logger = logging.getLogger(__name__)
 
 
+class NoLibusb(OSError):
+    """PyUSB finds no libusb to reach usb:// printers through."""
+
+
 class Printer:
     """A connection to a printer: write, read up to length bytes, b'' when
     there is nothing to read, and dispose."""
@@ -138,7 +142,10 @@ def _usb_printers(usb, vendor: int):
         if device.bDeviceClass == 7:
             return True
         return any(usb.util.find_descriptor(config, bInterfaceClass=7) is not None for config in device)
-    return usb.core.find(find_all=True, custom_match=is_printer, idVendor=vendor, backend=_libusb())
+    try:
+        return usb.core.find(find_all=True, custom_match=is_printer, idVendor=vendor, backend=_libusb())
+    except usb.core.NoBackendError as e:
+        raise NoLibusb(str(e)) from e
 
 
 def _libusb():
