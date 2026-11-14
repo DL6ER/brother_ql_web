@@ -1,6 +1,6 @@
 """Material Design Icons (pictogrammers.com) for {{mdi:<name>}} in label
 texts. The font, its license and the names are in app/static/mdi, see
-tools/mdi_icons.py."""
+tools/update_fonts.py."""
 import functools
 import json
 import os

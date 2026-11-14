@@ -21,3 +21,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+  # The icon fonts in app/static, see tools/update_fonts.py
+  - package-ecosystem: "npm"
+    directory: "/tools/fonts"
+    schedule:
+      interval: "weekly"
+    # A week after a release, which leaves time to pull a hijacked one
+    cooldown:
+      default-days: 7
