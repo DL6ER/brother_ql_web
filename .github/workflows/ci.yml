@@ -53,14 +53,3 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends hunspell hunspell-de-de
       - name: Check the spelling of the German demo labels
         run: python tools/spelling_de.py
-
-  # The icon fonts in app/static are the versions in tools/fonts, see tools/update_fonts.py
-  fonts:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: '3.15'
-      - name: Check the icon fonts
-        run: python tools/update_fonts.py --check

@@ -1,19 +1,43 @@
-# Adds the files of the new versions to Dependabot's pull requests for tools/fonts,
-# pushed with a GitHub App's token, as a push with GITHUB_TOKEN starts no tests or
-# CodeQL. The App's client ID and key are the Dependabot secrets FONTS_APP_CLIENT_ID and FONTS_APP_KEY.
+# Checks that the icon fonts in app/static are the versions in tools/fonts, and adds the files of a new
+# version to Dependabot's pull requests with a GitHub App's token, as a push with GITHUB_TOKEN starts no
+# tests or CodeQL. The App's client ID and key are the Dependabot secrets FONTS_APP_CLIENT_ID and FONTS_APP_KEY.
 name: Icon fonts
 
 on:
+  push:
+    paths:
+      - tools/fonts/**
+      - tools/update_fonts.py
+      - app/static/mdi/**
+      - app/static/fontawesome/**
+      - .github/workflows/fonts.yml
   pull_request:
     paths:
-      - tools/fonts/package-lock.json
+      - tools/fonts/**
+      - tools/update_fonts.py
+      - app/static/mdi/**
+      - app/static/fontawesome/**
+      - .github/workflows/fonts.yml
 
 permissions: {}
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.15'
+      - name: Check the icon fonts
+        run: python tools/update_fonts.py --check
+
   update:
-    # On Dependabot's pushes only, not on the one of this job
-    if: github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    # On Dependabot's pull requests for tools/fonts only, not on the push of this job
+    if: >-
+      github.event_name == 'pull_request' && github.actor == 'dependabot[bot]'
+      && startsWith(github.head_ref, 'dependabot/npm_and_yarn/')
+      && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/create-github-app-token@v3

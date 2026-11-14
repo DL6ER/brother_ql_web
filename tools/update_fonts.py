@@ -6,7 +6,7 @@ app/static/mdi/icons.json:
     python3 tools/update_fonts.py           # writes the files
     python3 tools/update_fonts.py --check   # fails while they differ
 
-On a pull request of Dependabot, .github/workflows/fonts.yml runs it.
+.github/workflows/fonts.yml runs the check, and the update on Dependabot's pull requests.
 """
 import base64
 import hashlib

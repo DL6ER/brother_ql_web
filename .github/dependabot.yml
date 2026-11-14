@@ -26,3 +26,6 @@ updates:
     directory: "/tools/fonts"
     schedule:
       interval: "weekly"
+    # A week after a release, which leaves time to pull a hijacked one
+    cooldown:
+      default-days: 7
