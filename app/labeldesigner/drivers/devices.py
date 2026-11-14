@@ -114,18 +114,26 @@ USB_DEVICE_ID = '/sys/class/usbmisc/{name}/device/ieee1284_id'
 _usb_device_ids: dict[str, str] = {}
 
 
+def _usb_key(device_specifier: str) -> str:
+    """One key per printer on usb://, however it is spelled: hex digits in
+    either case, the serial number with or without leading zeros."""
+    vendor_product, _, serial = device_specifier.removeprefix('usb://').partition('/')
+    return f"{vendor_product.lower()}/{serial.lstrip('0')}"
+
+
 def usb_device_id(device_specifier: str) -> str:
     """The IEEE 1284 device ID of a printer on USB, /dev/usb/lp<N> or
     usb://..., e.g. MFG:EPSON;CMD:ESC/POS;MDL:TM-T20II;..., empty for other
     printers or when it does not tell."""
     if device_specifier.startswith('usb://'):
-        if device_specifier not in _usb_device_ids:
+        key = _usb_key(device_specifier)
+        if key not in _usb_device_ids:
             from . import backends
             told = backends.device_id(device_specifier)
             if not told:
                 return ''
-            _usb_device_ids[device_specifier] = told
-        return _usb_device_ids[device_specifier]
+            _usb_device_ids[key] = told
+        return _usb_device_ids[key]
     path = os.path.normpath(device_specifier[len('file://'):] if device_specifier.startswith('file://') else device_specifier)
     if not path.startswith('/dev/usb/lp'):
         return ''
@@ -156,7 +164,7 @@ def found_usb_printers() -> list[str]:
     found = []
     for spec, told in backends.found_printers():
         if told:
-            _usb_device_ids[spec] = told
+            _usb_device_ids[_usb_key(spec)] = told
         found.append(spec)
     return found
 

@@ -294,7 +294,14 @@ def get_ptr_status(config: Config):
                 # those of a maker without a driver here left out
                 specs = [f"file://{dev}" for dev in USB_PRINTER_DEVICES if os.path.exists(dev)]
                 for spec in devices.found_usb_printers():
-                    if spec.startswith(BROTHER_USB) or drivers.resolve(spec, 'Unknown')[1] != 'Unknown':
+                    fields = devices.device_id_fields(devices.usb_device_id(spec))
+                    driver, model = drivers.resolve(spec, fields.get('MDL', 'Unknown'))
+                    # Only where its driver reaches it, a VC-500W only through usblp
+                    if not any(pattern.fullmatch(spec) for pattern in driver.device_patterns):
+                        continue
+                    # A Brother printer telling no device ID or Brother's raster commands tells its model in the status
+                    raster = spec.startswith(BROTHER_USB) and (not fields or 'PT-CBP' in fields.get('CMD', '').split(','))
+                    if model in drivers.MODELS or raster:
                         specs.append(spec)
                 for spec in specs:
                     try:
