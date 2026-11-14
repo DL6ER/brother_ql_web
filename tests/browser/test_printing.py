@@ -516,6 +516,40 @@ def test_labels_of_a_q00_leave_it_turned(designer):
         assert ('turned' in designer.get_attribute('#edStage', 'class').split()) is turned, model
 
 
+def test_labels_can_leave_the_printer_bottom_first(designer):
+    designer.route('**/api/print', lambda route: route.fulfill(content_type='application/json', body='{"success": true}'))
+    q00 = """tape => { S.printer = Object.assign({}, S.printer, { model: 'PUQU/Q00' }); S.tape = tape;
+        openEditor({ title: 'Q', design: Object.assign(baseDesign(tape), { text: [L('Q', 40)] }) }); }"""
+    designer.evaluate(q00, 'puqu50x30')
+    wait_for_preview(designer)
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    # As the driver prints them until set
+    assert b'leaves_first' not in request.value.post_data_buffer
+    designer.evaluate("() => openPrinterPanel()")
+    designer.click('.pp [data-lf="bottom"]')
+    assert designer.locator('.pp [data-lf="bottom"].on').count() == 1
+    # The test label names its ends, printed as set
+    with designer.expect_request('**/api/print') as request:
+        designer.click('.pp #setLfTest')
+    body = request.value.post_data_buffer
+    assert b'leaves_first=bottom' in body and b'TOP' in body and b'BOTTOM' in body
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    # The printer stands above the label, which leaves it downwards
+    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    assert designer.locator('#edStage .flow .fa-arrow-down-long').count() == 1
+    with designer.expect_request('**/api/print') as request:
+        designer.click('#edPrint')
+    assert b'leaves_first=bottom' in request.value.post_data_buffer
+    # Labels that leave it sideways have the printer to their right
+    designer.evaluate(q00, 'puqu50x80')
+    wait_for_preview(designer)
+    assert {'side', 'back'} <= set(designer.get_attribute('#edStage', 'class').split())
+    assert designer.evaluate("() => getComputedStyle(document.querySelector('#edStage')).flexDirection") == 'row-reverse'
+    assert designer.locator('#edStage .flow .fa-arrow-left-long').count() == 1
+
+
 def test_receipt_shows_the_blank_paper_before_it(designer):
     # A TM-T20II feeds 12 mm to its cutter after a label, blank before the next
     designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'Epson/TM-T20II' }); S.tape = 'escpos80';
@@ -708,3 +742,48 @@ def test_sheet_after_printing_on_a_phone_names_the_printer_with_its_maker(design
     designer.set_viewport_size({'width': 700, 'height': 900})
     designer.evaluate("() => announce({ state: 'printed', copies: 1, title: 'Q', values: {}, design: baseDesign('puqu50x30'), printer: 'PUQU/Q00' })")
     assert 'Q on the PUQU Q00' in designer.inner_text('body')
+
+
+def test_labels_of_a_vc500w_leave_it_as_set(designer):
+    # As its driver prints them, bottom first, until set otherwise
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'VC-500W' }); S.tape = 'vc25'; S.settings.leaves = {};
+        openEditor({ title: 'V', design: Object.assign(baseDesign('vc25'), { text: [L('V', 40)] }) }); }""")
+    wait_for_preview(designer)
+    assert 'turned' not in designer.get_attribute('#edStage', 'class').split()
+    assert designer.evaluate("() => formFor(S.edit.design, 1, true).get('leaves_first')") is None
+    designer.evaluate("() => openPrinterPanel()")
+    assert designer.locator('.pp [data-lf="bottom"].on').count() == 1
+    designer.click('.pp [data-lf="top"]')
+    designer.keyboard.press('Escape')
+    wait_for_preview(designer)
+    assert 'turned' in designer.get_attribute('#edStage', 'class').split()
+    assert designer.evaluate("() => formFor(S.edit.design, 1, true).get('leaves_first')") == 'top'
+
+
+def test_test_label_names_the_ends_of_a_label_that_leaves_sideways(designer):
+    designer.evaluate("""() => { S.printer = Object.assign({}, S.printer, { model: 'QL-800' }); S.tape = '29x90'; S.settings.leaves = {};
+        openEditor({ title: 'T', design: endsTest() }); }""")
+    wait_for_preview(designer)
+    # The printer on its left, its right end leaves first
+    classes = designer.get_attribute('#edStage', 'class').split()
+    assert 'side' in classes and 'back' not in classes
+    ends = "tape => { S.tape = tape; return endsTest().text.map(l => [l.text, l.align]); }"
+    assert designer.evaluate(ends, '29x90') == [['TOP', 'right'], ['Which end came out first?', 'center'], ['BOTTOM', 'left']]
+    assert designer.evaluate(ends, '62') == [['TOP', 'center'], ['Which end came out first?', 'center'], ['BOTTOM', 'center']]
+
+
+def test_receipt_shows_the_blank_paper_at_the_end_that_leaves_first(designer):
+    receipt = """leaves => { S.printer = Object.assign({}, S.printer, { model: 'Epson/TM-T20II' }); S.tape = 'escpos80';
+        S.settings.leaves = { [printerKey()]: leaves };
+        openEditor({ title: 'R', design: Object.assign(baseDesign('escpos80'), { text: [L('R', 40)] }) }); }"""
+    paper = "() => [...document.querySelectorAll('#edStage .paper > *')].map(e => e.tagName === 'IMG' ? 'label' : e.className)"
+    for leaves, order in (('top', ['lead', 'label']), ('bottom', ['label', 'lead'])):
+        designer.evaluate(receipt, leaves)
+        wait_for_preview(designer)
+        assert designer.evaluate(paper) == order, leaves
+
+
+def test_test_label_button_says_why_it_is_disabled(designer):
+    designer.evaluate("() => { S.printer = null; openPrinterPanel(); }")
+    button = designer.locator('.pp #setLfTest')
+    assert button.is_disabled() and button.get_attribute('title') == 'No printer answered'

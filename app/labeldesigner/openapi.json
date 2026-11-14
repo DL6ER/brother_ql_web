@@ -224,6 +224,14 @@
                         "default": 1,
                         "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
                       },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
+                      },
                       "cut_once": {
                         "type": "integer",
                         "enum": [
@@ -280,6 +288,14 @@
                         "enum": [0, 1],
                         "default": 1,
                         "description": "Order of the copies of several files or PDF pages: 1 as sets (ABC ABC), 0 grouped (AA BB CC)."
+                      },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
                       },
                       "cut_once": {
                         "type": "integer",
@@ -957,6 +973,14 @@
                           1
                         ]
                       },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
+                      },
                       "printer": {
                         "type": "string",
                         "description": "Printer to use: the configured one, the name of one listed in `PRINTERS`, `simulation`, `file:///dev/usb/lp<N>`, `usb://<vendor>:<product>` or `tcp://<host>`. Default: `PRINTER_PRINTER`."
@@ -1348,6 +1372,14 @@
                           0,
                           1
                         ]
+                      },
+                      "leaves_first": {
+                        "type": "string",
+                        "enum": [
+                          "top",
+                          "bottom"
+                        ],
+                        "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
                       },
                       "printer": {
                         "type": "string",
@@ -2166,6 +2198,14 @@
               "colored"
             ],
             "description": "Another one is refused. `bw` is read as `black_and_white`."
+          },
+          "leaves_first": {
+            "type": "string",
+            "enum": [
+              "top",
+              "bottom"
+            ],
+            "description": "The end of the labels that leaves the printer first, `top` or `bottom`, e.g. to stick them on as they come out. Set for each printer in the label designer, never saved with a label. Default: as the driver prints them."
           },
           "bw_threshold": {
             "type": "integer",

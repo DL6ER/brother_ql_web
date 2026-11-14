@@ -100,3 +100,19 @@ def test_webhook_refuses_an_unknown_image_mode(tmp_path, monkeypatch):
     assert response.status_code == 400
     assert response.get_json() == {'success': False, 'message': 'image_mode must be grayscale, black_and_white, red_and_black or colored'}
     assert client.post('/labeldesigner/api/webhook/print', json=dict(payload, image_mode='bw')).get_json() == {'success': True, 'count': 1}
+
+
+def test_webhook_takes_leaves_first(tmp_path, monkeypatch):
+    from app.labeldesigner import routes
+    turned = []
+    monkeypatch.setattr(routes.PrinterQueue, 'process_queue', lambda self: turned.extend(job['label'].turned for job in self._print_queue) or '')
+    client = make_client(tmp_path)
+    client.application.config['WEBHOOK_PASSWORD'] = 'secret'
+    image = base64.b64encode(_upload(_red_square(), 'image.png').stream.read()).decode('ascii')
+    payload = {'password': 'secret', 'label_size': '62', 'images': [image]}
+    for leaves_first in ('top', 'bottom'):
+        assert client.post('/labeldesigner/api/webhook/print', json=dict(payload, leaves_first=leaves_first)).get_json() == {'success': True, 'count': 1}
+    assert turned == [False, True]
+    response = client.post('/labeldesigner/api/webhook/print', json=dict(payload, leaves_first='side'))
+    assert response.status_code == 400
+    assert response.get_json() == {'success': False, 'message': 'leaves_first must be top or bottom'}

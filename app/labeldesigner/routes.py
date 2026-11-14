@@ -573,6 +573,8 @@ def repo_save():
     # Read like the other flags, e.g. true, false, 1 or 0, in the address
     # before the body
     data.pop('replace', None)
+    # Set for each printer and given with each print, never saved
+    data.pop('leaves_first', None)
     try:
         replace = _whole_or(_requested('replace'), 1)
     except (TypeError, ValueError):
@@ -829,6 +831,15 @@ def _given(value, default):
     return default if value is None or value == '' else value
 
 
+def _leaves_first(value) -> str | None:
+    """Which end of the labels leaves the printer first, None where it is
+    left out or empty: as the driver prints them."""
+    value = _given(value, None)
+    if value not in (None, 'top', 'bottom'):
+        raise ValueError('leaves_first must be top or bottom')
+    return value
+
+
 def _whole_or(value, default) -> int:
     """value as a whole number like _whole(), default where it is left out
     or empty."""
@@ -966,6 +977,8 @@ def _print_stored_label(data: dict, image_dir: str, image_bytes: bytes | None = 
         # Saved with the label, the request overrides it
         collate = _requested('collate')
         collate = _whole_or(collate if collate is not None else data.get('collate'), 1) != 0
+        # Of the request only, it is set for each printer
+        printer.leaves_first = _leaves_first(_requested('leaves_first'))
         # The label and its image have to be generated with the resolution
         # it is printed with
         data['high_res'] = high_res
@@ -1171,6 +1184,7 @@ def print_label():
         high_res = _whole_or(request.values.get('high_res'), 0) != 0
         fast = _whole_or(request.values.get('fast_printing'), 0) != 0
         collate = _whole_or(request.values.get('collate'), 1) != 0
+        printer.leaves_first = _leaves_first(request.values.get('leaves_first'))
     except HTTPException:
         raise
     except Exception as e:
@@ -1870,6 +1884,10 @@ def webhook_print():
             image_mode = check_image_mode(image_mode, current_app.config['IMAGE_DEFAULT_MODE'])
         except ValueError:
             return make_response(jsonify({'success': False, 'message': IMAGE_MODE_REFUSED}), 400)
+        try:
+            leaves_first = _leaves_first(_requested('leaves_first'))
+        except ValueError as e:
+            return make_response(jsonify({'success': False, 'message': refusals.message(e, refusals.INVALID_INPUT)}), 400)
         # Images stay in color on the tapes of the VC-500W, printed at its resolution
         color = _palette(label_size) == 'color'
         if color:
@@ -1949,6 +1967,7 @@ def webhook_print():
     # Process and queue each image
     try:
         printer = PrinterQueue(model=model, device_specifier=device, label_size=label_size)
+        printer.leaves_first = leaves_first
         for img, image_width, image_height, image_orientation in pil_images:
             label = SimpleLabel(
                 width=image_width,
